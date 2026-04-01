@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.0.0-dev'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            signing_identity: '-'
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            signing_identity: '-'
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            signing_identity: ''
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      TAG_NAME: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: pnpm install
+
+      - name: Build and upload artifacts
+        uses: tauri-apps/tauri-action@v0.5.20
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.signing_identity }}
+        with:
+          tauriScript: pnpm tauri
+          args: --target ${{ matrix.target }}
+          tagName: ${{ env.TAG_NAME }}
+          releaseName: 'AIModal ${{ env.TAG_NAME }}'
+          releaseBody: 'See changelog for details.'
+          releaseDraft: true
+          prerelease: false
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag_name }}
+    steps:
+      - name: Publish release
+        run: gh release edit "$TAG_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
