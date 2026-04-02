@@ -31,12 +31,6 @@ import {
   WandSparkles,
 } from "lucide-react";
 import {
-  ACTION_GROUP_BUTTON_ACTIVE_CLASS,
-  ACTION_GROUP_BUTTON_BASE_CLASS,
-  ACTION_GROUP_BUTTON_INACTIVE_CLASS,
-  ACTION_GROUP_WRAPPER_CLASS,
-} from "../lib/actionGroupStyles";
-import {
   FIELD_INPUT_CLASS,
   FIELD_MONO_INPUT_CLASS,
   FIELD_SELECT_CLASS,
@@ -833,100 +827,141 @@ export function RulesPage({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-800 bg-gray-950/50 p-4">
-                {!showCustomForm ? (
-                  <button
-                    onClick={() => setShowCustomForm(true)}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-4 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                  >
-                    <Plus className="h-4 w-4" />
-                    新增自定义项
-                  </button>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="w-[180px] flex-shrink-0">
-                      <input
-                        value={customLabel}
-                        onChange={(event) => setCustomLabel(event.target.value)}
-                        placeholder="自定义名称"
-                        className={FIELD_INPUT_CLASS}
-                      />
+              <div className="rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-200">
+                        同步目标
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        点选卡片后同步。
+                      </p>
                     </div>
-                    <div className="min-w-[280px] flex-1">
-                      <input
-                        value={customPath}
-                        onChange={(event) => setCustomPath(event.target.value)}
-                        placeholder="/Users/you/custom/rules.md"
-                        className={FIELD_MONO_INPUT_CLASS}
-                      />
-                    </div>
-                    <button
-                      onClick={handlePickCustomPath}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                    >
-                      选择文件
-                    </button>
-                    <button
-                      onClick={handleAddCustomPath}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                    >
-                      保存
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowCustomForm(false);
-                        setCustomLabel("");
-                        setCustomPath("");
-                      }}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:text-gray-300"
-                    >
-                      取消
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-gray-800 bg-gray-950/50 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-gray-200">同步到</p>
-                  <button
-                    onClick={() => {
-                      if (dirty) {
-                        setShowSyncConfirm(true);
-                        return;
-                      }
-                      void executeSync();
-                    }}
-                    disabled={
-                      !syncTargetIds.length ||
-                      !fileExists ||
-                      selectedTool.kind === "directory" ||
-                      syncing
-                    }
-                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Save className="h-4 w-4" />
-                    同步
-                  </button>
-                </div>
-                <div className={`${ACTION_GROUP_WRAPPER_CLASS} flex-wrap`}>
-                  {syncCandidates.map((tool) => (
-                    <button
-                      type="button"
-                      key={tool.id}
-                      onClick={() => toggleSyncTarget(tool.id)}
-                      className={`${ACTION_GROUP_BUTTON_BASE_CLASS} ${
-                        syncTargetIds.includes(tool.id)
-                          ? ACTION_GROUP_BUTTON_ACTIVE_CLASS
-                          : ACTION_GROUP_BUTTON_INACTIVE_CLASS
-                      }`}
-                    >
-                      {syncTargetIds.includes(tool.id) && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-300" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!showCustomForm && (
+                        <button
+                          onClick={() => setShowCustomForm(true)}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
+                        >
+                          <Plus className="h-4 w-4" />
+                          新增
+                        </button>
                       )}
-                      <span>{tool.label}</span>
-                    </button>
-                  ))}
+                      <button
+                        onClick={() => {
+                          if (dirty) {
+                            setShowSyncConfirm(true);
+                            return;
+                          }
+                          void executeSync();
+                        }}
+                        disabled={
+                          !syncTargetIds.length ||
+                          !fileExists ||
+                          selectedTool.kind === "directory" ||
+                          syncing
+                        }
+                        className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          syncTargetIds.length > 0
+                            ? "border-indigo-300/70 bg-indigo-500/16 text-indigo-50 shadow-[0_0_0_1px_rgba(165,180,252,0.18),0_10px_24px_rgba(79,70,229,0.12)] hover:border-indigo-200 hover:bg-indigo-400/24 hover:text-white"
+                            : "border-gray-700 bg-black/10 text-gray-200 hover:border-indigo-300/55 hover:bg-indigo-400/12 hover:text-white"
+                        }`}
+                      >
+                        <Save className="h-4 w-4" />
+                        {syncTargetIds.length > 0
+                          ? `同步(${syncTargetIds.length}个)`
+                          : "同步"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showCustomForm && (
+                    <div className="mt-3 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
+                      <div className="mb-2 flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => {
+                            setShowCustomForm(false);
+                            setCustomLabel("");
+                            setCustomPath("");
+                          }}
+                          className="inline-flex h-8 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
+                        >
+                          取消
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="w-[170px] flex-shrink-0">
+                          <input
+                            value={customLabel}
+                            onChange={(event) =>
+                              setCustomLabel(event.target.value)
+                            }
+                            placeholder="自定义名称"
+                            className={FIELD_INPUT_CLASS}
+                          />
+                        </div>
+                        <div className="min-w-[240px] flex-1">
+                          <input
+                            value={customPath}
+                            onChange={(event) =>
+                              setCustomPath(event.target.value)
+                            }
+                            placeholder="/Users/you/custom/rules.md"
+                            className={FIELD_MONO_INPUT_CLASS}
+                          />
+                        </div>
+                        <button
+                          onClick={handlePickCustomPath}
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-gray-700 bg-black/10 px-3 text-sm text-gray-200 transition-colors hover:border-indigo-300/55 hover:bg-indigo-400/12 hover:text-white"
+                        >
+                          选择文件
+                        </button>
+                        <button
+                          onClick={handleAddCustomPath}
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 text-sm text-emerald-100 transition-colors hover:border-emerald-300/70 hover:bg-emerald-400/18 hover:text-white"
+                        >
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-5">
+                    {syncCandidates.map((tool) => {
+                      const selected = syncTargetIds.includes(tool.id);
+                      return (
+                        <button
+                          type="button"
+                          key={tool.id}
+                          onClick={() => toggleSyncTarget(tool.id)}
+                          className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                            selected
+                              ? "border-indigo-300/80 bg-indigo-400/16 text-indigo-50 shadow-[0_0_0_1px_rgba(165,180,252,0.22),0_10px_24px_rgba(79,70,229,0.12)]"
+                              : "border-gray-800 bg-black/15 text-gray-300 hover:border-gray-700 hover:text-white"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] font-medium">
+                              {tool.label}
+                            </span>
+                            <span
+                              className={`h-2.5 w-2.5 rounded-full ${
+                                selected ? "bg-indigo-100" : "bg-gray-700"
+                              }`}
+                            />
+                          </div>
+                          <p
+                            className={`mt-0.5 text-[10px] ${
+                              selected ? "text-indigo-100/90" : "text-gray-500"
+                            }`}
+                          >
+                            {selected ? "已选中" : "点击选择"}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
