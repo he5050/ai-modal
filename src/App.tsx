@@ -12,6 +12,7 @@ import { ConfigPage } from "./components/ConfigPage";
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
 import type {
   AppPage,
+  ConfigFormat,
   ConfigPath,
   Provider,
   ProviderLastResult,
@@ -90,7 +91,9 @@ function loadConfigPaths(): ConfigPath[] {
             ? "toml"
             : item.format === "yaml"
               ? "yaml"
-              : "json",
+              : item.format === "xml"
+                ? "xml"
+                : "json",
       }));
   } catch {
     return [];
@@ -352,7 +355,7 @@ export default function App() {
   function handleAddConfigPath(input: {
     label: string;
     path: string;
-    format?: "json" | "toml" | "yaml";
+    format?: ConfigFormat;
   }) {
     setConfigPaths((prev) => [
       ...prev,

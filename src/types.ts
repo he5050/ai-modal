@@ -6,6 +6,8 @@ export type AppPage =
   | "configs"
   | "settings";
 
+export type ConfigFormat = "json" | "toml" | "yaml" | "xml";
+
 export interface RulePath {
   id: string;
   label: string; // 显示名称，如 "Claude Code"
@@ -21,7 +23,7 @@ export interface ConfigPath {
   path: string;
   isBuiltin: boolean;
   kind?: "file";
-  format?: "json" | "toml" | "yaml";
+  format?: ConfigFormat;
 }
 
 export interface ModelResult {

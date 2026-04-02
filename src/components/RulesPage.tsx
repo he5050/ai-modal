@@ -1003,8 +1003,8 @@ export function RulesPage({
                   editable={selectedTool.kind !== "directory"}
                   readOnly={selectedTool.kind === "directory"}
                   basicSetup={{
-                    lineNumbers: false,
-                    foldGutter: false,
+                    lineNumbers: true,
+                    foldGutter: true,
                     dropCursor: false,
                     allowMultipleSelections: false,
                     indentOnInput: true,

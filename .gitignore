@@ -19,3 +19,4 @@ docs
 .magi
 .claude.json
 .pnpm-store
+.playwright-mcp

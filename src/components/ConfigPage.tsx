@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { StreamLanguage, foldService } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
+import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
 import prettier from "prettier/standalone";
+import babelPlugin from "prettier/plugins/babel";
 import estreePlugin from "prettier/plugins/estree";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import {
@@ -29,7 +35,7 @@ import {
   FIELD_SELECT_CLASS,
 } from "../lib/formStyles";
 import { toast } from "../lib/toast";
-import type { ConfigPath } from "../types";
+import type { ConfigFormat, ConfigPath } from "../types";
 
 interface Props {
   storedPaths: ConfigPath[];
@@ -37,7 +43,7 @@ interface Props {
   onAddPath: (input: {
     label: string;
     path: string;
-    format?: "json" | "toml" | "yaml";
+    format?: ConfigFormat;
   }) => void;
   onDeletePath: (id: string) => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -49,7 +55,7 @@ interface BuiltinConfig {
   fileName: string;
   relativePath: string;
   accentClass: string;
-  format: "json" | "toml" | "yaml";
+  format: ConfigFormat;
 }
 
 interface ConfirmModalProps {
@@ -171,6 +177,46 @@ const configEditorTheme = EditorView.theme(
   { dark: true },
 );
 
+const tomlLanguage = StreamLanguage.define(tomlMode);
+const tomlSectionHeaderPattern = /^\[\[?.+\]\]?$/;
+const tomlFoldExtension = foldService.of((state, lineStart) => {
+  const currentLine = state.doc.lineAt(lineStart);
+  const currentText = currentLine.text.trim();
+  if (!tomlSectionHeaderPattern.test(currentText)) return null;
+
+  let lastContentLine = currentLine.number;
+  for (
+    let lineNumber = currentLine.number + 1;
+    lineNumber <= state.doc.lines;
+    lineNumber += 1
+  ) {
+    const line = state.doc.line(lineNumber);
+    const text = line.text.trim();
+    if (tomlSectionHeaderPattern.test(text)) break;
+    if (text.length > 0) lastContentLine = lineNumber;
+  }
+
+  if (lastContentLine === currentLine.number) return null;
+  return {
+    from: currentLine.to,
+    to: state.doc.line(lastContentLine).to,
+  };
+});
+
+function getConfigLanguageExtensions(format: ConfigFormat) {
+  switch (format) {
+    case "toml":
+      return [tomlLanguage, tomlFoldExtension];
+    case "yaml":
+      return [yaml()];
+    case "xml":
+      return [xml()];
+    case "json":
+    default:
+      return [json()];
+  }
+}
+
 async function detectExists(path: string) {
   try {
     return await exists(path);
@@ -251,9 +297,7 @@ export function ConfigPage({
   const [refreshing, setRefreshing] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
-  const [customFormat, setCustomFormat] = useState<"json" | "toml" | "yaml">(
-    "json",
-  );
+  const [customFormat, setCustomFormat] = useState<ConfigFormat>("json");
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [homePath, setHomePath] = useState("");
@@ -301,7 +345,9 @@ export function ConfigPage({
             ? "config.toml"
             : item.format === "yaml"
               ? "config.yaml"
-              : "config.json",
+              : item.format === "xml"
+                ? "config.xml"
+                : "config.json",
         relativePath: item.path,
         accentClass: "border-gray-500/30 bg-gray-500/10 text-gray-200",
         format: item.format ?? "json",
@@ -310,10 +356,15 @@ export function ConfigPage({
       }));
     return [...builtin, ...custom];
   }, [homePath, storedPaths]);
-  const editorExtensions = useMemo(() => [configEditorTheme], []);
-
   const selectedTool =
     tools.find((tool) => tool.id === selectedId) ?? tools[0] ?? null;
+  const editorExtensions = useMemo(
+    () => [
+      ...getConfigLanguageExtensions(selectedTool?.format ?? "json"),
+      configEditorTheme,
+    ],
+    [selectedTool?.format],
+  );
   const normalizedLabels = useMemo(
     () => new Set(tools.map((tool) => normalizeText(tool.label).toLowerCase())),
     [tools],
@@ -393,7 +444,7 @@ export function ConfigPage({
     try {
       const formatted = await prettier.format(contentDraft, {
         parser: "json",
-        plugins: [estreePlugin],
+        plugins: [babelPlugin, estreePlugin],
       });
       setContentDraft(formatted);
       toast("已格式化 JSON 配置", "success");
@@ -456,7 +507,9 @@ export function ConfigPage({
             ? [{ name: "TOML", extensions: ["toml"] }]
             : selectedTool.format === "yaml"
               ? [{ name: "YAML", extensions: ["yaml", "yml"] }]
-              : [{ name: "JSON", extensions: ["json"] }],
+              : selectedTool.format === "xml"
+                ? [{ name: "XML", extensions: ["xml"] }]
+                : [{ name: "JSON", extensions: ["json"] }],
       });
       if (typeof picked === "string") {
         setPathDraft(toDisplayPath(picked, homePath));
@@ -492,11 +545,12 @@ export function ConfigPage({
     }
   }
 
-  function inferFormatFromPath(path: string): "json" | "toml" | "yaml" {
+  function inferFormatFromPath(path: string): ConfigFormat {
     const normalized = path.toLowerCase();
     if (normalized.endsWith(".toml")) return "toml";
     if (normalized.endsWith(".yaml") || normalized.endsWith(".yml"))
       return "yaml";
+    if (normalized.endsWith(".xml")) return "xml";
     return "json";
   }
 
@@ -535,7 +589,10 @@ export function ConfigPage({
         directory: false,
         multiple: false,
         filters: [
-          { name: "Config", extensions: ["json", "toml", "yaml", "yml"] },
+          {
+            name: "Config",
+            extensions: ["json", "toml", "yaml", "yml", "xml"],
+          },
         ],
       });
       if (typeof picked === "string") {
@@ -688,15 +745,14 @@ export function ConfigPage({
                       <select
                         value={customFormat}
                         onChange={(event) =>
-                          setCustomFormat(
-                            event.target.value as "json" | "toml" | "yaml",
-                          )
+                          setCustomFormat(event.target.value as ConfigFormat)
                         }
                         className={FIELD_SELECT_CLASS}
                       >
                         <option value="json">JSON</option>
                         <option value="toml">TOML</option>
                         <option value="yaml">YAML</option>
+                        <option value="xml">XML</option>
                       </select>
                     </div>
                     <button
@@ -796,8 +852,8 @@ export function ConfigPage({
                   theme={oneDark}
                   editable
                   basicSetup={{
-                    lineNumbers: false,
-                    foldGutter: false,
+                    lineNumbers: true,
+                    foldGutter: true,
                     dropCursor: false,
                     allowMultipleSelections: false,
                     highlightActiveLineGutter: false,
