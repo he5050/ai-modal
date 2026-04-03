@@ -126,8 +126,13 @@ export function ProviderDetailPage({
 
   async function handleTest() {
     setError(null);
+    setLiveResults([]);
     setTesting(true);
     setProgress("正在获取模型列表...");
+    onSaveResult(currentProvider.id, {
+      timestamp: Date.now(),
+      results: [],
+    });
     logger.info(
       `[${currentProvider.name}] 开始测试，baseUrl: ${currentProvider.baseUrl}`,
     );

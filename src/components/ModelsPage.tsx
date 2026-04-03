@@ -320,12 +320,22 @@ export function QuickTestDialog({
   const [selectedModel, setSelectedModel] = useState<string>(
     getDefaultQuickTestModel(provider),
   );
-  const snippet = buildQuickTestSnippet(
+  const terminalSetup = buildQuickTestTerminalSetup(
     provider,
     selectedModel,
     selectedProtocol,
   );
-  const envOnly = buildQuickTestEnvOnly(provider, selectedProtocol);
+  const curlSnippet = buildQuickTestCurlSnippet(
+    provider,
+    selectedModel,
+    selectedProtocol,
+  );
+  const snippet = [
+    terminalSetup,
+    "",
+    "# HTTP / curl 回退测试",
+    curlSnippet,
+  ].join("\n");
 
   useEffect(() => {
     setSelectedProtocol("openai");
@@ -334,8 +344,8 @@ export function QuickTestDialog({
 
   async function handleCopyEnv() {
     try {
-      await navigator.clipboard.writeText(envOnly);
-      toast("已复制环境变量", "success");
+      await navigator.clipboard.writeText(terminalSetup);
+      toast("已复制终端环境和启动命令", "success");
     } catch {
       toast("复制失败，请重试", "error");
     }
@@ -343,8 +353,8 @@ export function QuickTestDialog({
 
   async function handleCopySnippet() {
     try {
-      await navigator.clipboard.writeText(snippet);
-      toast("已复制完整命令片段", "success");
+      await navigator.clipboard.writeText(curlSnippet);
+      toast("已复制 curl 回退命令", "success");
     } catch {
       toast("复制失败，请重试", "error");
     }
@@ -359,8 +369,8 @@ export function QuickTestDialog({
               模型协议快速测试
             </h3>
             <p className="mt-1 text-sm text-gray-400">
-              第一行手动选择复制协议，第二行选择模型；只影响当前复制出来的环境变量与
-              `curl` 片段。
+              第一行手动选择协议，第二行选择模型；上方会生成可直接在终端使用的环境变量
+              + CLI 启动命令，下方保留 `curl` 回退测试片段。
             </p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -386,14 +396,14 @@ export function QuickTestDialog({
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                 >
                   <Copy className="h-4 w-4" />
-                  复制环境变量部分
+                  复制终端变量 + 启动命令
                 </button>
                 <button
                   onClick={handleCopySnippet}
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                 >
                   <TerminalSquare className="h-4 w-4" />
-                  复制 curl 命令
+                  复制 curl 回退命令
                 </button>
               </div>
             </div>
@@ -585,6 +595,14 @@ function buildClaudeUrl(baseUrl: string, leaf: string) {
     : `${normalized}/v1/${leaf}`;
 }
 
+function buildOpenAiCliBaseUrl(baseUrl: string) {
+  return buildOpenAiStyleUrl(baseUrl, "").replace(/\/$/, "");
+}
+
+function buildClaudeCliBaseUrl(baseUrl: string) {
+  return buildClaudeUrl(baseUrl, "").replace(/\/$/, "");
+}
+
 function normalizeGeminiBaseUrl(baseUrl: string) {
   return stripTrailingSuffixes(baseUrl, [
     "/openai/chat/completions",
@@ -609,22 +627,45 @@ function getDefaultQuickTestModel(provider: Provider) {
   return getSelectableModels(provider)[0] ?? "your-model";
 }
 
-function buildQuickTestEnvOnly(
+function buildQuickTestTerminalSetup(
   provider: Provider,
+  model: string,
   protocol: QuickTestProtocol,
 ) {
+  const normalizedModel = model || "your-model";
+
   if (protocol === "claude") {
-    return `export ANTHROPIC_API_KEY=${quoteShell(provider.apiKey)}`;
+    return [
+      `export ANTHROPIC_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export ANTHROPIC_BASE_URL=${quoteShell(buildClaudeCliBaseUrl(provider.baseUrl))}`,
+      `export ANTHROPIC_MODEL=${quoteShell(normalizedModel)}`,
+      "",
+      "# 直接启动 Claude Code",
+      'claude --model "$ANTHROPIC_MODEL"',
+    ].join("\n");
   }
 
   if (protocol === "gemini") {
-    return `export GEMINI_API_KEY=${quoteShell(provider.apiKey)}`;
+    return [
+      `export GEMINI_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export GEMINI_MODEL=${quoteShell(normalizeGeminiModelName(normalizedModel))}`,
+      "",
+      "# Gemini CLI 官方文档当前仅明确 API key + model；未提供稳定通用的 BASE_URL override。",
+      'gemini -m "$GEMINI_MODEL"',
+    ].join("\n");
   }
 
-  return `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`;
+  return [
+    `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`,
+    `export OPENAI_BASE_URL=${quoteShell(buildOpenAiCliBaseUrl(provider.baseUrl))}`,
+    `export OPENAI_MODEL=${quoteShell(normalizedModel)}`,
+    "",
+    "# 直接启动 Codex CLI",
+    'codex -m "$OPENAI_MODEL" -c openai_base_url="$OPENAI_BASE_URL"',
+  ].join("\n");
 }
 
-function buildQuickTestSnippet(
+function buildQuickTestCurlSnippet(
   provider: Provider,
   model: string,
   protocol: QuickTestProtocol,
@@ -633,16 +674,20 @@ function buildQuickTestSnippet(
   const selectableModels = getSelectableModels(provider);
   const protocolLabel = getQuickTestProtocolLabel(protocol);
   const lines = [
-    `# ${protocolLabel} 快速测试示例（仅当前会话有效）`,
+    `# ${protocolLabel} HTTP 回退测试（仅当前会话有效）`,
     `# Provider: ${provider.name}`,
     `# Protocol: ${protocolLabel}`,
-    buildQuickTestEnvOnly(provider, protocol),
-    "",
   ];
+  const modelEnvName =
+    protocol === "claude"
+      ? "ANTHROPIC_MODEL"
+      : protocol === "gemini"
+        ? "GEMINI_MODEL"
+        : "OPENAI_MODEL";
 
   if (selectableModels.length === 0) {
     lines.push(
-      "# 当前 provider 还没有检测结果，请先测试，或把 OPENAI_MODEL 替换成你要验证的模型名。",
+      `# 当前 provider 还没有检测结果，请先测试，或把 ${modelEnvName} 替换成你要验证的模型名。`,
     );
   } else if (availableModels.length === 0) {
     lines.push(
@@ -656,6 +701,10 @@ function buildQuickTestSnippet(
 
   if (protocol === "claude") {
     lines.push(
+      `export ANTHROPIC_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export ANTHROPIC_MESSAGES_URL=${quoteShell(buildClaudeUrl(provider.baseUrl, "messages"))}`,
+      `export ANTHROPIC_MODEL=${quoteShell(model || "your-model")}`,
+      "",
       `curl ${quoteShell(buildClaudeUrl(provider.baseUrl, "messages"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "x-api-key: $ANTHROPIC_API_KEY" \\',
@@ -674,6 +723,10 @@ function buildQuickTestSnippet(
     );
   } else if (protocol === "gemini") {
     lines.push(
+      `export GEMINI_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export GEMINI_GENERATE_URL=${quoteShell(buildGeminiGenerateUrl(provider.baseUrl, model || "your-model"))}`,
+      `export GEMINI_MODEL=${quoteShell(normalizeGeminiModelName(model || "your-model"))}`,
+      "",
       `curl ${quoteShell(buildGeminiGenerateUrl(provider.baseUrl, model || "your-model"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "x-goog-api-key: $GEMINI_API_KEY" \\',
@@ -692,6 +745,10 @@ function buildQuickTestSnippet(
     );
   } else {
     lines.push(
+      `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export OPENAI_CHAT_URL=${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "chat/completions"))}`,
+      `export OPENAI_MODEL=${quoteShell(model || "your-model")}`,
+      "",
       `curl ${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "chat/completions"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "Authorization: Bearer $OPENAI_API_KEY" \\',
@@ -781,8 +838,10 @@ export function DetailRow({
 
   async function handleTest() {
     setError(null);
+    setLiveResults([]);
     setTesting(true);
     setProgress("正在获取模型列表...");
+    onSaveResult(provider.id, { timestamp: Date.now(), results: [] });
     logger.info(`[${provider.name}] 开始测试，baseUrl: ${provider.baseUrl}`);
     let models: string[];
     try {

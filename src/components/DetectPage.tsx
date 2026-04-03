@@ -26,6 +26,10 @@ function maskPreviewText(value: string) {
   return `${value.slice(0, 2)}******${value.slice(-2)}`;
 }
 
+function buildTestSignature(baseUrl: string, apiKey: string) {
+  return `${baseUrl.trim()}::${apiKey.trim()}`;
+}
+
 function DeleteDialog({
   name,
   onConfirm,
@@ -140,6 +144,7 @@ export function DetectPage({
   const [origName, setOrigName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [manualModel, setManualModel] = useState("");
   const [keyVisible, setKeyVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [origBaseUrl, setOrigBaseUrl] = useState("");
@@ -156,6 +161,12 @@ export function DetectPage({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [testCount, setTestCount] = useState({ done: 0, total: 0 });
   const [resultTimestamp, setResultTimestamp] = useState<number | null>(null);
+  const [lastTestMode, setLastTestMode] = useState<"none" | "all" | "single">(
+    "none",
+  );
+  const [lastTestSignature, setLastTestSignature] = useState<string | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
   const [recentPage, setRecentPage] = useState(1);
 
@@ -166,6 +177,7 @@ export function DetectPage({
     setOrigName(editTarget.name);
     setBaseUrl(editTarget.baseUrl);
     setApiKey(editTarget.apiKey);
+    setManualModel("");
     setEditingId(editTarget.id);
     setOrigBaseUrl(editTarget.baseUrl);
     setOrigApiKey(editTarget.apiKey);
@@ -177,11 +189,17 @@ export function DetectPage({
     setResultTimestamp(null);
     setUrlError(null);
     setTestCount({ done: 0, total: 0 });
+    setLastTestMode("none");
+    setLastTestSignature(null);
     onClearEditTarget();
   }, [editTarget?.id]);
 
   const isLoading = phase === "fetching" || phase === "testing";
   const isDone = phase === "done";
+  const currentFormSignature = buildTestSignature(baseUrl, apiKey);
+  const hasCurrentResults = lastTestSignature === currentFormSignature;
+  const visibleResults = hasCurrentResults ? results : [];
+  const visibleResultTimestamp = hasCurrentResults ? resultTimestamp : null;
   const recentProviders = [...providers]
     .sort(
       (a, b) =>
@@ -211,6 +229,7 @@ export function DetectPage({
     setName("");
     setBaseUrl("");
     setApiKey("");
+    setManualModel("");
     setOrigName("");
     setEditingId(null);
     setOrigBaseUrl("");
@@ -223,24 +242,26 @@ export function DetectPage({
     setResultTimestamp(null);
     setUrlError(null);
     setTestCount({ done: 0, total: 0 });
+    setLastTestMode("none");
+    setLastTestSignature(null);
   }
 
   function handleExport() {
     const header =
       "| 模型 | 状态 | 延迟 | 返回结果 |\n|------|------|------|------|\n";
-    const rows = results
+    const rows = visibleResults
       .map(
         (r) =>
           `| ${r.model} | ${r.available ? "✅ 可用" : "❌ 不可用"} | ${r.latency_ms != null ? r.latency_ms + " ms" : "—"} | ${getResultDetails(r).replace(/\n/g, " ")} |`,
       )
       .join("\n");
     navigator.clipboard.writeText(header + rows);
-    logger.info(`[复制] Markdown 表格，共 ${results.length} 条`);
+    logger.info(`[复制] Markdown 表格，共 ${visibleResults.length} 条`);
     toast("已复制 Markdown 表格", "success");
   }
 
   function handleCopyAvailable() {
-    const avail = results.filter((r) => r.available);
+    const avail = visibleResults.filter((r) => r.available);
     navigator.clipboard.writeText(avail.map((r) => r.model).join("\n"));
     logger.info(
       `[复制] 可用模型列表，共 ${avail.length} 个：${avail.map((r) => r.model).join(", ")}`,
@@ -252,6 +273,7 @@ export function DetectPage({
     setName(p.name);
     setBaseUrl(p.baseUrl);
     setApiKey(p.apiKey);
+    setManualModel("");
     setOrigName(p.name);
     setOrigBaseUrl(p.baseUrl);
     setOrigApiKey(p.apiKey);
@@ -262,6 +284,8 @@ export function DetectPage({
     setError(null);
     setProgress("");
     setResultTimestamp(null);
+    setLastTestMode("none");
+    setLastTestSignature(null);
   }
 
   function friendlyError(e: unknown): string {
@@ -273,7 +297,7 @@ export function DetectPage({
     )
       return "API Key 无效或已过期，请检查 Key 是否正确";
     if (msg.includes("404") || msg.includes("not found"))
-      return "接口路径不存在，请检查 Base URL 是否正确（末尾不需要加 /v1）";
+      return "接口路径不存在，请检查 Base URL 是否正确（支持根地址、/v1、/v1/models）";
     if (
       msg.includes("ECONNREFUSED") ||
       msg.includes("Failed to fetch") ||
@@ -294,6 +318,7 @@ export function DetectPage({
     setLiveResults([]);
     setPhase("fetching");
     setProgress("正在获取模型列表...");
+    setLastTestMode("all");
     logger.info(`[${name || baseUrl}] 开始检测，baseUrl: ${baseUrl}`);
     let models: string[];
     try {
@@ -372,6 +397,7 @@ export function DetectPage({
     logger.success(`检测完成：${available}/${sorted.length} 可用`);
     setResults(sorted);
     setResultTimestamp(Date.now());
+    setLastTestSignature(buildTestSignature(baseUrl, apiKey));
     setLiveResults([]);
     setPhase("done");
     setProgress("");
@@ -383,6 +409,76 @@ export function DetectPage({
     );
   }
 
+  function mergeSingleResult(existing: ModelResult[], next: ModelResult) {
+    const merged = [...existing];
+    const index = merged.findIndex((item) => item.model === next.model);
+    if (index >= 0) {
+      merged[index] = next;
+    } else {
+      merged.push(next);
+    }
+    return merged.sort((a, b) => {
+      if (a.available !== b.available) return a.available ? -1 : 1;
+      return (a.latency_ms ?? 99999) - (b.latency_ms ?? 99999);
+    });
+  }
+
+  async function handleTestSingleModel() {
+    if (!baseUrl.trim() || !manualModel.trim()) return;
+    const currentSignature = buildTestSignature(baseUrl, apiKey);
+    setError(null);
+    setLiveResults([
+      {
+        model: manualModel.trim(),
+        available: false,
+        latency_ms: null,
+        error: null,
+        response_text: null,
+        status: "pending",
+      },
+    ]);
+    setPhase("testing");
+    setProgress("正在测试指定模型...");
+    setTestCount({ done: 0, total: 1 });
+    setLastTestMode("single");
+    logger.info(
+      `[${name || baseUrl}] 开始测试指定模型，baseUrl: ${baseUrl}，model: ${manualModel.trim()}`,
+    );
+
+    try {
+      const result = await testSingleModelByProvider(
+        baseUrl.trim(),
+        apiKey.trim(),
+        manualModel.trim(),
+      );
+      const nextResults =
+        lastTestSignature === currentSignature
+          ? mergeSingleResult(results, result)
+          : [result];
+      setResults(nextResults);
+      setResultTimestamp(Date.now());
+      setLastTestSignature(currentSignature);
+      setLiveResults([]);
+      setPhase("done");
+      setProgress("");
+      setTestCount({ done: 1, total: 1 });
+      toast(
+        result.available
+          ? `模型 ${result.model} 可用`
+          : `模型 ${result.model} 不可用`,
+        result.available ? "success" : "warning",
+      );
+    } catch (e) {
+      const msg = friendlyError(e);
+      logger.error(`指定模型测试失败：${msg}`);
+      setError(msg);
+      setLiveResults([]);
+      setPhase("idle");
+      setProgress("");
+      setTestCount({ done: 0, total: 0 });
+    }
+  }
+
   function handleSaveAsNew() {
     if (!name.trim() || !baseUrl.trim()) return;
     setSaving(true);
@@ -392,10 +488,10 @@ export function DetectPage({
       apiKey: apiKey.trim(),
     };
     const newId = onAddProvider(data);
-    if (results.length > 0)
-      onSaveResult(newId, { timestamp: Date.now(), results });
+    if (visibleResults.length > 0)
+      onSaveResult(newId, { timestamp: Date.now(), results: visibleResults });
     logger.info(
-      `[另存为] 「${data.name}」已创建，id: ${newId}，含 ${results.length} 条检测结果`,
+      `[另存为] 「${data.name}」已创建，id: ${newId}，含 ${visibleResults.length} 条检测结果`,
     );
     toast("已另存为新接口", "success");
     handleReset();
@@ -410,20 +506,42 @@ export function DetectPage({
       baseUrl: baseUrl.trim(),
       apiKey: apiKey.trim(),
     };
+    const currentConfigSignature = buildTestSignature(
+      data.baseUrl,
+      data.apiKey,
+    );
+    const storedSignature = buildTestSignature(origBaseUrl, origApiKey);
+    const hasFreshResultsForCurrentConfig =
+      lastTestSignature === currentConfigSignature && visibleResults.length > 0;
     if (editingId) {
       onEditProvider(editingId, data);
-      if (results.length > 0) {
-        onSaveResult(editingId, { timestamp: Date.now(), results });
+      if (hasFreshResultsForCurrentConfig) {
+        const existingResults =
+          lastTestMode === "single" &&
+          currentConfigSignature === storedSignature
+            ? (providers.find((provider) => provider.id === editingId)
+                ?.lastResult?.results ?? [])
+            : [];
+        const nextResults =
+          lastTestMode === "single"
+            ? visibleResults.reduce(mergeSingleResult, existingResults)
+            : visibleResults;
+        onSaveResult(editingId, {
+          timestamp: Date.now(),
+          results: nextResults,
+        });
       }
       logger.info(
-        `[更新] 「${data.name}」已更新，含 ${results.length} 条检测结果`,
+        `[更新] 「${data.name}」已更新，含 ${visibleResults.length} 条当前检测结果`,
       );
       toast("已更新", "success");
     } else {
       const newId = onAddProvider(data);
-      onSaveResult(newId, { timestamp: Date.now(), results });
+      if (visibleResults.length > 0) {
+        onSaveResult(newId, { timestamp: Date.now(), results: visibleResults });
+      }
       logger.info(
-        `[保存] 「${data.name}」已保存，id: ${newId}，含 ${results.length} 条检测结果`,
+        `[保存] 「${data.name}」已保存，id: ${newId}，含 ${visibleResults.length} 条检测结果`,
       );
       toast("已保存", "success");
     }
@@ -458,7 +576,7 @@ export function DetectPage({
                 {editingId ? "正在编辑当前 provider" : "先填写一个 provider"}
               </p>
               <p className="mt-1 text-xs text-gray-500">
-                Base URL 填服务根地址；本地服务可不填 Key。
+                Base URL 支持根地址、`/v1`、`/v1/models`；本地服务可不填 Key。
               </p>
             </div>
             <button
@@ -545,7 +663,7 @@ export function DetectPage({
               )}
               {!urlError && (
                 <p className="mt-1 text-[11px] text-gray-600">
-                  填写服务根地址。
+                  支持直接填写服务根地址、`/v1` 或 `/v1/models`。
                 </p>
               )}
             </div>
@@ -586,6 +704,55 @@ export function DetectPage({
             <p className="mt-1 text-[11px] text-gray-600">
               模型测试可能走 OpenAI / Claude / Gemini 协议；导出可能包含明文
               Key。
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-400">
+              指定模型名测试
+            </label>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  value={manualModel}
+                  onChange={(e) => setManualModel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !isLoading &&
+                      baseUrl.trim() &&
+                      manualModel.trim()
+                    ) {
+                      handleTestSingleModel();
+                    }
+                  }}
+                  placeholder="如：gpt-4.1-mini / claude-3-7-sonnet / gemini-2.5-flash"
+                  className={`${FIELD_INPUT_CLASS} pr-8 font-mono text-xs`}
+                />
+                {manualModel && (
+                  <button
+                    onClick={() => setManualModel("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300"
+                    tabIndex={-1}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={handleTestSingleModel}
+                disabled={
+                  isLoading ||
+                  !baseUrl.trim() ||
+                  !!urlError ||
+                  !manualModel.trim()
+                }
+                className="rounded-lg border border-gray-700 px-4 py-1.5 text-sm text-gray-200 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-600"
+              >
+                测试指定模型
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-gray-600">
+              不依赖先拉取模型列表；可直接输入模型名做单模型验证。
             </p>
           </div>
           <div className="flex items-center justify-between pt-1">
@@ -629,7 +796,7 @@ export function DetectPage({
                 disabled={isLoading || !baseUrl.trim() || !!urlError}
                 className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium px-5 py-1.5 rounded-lg transition-colors"
               >
-                {isLoading ? "检测中..." : "测试"}
+                {isLoading ? "检测中..." : "检测全部模型"}
               </button>
               {(isDone || editingId) && (
                 <Tooltip
@@ -694,12 +861,12 @@ export function DetectPage({
         )}
 
         {/* 顶部导出操作栏 */}
-        {isDone && results.length > 0 && (
+        {isDone && visibleResults.length > 0 && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/60 px-4 py-2.5">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-200">
-                检测完成：{results.filter((r) => r.available).length}/
-                {results.length} 可用
+                检测完成：{visibleResults.filter((r) => r.available).length}/
+                {visibleResults.length} 可用
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -709,7 +876,7 @@ export function DetectPage({
               >
                 导出 Markdown
               </button>
-              {results.some((r) => r.available) && (
+              {visibleResults.some((r) => r.available) && (
                 <button
                   onClick={handleCopyAvailable}
                   className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-400"
@@ -736,7 +903,10 @@ export function DetectPage({
           const displayResults: LiveResult[] =
             liveResults.length > 0
               ? liveResults
-              : results.map((r) => ({ ...r, status: "done" as RowStatus }));
+              : visibleResults.map((r) => ({
+                  ...r,
+                  status: "done" as RowStatus,
+                }));
           const totalCount = displayResults.length;
           const availableCount = displayResults.filter(
             (r) => r.status === "done" && r.available,
@@ -781,10 +951,13 @@ export function DetectPage({
                     最近检测
                   </p>
                   <p className="mt-1.5 text-sm font-medium text-gray-200">
-                    {resultTimestamp
-                      ? new Date(resultTimestamp).toLocaleString("zh-CN", {
-                          hour12: false,
-                        })
+                    {visibleResultTimestamp
+                      ? new Date(visibleResultTimestamp).toLocaleString(
+                          "zh-CN",
+                          {
+                            hour12: false,
+                          },
+                        )
                       : "—"}
                   </p>
                 </div>
@@ -872,7 +1045,7 @@ export function DetectPage({
                 本次接口检测结果会显示在这里
               </p>
               <p className="mt-1.5 text-xs text-gray-500">
-                点击测试后显示 model 数量、可用状态和明细。
+                点击“检测全部模型”或“测试指定模型”后显示结果明细。
               </p>
             </div>
           );

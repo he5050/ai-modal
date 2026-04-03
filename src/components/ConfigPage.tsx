@@ -35,9 +35,11 @@ import {
   FIELD_SELECT_CLASS,
 } from "../lib/formStyles";
 import { toast } from "../lib/toast";
-import type { ConfigFormat, ConfigPath } from "../types";
+import { CopyButton } from "./CopyButton";
+import type { ConfigFormat, ConfigPath, Provider } from "../types";
 
 interface Props {
+  providers: Provider[];
   storedPaths: ConfigPath[];
   onPathChange: (id: string, path: string) => void;
   onAddPath: (input: {
@@ -278,6 +280,7 @@ function ConfirmModal({
 }
 
 export function ConfigPage({
+  providers,
   storedPaths,
   onPathChange,
   onAddPath,
@@ -301,6 +304,10 @@ export function ConfigPage({
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [homePath, setHomePath] = useState("");
+  const [selectedAvailableProviderId, setSelectedAvailableProviderId] =
+    useState<string>("");
+  const [selectedAvailableModelId, setSelectedAvailableModelId] =
+    useState<string>("");
 
   useEffect(() => {
     let active = true;
@@ -382,11 +389,95 @@ export function ConfigPage({
           ? toDisplayPath(selectedTool.path, homePath)
           : (selectedTool?.path ?? ""),
       );
+  const availableProviderOptions = useMemo(() => {
+    return providers
+      .map((provider) => {
+        const models = Array.from(
+          new Set(
+            (provider.lastResult?.results ?? [])
+              .filter((result) => result.available)
+              .map((result) => result.model)
+              .filter(Boolean),
+          ),
+        ).map((model) => ({
+          id: `${provider.id}::${model}`,
+          model,
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+        }));
+
+        return models.length > 0
+          ? {
+              id: provider.id,
+              providerName: provider.name,
+              availableCount: models.length,
+              models,
+            }
+          : null;
+      })
+      .filter(Boolean) as {
+      id: string;
+      providerName: string;
+      availableCount: number;
+      models: {
+        id: string;
+        model: string;
+        baseUrl: string;
+        apiKey: string;
+      }[];
+    }[];
+  }, [providers]);
+  const selectedAvailableProvider =
+    availableProviderOptions.find(
+      (item) => item.id === selectedAvailableProviderId,
+    ) ??
+    availableProviderOptions[0] ??
+    null;
+  const selectedAvailableModel =
+    selectedAvailableProvider?.models.find(
+      (item) => item.id === selectedAvailableModelId,
+    ) ??
+    selectedAvailableProvider?.models[0] ??
+    null;
 
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (availableProviderOptions.length === 0) {
+      setSelectedAvailableProviderId("");
+      setSelectedAvailableModelId("");
+      return;
+    }
+
+    const providerStillExists = availableProviderOptions.some(
+      (item) => item.id === selectedAvailableProviderId,
+    );
+    if (!providerStillExists) {
+      setSelectedAvailableProviderId(availableProviderOptions[0].id);
+      setSelectedAvailableModelId(
+        availableProviderOptions[0].models[0]?.id ?? "",
+      );
+      return;
+    }
+
+    const currentProvider =
+      availableProviderOptions.find(
+        (item) => item.id === selectedAvailableProviderId,
+      ) ?? availableProviderOptions[0];
+    const modelStillExists = currentProvider.models.some(
+      (item) => item.id === selectedAvailableModelId,
+    );
+    if (!modelStillExists) {
+      setSelectedAvailableModelId(currentProvider.models[0]?.id ?? "");
+    }
+  }, [
+    availableProviderOptions,
+    selectedAvailableProviderId,
+    selectedAvailableModelId,
+  ]);
 
   async function refreshCurrent(tool = selectedTool, targetPath?: string) {
     if (!tool || !homePath) return;
@@ -706,83 +797,239 @@ export function ConfigPage({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-800 bg-gray-950/50 p-4">
-                {!showCustomForm ? (
-                  <button
-                    onClick={() => setShowCustomForm(true)}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-4 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                  >
-                    <Plus className="h-4 w-4" />
-                    新增自定义项
-                  </button>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="w-[180px] flex-shrink-0">
-                      <input
-                        value={customLabel}
-                        onChange={(event) => setCustomLabel(event.target.value)}
-                        placeholder="自定义名称"
-                        className={FIELD_INPUT_CLASS}
-                      />
+              <div className="rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-200">
+                        自定义配置项
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        为额外配置文件添加独立入口，方便切换和维护。
+                      </p>
                     </div>
-                    <div className="min-w-[280px] flex-1">
-                      <input
-                        value={customPath}
-                        onChange={(event) => {
-                          const nextPath = event.target.value;
-                          setCustomPath(nextPath);
-                          setCustomFormat(
-                            inferFormatFromPath(
-                              toAbsolutePath(nextPath, homePath),
-                            ),
-                          );
-                        }}
-                        placeholder="/Users/you/custom/config.json"
-                        className={FIELD_MONO_INPUT_CLASS}
-                      />
-                    </div>
-                    <div className="w-[120px] flex-shrink-0">
-                      <select
-                        value={customFormat}
-                        onChange={(event) =>
-                          setCustomFormat(event.target.value as ConfigFormat)
-                        }
-                        className={FIELD_SELECT_CLASS}
+                    {!showCustomForm && (
+                      <button
+                        onClick={() => setShowCustomForm(true)}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
                       >
-                        <option value="json">JSON</option>
-                        <option value="toml">TOML</option>
-                        <option value="yaml">YAML</option>
-                        <option value="xml">XML</option>
-                      </select>
-                    </div>
-                    <button
-                      onClick={handlePickCustomPath}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                    >
-                      选择文件
-                    </button>
-                    <button
-                      onClick={handleAddCustomPath}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                    >
-                      保存
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowCustomForm(false);
-                        setCustomLabel("");
-                        setCustomPath("");
-                        setCustomFormat("json");
-                      }}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:text-gray-300"
-                    >
-                      取消
-                    </button>
+                        <Plus className="h-4 w-4" />
+                        新增
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  {showCustomForm && (
+                    <div className="mt-3 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
+                      <div className="mb-2 flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => {
+                            setShowCustomForm(false);
+                            setCustomLabel("");
+                            setCustomPath("");
+                            setCustomFormat("json");
+                          }}
+                          className="inline-flex h-8 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
+                        >
+                          取消
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="w-[170px] flex-shrink-0">
+                          <input
+                            value={customLabel}
+                            onChange={(event) =>
+                              setCustomLabel(event.target.value)
+                            }
+                            placeholder="自定义名称"
+                            className={FIELD_INPUT_CLASS}
+                          />
+                        </div>
+                        <div className="min-w-[280px] flex-1">
+                          <input
+                            value={customPath}
+                            onChange={(event) => {
+                              const nextPath = event.target.value;
+                              setCustomPath(nextPath);
+                              setCustomFormat(
+                                inferFormatFromPath(
+                                  toAbsolutePath(nextPath, homePath),
+                                ),
+                              );
+                            }}
+                            placeholder="/Users/you/custom/config.json"
+                            className={FIELD_MONO_INPUT_CLASS}
+                          />
+                        </div>
+                        <div className="w-[120px] flex-shrink-0">
+                          <select
+                            value={customFormat}
+                            onChange={(event) =>
+                              setCustomFormat(
+                                event.target.value as ConfigFormat,
+                              )
+                            }
+                            className={FIELD_SELECT_CLASS}
+                          >
+                            <option value="json">JSON</option>
+                            <option value="toml">TOML</option>
+                            <option value="yaml">YAML</option>
+                            <option value="xml">XML</option>
+                          </select>
+                        </div>
+                        <button
+                          onClick={handlePickCustomPath}
+                          className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                        >
+                          选择文件
+                        </button>
+                        <button
+                          onClick={handleAddCustomPath}
+                          className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                        >
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
+                <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-200">
+                        可用模型快捷选择
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        从已检测可用的模型里快速取用 URL、Key 和模型名。
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
+                      {availableProviderOptions.reduce(
+                        (total, item) => total + item.availableCount,
+                        0,
+                      )}{" "}
+                      个可用模型
+                    </span>
+                  </div>
+
+                  {availableProviderOptions.length > 0 &&
+                  selectedAvailableModel ? (
+                    <>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            Provider
+                          </p>
+                          <select
+                            value={selectedAvailableProvider?.id ?? ""}
+                            onChange={(event) => {
+                              const nextProvider =
+                                availableProviderOptions.find(
+                                  (item) => item.id === event.target.value,
+                                ) ?? null;
+                              setSelectedAvailableProviderId(
+                                event.target.value,
+                              );
+                              setSelectedAvailableModelId(
+                                nextProvider?.models[0]?.id ?? "",
+                              );
+                            }}
+                            className={FIELD_SELECT_CLASS}
+                            aria-label="选择可用模型 Provider"
+                          >
+                            {availableProviderOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.providerName} ({option.availableCount}{" "}
+                                个可用)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            模型
+                          </p>
+                          <select
+                            value={selectedAvailableModel.id}
+                            onChange={(event) =>
+                              setSelectedAvailableModelId(event.target.value)
+                            }
+                            className={FIELD_SELECT_CLASS}
+                            aria-label="选择 Provider 下的可用模型"
+                          >
+                            {(selectedAvailableProvider?.models ?? []).map(
+                              (option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.model}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            模型名
+                          </p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs text-gray-200">
+                              {selectedAvailableModel.model}
+                            </span>
+                            <CopyButton
+                              text={selectedAvailableModel.model}
+                              message="已复制模型名"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            Base URL
+                          </p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs text-gray-200">
+                              {selectedAvailableModel.baseUrl}
+                            </span>
+                            <CopyButton
+                              text={selectedAvailableModel.baseUrl}
+                              message="已复制 Base URL"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            API Key
+                          </p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs text-gray-200">
+                              {selectedAvailableModel.apiKey}
+                            </span>
+                            <CopyButton
+                              text={selectedAvailableModel.apiKey}
+                              message="已复制 API Key"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                        <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
+                          {selectedAvailableProvider?.providerName}
+                        </span>
+                        <span>当前来自可用检测结果</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+                      当前还没有可用模型。请先去模型列表或详情页完成检测。
+                    </div>
+                  )}
+                </div>
+
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="text-xs uppercase tracking-[0.2em] text-gray-500">

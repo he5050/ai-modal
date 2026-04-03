@@ -255,7 +255,16 @@ export default function App() {
     data: Omit<Provider, "id" | "createdAt" | "lastResult">,
   ) {
     setProviders((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...data } : p)),
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const configChanged =
+          p.baseUrl !== data.baseUrl || p.apiKey !== data.apiKey;
+        return {
+          ...p,
+          ...data,
+          lastResult: configChanged ? undefined : p.lastResult,
+        };
+      }),
     );
   }
 
@@ -438,6 +447,7 @@ export default function App() {
         )}
         {page === "configs" && (
           <ConfigPage
+            providers={providers}
             storedPaths={configPaths}
             onPathChange={handleConfigPathChange}
             onAddPath={handleAddConfigPath}
