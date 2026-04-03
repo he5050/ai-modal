@@ -576,7 +576,7 @@ export function DetectPage({
                 {editingId ? "正在编辑当前 provider" : "先填写一个 provider"}
               </p>
               <p className="mt-1 text-xs text-gray-500">
-                Base URL 支持根地址、`/v1`、`/v1/models`；本地服务可不填 Key。
+                Base URL 支持根地址、`/v1`、`/v1/models`、`/chat/completions`；系统会自动归一化，本地服务可不填 Key。
               </p>
             </div>
             <button
@@ -626,7 +626,7 @@ export function DetectPage({
                         );
                       else setUrlError(null);
                     }}
-                    placeholder="https://api.openai.com"
+                    placeholder="例如：https://openrouter.ai/api"
                     className={`${FIELD_INPUT_CLASS} pr-8 ${
                       urlError ? "border-red-500 focus:border-red-500" : ""
                     }`}
@@ -663,7 +663,7 @@ export function DetectPage({
               )}
               {!urlError && (
                 <p className="mt-1 text-[11px] text-gray-600">
-                  支持直接填写服务根地址、`/v1` 或 `/v1/models`。
+                  示例：`https://api.openai.com`、`https://openrouter.ai/api`、`https://your-gateway.example.com/v1/models`；支持根地址、`/v1`、`/v1/models`、`/chat/completions`。
                 </p>
               )}
             </div>

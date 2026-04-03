@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Save } from "lucide-react";
+import { ChevronDown, ChevronUp, Save } from "lucide-react";
 import { testModelConfig } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
@@ -58,6 +58,7 @@ export function ModelConfigSection({
   );
   const [testingModelConfig, setTestingModelConfig] = useState(false);
   const [modelConfigReady, setModelConfigReady] = useState(false);
+  const [helperExpanded, setHelperExpanded] = useState(false);
 
   const availableProviderOptions = useMemo(() => {
     return providers
@@ -206,10 +207,16 @@ export function ModelConfigSection({
 
   async function handleSaveModelConfig() {
     if (!modelConfigReady) return;
-    await savePersistedJson(MODEL_CONFIG_DB_KEY, modelConfig, MODEL_CONFIG_KEY);
-    setSavedModelConfig(modelConfig);
-    logger.info("[模型配置] 已保存");
-    toast("模型配置已保存", "success");
+    try {
+      await savePersistedJson(MODEL_CONFIG_DB_KEY, modelConfig, MODEL_CONFIG_KEY);
+      setSavedModelConfig(modelConfig);
+      logger.info("[模型配置] 已保存");
+      toast("模型配置已保存", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`[模型配置] 保存失败：${message}`);
+      toast("模型配置保存失败", "error");
+    }
   }
 
   function handleApplySelectedModel() {
@@ -219,7 +226,10 @@ export function ModelConfigSection({
       baseUrl: selectedAvailableModel.baseUrl,
       apiKey: selectedAvailableModel.apiKey,
       model: selectedAvailableModel.model,
+      lastTestResult: null,
+      lastTestAt: null,
     }));
+    toast(`已带入模型：${selectedAvailableModel.model}，请点击“保存”完成持久化`, "success");
   }
 
   async function handleTestCurrentModelConfig() {
@@ -278,66 +288,104 @@ export function ModelConfigSection({
         模型配置
       </h3>
       <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div className="mt-4 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
-          {availableProviderOptions.length > 0 && selectedAvailableModel ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <div className="min-w-[260px] flex-1">
-                  <select
-                    value={selectedAvailableProvider?.id ?? ""}
-                    onChange={(event) => {
-                      const nextProvider =
-                        availableProviderOptions.find(
-                          (item) => item.id === event.target.value,
-                        ) ?? null;
-                      setSelectedAvailableProviderId(event.target.value);
-                      setSelectedAvailableModelId(
-                        nextProvider?.models[0]?.id ?? "",
-                      );
-                    }}
-                    className={FIELD_SELECT_CLASS}
-                    aria-label="选择可用模型 Provider"
-                  >
-                    {availableProviderOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.providerName} ({option.availableCount} 个可用)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="min-w-[220px] flex-1">
-                  <select
-                    value={selectedAvailableModel.id}
-                    onChange={(event) =>
-                      setSelectedAvailableModelId(event.target.value)
-                    }
-                    className={FIELD_SELECT_CLASS}
-                    aria-label="选择 Provider 下的可用模型"
-                  >
-                    {(selectedAvailableProvider?.models ?? []).map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.model}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={handleApplySelectedModel}
-                  className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                >
-                  应用
-                </button>
-                <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                  {availableProviderOptions.reduce(
-                    (total, item) => total + item.availableCount,
-                    0,
-                  )}{" "}
-                  个可用模型
+        <div className="rounded-xl border border-indigo-500/15 bg-indigo-500/5">
+          <button
+            onClick={() => setHelperExpanded((prev) => !prev)}
+            className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-100">
+                Base URL 支持常见 OpenAI 兼容写法
+              </p>
+              <p className="mt-1 text-xs leading-5 text-gray-500">
+                支持根地址、`/v1`、`/v1/models`、`/chat/completions`，系统会自动归一化。
+              </p>
+            </div>
+            <span className="flex items-center gap-2 text-xs text-gray-400">
+              {helperExpanded ? "收起" : "展开"}
+              {helperExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </span>
+          </button>
+
+          {helperExpanded && (
+            <div className="border-t border-indigo-500/10 px-3 pb-3">
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-400">
+                <span className="rounded-full border border-gray-700 bg-gray-950/60 px-2.5 py-1 font-mono">
+                  https://api.openai.com
+                </span>
+                <span className="rounded-full border border-gray-700 bg-gray-950/60 px-2.5 py-1 font-mono">
+                  https://openrouter.ai/api
+                </span>
+                <span className="rounded-full border border-gray-700 bg-gray-950/60 px-2.5 py-1 font-mono">
+                  https://your-gateway.example.com/v1/models
                 </span>
               </div>
-            </>
-          ) : (
-            <div className="text-sm text-gray-500">当前没有可用模型。</div>
+
+              <div className="mt-4 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
+                {availableProviderOptions.length > 0 && selectedAvailableModel ? (
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="min-w-[260px] flex-1">
+                      <select
+                        value={selectedAvailableProvider?.id ?? ""}
+                        onChange={(event) => {
+                          const nextProvider =
+                            availableProviderOptions.find(
+                              (item) => item.id === event.target.value,
+                            ) ?? null;
+                          setSelectedAvailableProviderId(event.target.value);
+                          setSelectedAvailableModelId(
+                            nextProvider?.models[0]?.id ?? "",
+                          );
+                        }}
+                        className={FIELD_SELECT_CLASS}
+                        aria-label="选择可用模型 Provider"
+                      >
+                        {availableProviderOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.providerName} ({option.availableCount} 个可用)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="min-w-[220px] flex-1">
+                      <select
+                        value={selectedAvailableModel.id}
+                        onChange={(event) =>
+                          setSelectedAvailableModelId(event.target.value)
+                        }
+                        className={FIELD_SELECT_CLASS}
+                        aria-label="选择 Provider 下的可用模型"
+                      >
+                        {(selectedAvailableProvider?.models ?? []).map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.model}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={handleApplySelectedModel}
+                      className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    >
+                      应用
+                    </button>
+                    <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
+                      {availableProviderOptions.reduce(
+                        (total, item) => total + item.availableCount,
+                        0,
+                      )}{" "}
+                      个可用模型
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">当前没有可用模型。</div>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
@@ -350,7 +398,7 @@ export function ModelConfigSection({
                   baseUrl: event.target.value,
                 })
               }
-              placeholder="https://api.example.com/v1"
+              placeholder="例如：https://openrouter.ai/api"
               className={FIELD_MONO_INPUT_CLASS}
             />
           </div>
@@ -376,6 +424,7 @@ export function ModelConfigSection({
         <div className="mt-3 flex flex-wrap items-center gap-2.5">
           <div className="min-w-[320px] flex-1">
             <input
+              type="password"
               value={modelConfig.apiKey}
               onChange={(event) =>
                 updateModelConfig({
@@ -421,6 +470,10 @@ export function ModelConfigSection({
             {getConnectionStatus(modelConfig.lastTestResult)}
           </span>
         </div>
+
+        <p className="mt-2 text-[11px] leading-5 text-gray-600">
+          示例：`https://api.openai.com`、`https://openrouter.ai/api`、`https://your-gateway.example.com/v1` 都可以直接填写。
+        </p>
       </div>
     </section>
   );

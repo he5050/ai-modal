@@ -2,6 +2,7 @@ import { useState } from "react";
 import { savePersistedJson } from "../lib/persistence";
 import { ModelConfigSection } from "./ModelConfigSection";
 import type { Provider } from "../types";
+import { toast } from "../lib/toast";
 
 export const DEBUG_KEY = "ai-modal-debug";
 export const DEBUG_DB_KEY = "debug_enabled";
@@ -32,17 +33,30 @@ export function SettingsPage({
 }: Props) {
   const [concurrency, setConcurrency] = useState<number>(getConcurrency);
 
-  function handleToggle() {
+  async function handleToggle() {
     const next = !debugEnabled;
-    localStorage.setItem(DEBUG_KEY, String(next));
-    void savePersistedJson(DEBUG_DB_KEY, next, DEBUG_KEY);
-    onDebugChange(next);
+    try {
+      await savePersistedJson(DEBUG_DB_KEY, next, DEBUG_KEY);
+      localStorage.setItem(DEBUG_KEY, String(next));
+      onDebugChange(next);
+      toast(next ? "Debug 模式已开启" : "Debug 模式已关闭", "success");
+    } catch (error) {
+      console.error("Failed to update debug mode", error);
+      toast("Debug 模式更新失败", "error");
+    }
   }
 
-  function handleConcurrencyChange(v: number) {
-    setConcurrency(v);
-    localStorage.setItem(CONCURRENCY_KEY, String(v));
-    void savePersistedJson(CONCURRENCY_DB_KEY, v, CONCURRENCY_KEY);
+  async function handleConcurrencyChange(v: number) {
+    if (v === concurrency) return;
+    try {
+      await savePersistedJson(CONCURRENCY_DB_KEY, v, CONCURRENCY_KEY);
+      setConcurrency(v);
+      localStorage.setItem(CONCURRENCY_KEY, String(v));
+      toast(`检测并发数已更新为 ${v}`, "success");
+    } catch (error) {
+      console.error("Failed to update concurrency", error);
+      toast("检测并发数更新失败", "error");
+    }
   }
 
   return (
@@ -67,7 +81,7 @@ export function SettingsPage({
                 </p>
               </div>
               <button
-                onClick={handleToggle}
+                onClick={() => void handleToggle()}
                 className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                   debugEnabled ? "bg-indigo-600" : "bg-gray-700"
                 }`}
@@ -92,7 +106,7 @@ export function SettingsPage({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() =>
-                    handleConcurrencyChange(Math.max(1, concurrency - 1))
+                    void handleConcurrencyChange(Math.max(1, concurrency - 1))
                   }
                   disabled={concurrency <= 1}
                   className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-700 bg-gray-800 text-base leading-none text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-30"
@@ -104,7 +118,7 @@ export function SettingsPage({
                 </span>
                 <button
                   onClick={() =>
-                    handleConcurrencyChange(
+                    void handleConcurrencyChange(
                       Math.min(MAX_CONCURRENCY, concurrency + 1),
                     )
                   }

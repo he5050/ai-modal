@@ -60,6 +60,7 @@ function ToastEl({ item, onRemove }: { item: ToastItem; onRemove: (id: string) =
   return (
     <div
       ref={ref}
+      data-toast-item={item.id}
       style={{ opacity: 0 }}
       className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border border-l-2 shadow-lg text-sm text-gray-100 min-w-[220px] max-w-sm ${COLORS[item.type]} ${LEFT_BORDER[item.type]}`}
     >
@@ -88,7 +89,10 @@ export function ToastContainer() {
   if (items.length === 0) return null
 
   return (
-    <div className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 items-end">
+    <div
+      data-toast-visible="true"
+      className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 items-end"
+    >
       {items.map(item => (
         <ToastEl key={item.id} item={item} onRemove={remove} />
       ))}

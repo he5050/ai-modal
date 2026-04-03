@@ -71,6 +71,18 @@ interface ModelConfigRecord {
   lastTestAt?: number | null;
 }
 
+function maskKey(key: string) {
+  if (!key) return "—";
+  if (key.length <= 4) return "*".repeat(key.length);
+  return key.slice(0, 2) + "******" + key.slice(-2);
+}
+
+function maskPreviewText(value: string) {
+  if (!value) return "—";
+  if (value.length <= 4) return `${value.slice(0, 1)}******${value.slice(-1)}`;
+  return `${value.slice(0, 2)}******${value.slice(-2)}`;
+}
+
 interface ConfirmModalProps {
   title: string;
   description: string;
@@ -1110,142 +1122,138 @@ export function ConfigPage({
                 </div>
               </div>
 
-              {false && (
-                <div>
-                  <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">
+                      可用模型快捷选择
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500">
+                      从已检测可用的模型里快速取用 URL、Key 和模型名。
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
+                    {availableProviderOptions.reduce(
+                      (total, item) => total + item.availableCount,
+                      0,
+                    )}{" "}
+                    个可用模型
+                  </span>
+                </div>
+
+                {availableProviderOptions.length > 0 && selectedAvailableModel ? (
+                  <>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div>
-                        <p className="text-sm font-medium text-gray-200">
-                          可用模型快捷选择
+                        <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                          Provider
                         </p>
-                        <p className="mt-1 text-xs leading-5 text-gray-500">
-                          从已检测可用的模型里快速取用 URL、Key 和模型名。
-                        </p>
+                        <select
+                          value={selectedAvailableProvider?.id ?? ""}
+                          onChange={(event) => {
+                            const nextProvider =
+                              availableProviderOptions.find(
+                                (item) => item.id === event.target.value,
+                              ) ?? null;
+                            setSelectedAvailableProviderId(event.target.value);
+                            setSelectedAvailableModelId(
+                              nextProvider?.models[0]?.id ?? "",
+                            );
+                          }}
+                          className={FIELD_SELECT_CLASS}
+                          aria-label="选择可用模型 Provider"
+                        >
+                          {availableProviderOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.providerName} ({option.availableCount} 个可用)
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                        {availableProviderOptions.reduce(
-                          (total, item) => total + item.availableCount,
-                          0,
-                        )}{" "}
-                        个可用模型
-                      </span>
+                      <div>
+                        <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                          模型
+                        </p>
+                        <select
+                          value={selectedAvailableModel.id}
+                          onChange={(event) =>
+                            setSelectedAvailableModelId(event.target.value)
+                          }
+                          className={FIELD_SELECT_CLASS}
+                          aria-label="选择 Provider 下的可用模型"
+                        >
+                          {(selectedAvailableProvider?.models ?? []).map(
+                            (option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.model}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </div>
                     </div>
 
-                    {availableProviderOptions.length > 0 &&
-                    selectedAvailableModel ? (
-                      <>
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          <div>
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              Provider
-                            </p>
-                            <select
-                              value={selectedAvailableProvider?.id ?? ""}
-                              onChange={(event) => {
-                                const nextProvider =
-                                  availableProviderOptions.find(
-                                    (item) => item.id === event.target.value,
-                                  ) ?? null;
-                                setSelectedAvailableProviderId(
-                                  event.target.value,
-                                );
-                                setSelectedAvailableModelId(
-                                  nextProvider?.models[0]?.id ?? "",
-                                );
-                              }}
-                              className={FIELD_SELECT_CLASS}
-                              aria-label="选择可用模型 Provider"
-                            >
-                              {availableProviderOptions.map((option) => (
-                                <option key={option.id} value={option.id}>
-                                  {option.providerName} ({option.availableCount}{" "}
-                                  个可用)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              模型
-                            </p>
-                            <select
-                              value={selectedAvailableModel.id}
-                              onChange={(event) =>
-                                setSelectedAvailableModelId(event.target.value)
-                              }
-                              className={FIELD_SELECT_CLASS}
-                              aria-label="选择 Provider 下的可用模型"
-                            >
-                              {(selectedAvailableProvider?.models ?? []).map(
-                                (option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.model}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 grid gap-3 md:grid-cols-3">
-                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              模型名
-                            </p>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="truncate font-mono text-xs text-gray-200">
-                                {selectedAvailableModel.model}
-                              </span>
-                              <CopyButton
-                                text={selectedAvailableModel.model}
-                                message="已复制模型名"
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              Base URL
-                            </p>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="truncate font-mono text-xs text-gray-200">
-                                {selectedAvailableModel.baseUrl}
-                              </span>
-                              <CopyButton
-                                text={selectedAvailableModel.baseUrl}
-                                message="已复制 Base URL"
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              API Key
-                            </p>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="truncate font-mono text-xs text-gray-200">
-                                {selectedAvailableModel.apiKey}
-                              </span>
-                              <CopyButton
-                                text={selectedAvailableModel.apiKey}
-                                message="已复制 API Key"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                          <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
-                            {selectedAvailableProvider?.providerName}
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                          模型名
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className="truncate font-mono text-xs text-gray-200">
+                            {selectedAvailableModel.model}
                           </span>
-                          <span>当前来自可用检测结果</span>
+                          <CopyButton
+                            text={selectedAvailableModel.model}
+                            message="已复制模型名"
+                          />
                         </div>
-                      </>
-                    ) : (
-                      <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
-                        当前还没有可用模型。请先去模型列表或详情页完成检测。
                       </div>
-                    )}
-                  </div>
+                      <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                          Base URL
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className="truncate font-mono text-xs text-gray-200">
+                            {maskPreviewText(selectedAvailableModel.baseUrl)}
+                          </span>
+                          <CopyButton
+                            text={selectedAvailableModel.baseUrl}
+                            message="已复制 Base URL"
+                          />
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                          API Key
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className="truncate font-mono text-xs text-gray-200">
+                            {maskKey(selectedAvailableModel.apiKey)}
+                          </span>
+                          <CopyButton
+                            text={selectedAvailableModel.apiKey}
+                            message="已复制 API Key"
+                          />
+                        </div>
+                      </div>
+                    </div>
 
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                      <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
+                        {selectedAvailableProvider?.providerName}
+                      </span>
+                      <span>当前来自可用检测结果</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+                    当前还没有可用模型。请先去模型列表或详情页完成检测。
+                  </div>
+                )}
+              </div>
+
+              {false && (
+                <div>
                   <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
