@@ -6,6 +6,9 @@ use commands::model_config::test_model_config;
 use commands::provider::{
     list_models_by_provider, test_models_by_provider, test_single_model_by_provider,
 };
+use commands::skills::{
+    inspect_skill_targets, run_skills_command, scan_local_skills, sync_skill_targets,
+};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -52,6 +55,10 @@ pub fn run() {
             list_models_by_provider,
             test_models_by_provider,
             test_single_model_by_provider,
+            scan_local_skills,
+            inspect_skill_targets,
+            sync_skill_targets,
+            run_skills_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

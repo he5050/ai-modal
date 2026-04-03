@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ModelResult } from "./types";
+import type {
+  ModelResult,
+  SkillTargetConfig,
+  SkillTargetStatus,
+  SkillsCatalogSnapshot,
+  SkillsCommandRequest,
+  SkillsCommandResult,
+  SyncSkillTargetResult,
+} from "./types";
 
 export async function listModels(
   baseUrl: string,
@@ -45,4 +53,26 @@ export async function testModelConfig(
   model: string,
 ): Promise<ModelResult> {
   return invoke("test_model_config", { baseUrl, apiKey, model });
+}
+
+export async function scanLocalSkills(): Promise<SkillsCatalogSnapshot> {
+  return invoke("scan_local_skills");
+}
+
+export async function inspectSkillTargets(
+  targets: SkillTargetConfig[],
+): Promise<SkillTargetStatus[]> {
+  return invoke("inspect_skill_targets", { targets });
+}
+
+export async function syncSkillTargets(
+  targets: SkillTargetConfig[],
+): Promise<SyncSkillTargetResult[]> {
+  return invoke("sync_skill_targets", { targets });
+}
+
+export async function runSkillsCommand(
+  request: SkillsCommandRequest,
+): Promise<SkillsCommandResult> {
+  return invoke("run_skills_command", { request });
 }

@@ -1,6 +1,7 @@
 export type AppPage =
   | "detect"
   | "models"
+  | "skills"
   | "provider-detail"
   | "rules"
   | "configs"
@@ -46,4 +47,82 @@ export interface Provider {
   apiKey: string;
   createdAt: number;
   lastResult?: ProviderLastResult;
+}
+
+export interface SkillRecord {
+  name: string;
+  dir: string;
+  description: string;
+  version?: string | null;
+  updatedAt?: number | null;
+  sourceType?: SkillSourceType | null;
+  sourceValue?: string | null;
+  categories: string[];
+  internal: boolean;
+  path: string;
+  hasSkillFile: boolean;
+}
+
+export type SkillSourceType = "github" | "npx" | "local" | "manual" | "unknown";
+
+export interface SkillsCatalogSnapshot {
+  sourceDir: string;
+  scannedAt?: number | null;
+  totalSkills: number;
+  skills: SkillRecord[];
+}
+
+export interface SkillTargetConfig {
+  id: string;
+  label: string;
+  path: string;
+  isBuiltin: boolean;
+  enabled: boolean;
+}
+
+export interface SkillTargetStatus {
+  id: string;
+  label: string;
+  path: string;
+  exists: boolean;
+  managedCount: number;
+  brokenCount: number;
+  totalEntries: number;
+}
+
+export interface SyncSkillTargetResult {
+  id: string;
+  label: string;
+  path: string;
+  createdDir: boolean;
+  keptCount: number;
+  linkedCount: number;
+  replacedCount: number;
+  backedUpCount: number;
+  errors: string[];
+}
+
+export type SkillsCommandAction = "add" | "update" | "remove";
+
+export interface SkillsCommandRequest {
+  action: SkillsCommandAction;
+  source?: string;
+  skillNames?: string[];
+}
+
+export interface SkillsCommandResult {
+  action: SkillsCommandAction;
+  command: string[];
+  cwd: string;
+  success: boolean;
+  code: number;
+  stdout: string;
+  stderr: string;
+  catalogRefreshed: boolean;
+}
+
+export interface SkillSourceMeta {
+  sourceType: SkillSourceType;
+  sourceValue?: string | null;
+  trackedAt: number;
 }

@@ -5,6 +5,7 @@ import {
   ScanSearch,
   Settings,
   SlidersHorizontal,
+  Sparkles,
   Zap,
 } from "lucide-react";
 import { animate, spring } from "animejs";
@@ -21,6 +22,7 @@ interface Props {
 const NAV_ITEMS = [
   { key: "detect" as AppPage, label: "模型检测", Icon: ScanSearch },
   { key: "models" as AppPage, label: "模型列表", Icon: List },
+  { key: "skills" as AppPage, label: "技能管理", Icon: Sparkles },
   { key: "rules" as AppPage, label: "规则管理", Icon: BookOpen },
   { key: "configs" as AppPage, label: "配置管理", Icon: SlidersHorizontal },
   { key: "settings" as AppPage, label: "系统配置", Icon: Settings },

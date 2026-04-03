@@ -16,6 +16,7 @@ import {
 import { RulesPage } from "./components/RulesPage";
 import { ConfigPage } from "./components/ConfigPage";
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
+import { SkillsPage } from "./components/SkillsPage";
 import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
 import type {
   AppPage,
@@ -529,6 +530,7 @@ export default function App() {
             onSaveResult={handleSaveResult}
           />
         )}
+        {page === "skills" && <SkillsPage onDirtyChange={setEditingDirty} />}
         {page === "settings" && (
           <SettingsPage
             providers={providers}
