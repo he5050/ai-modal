@@ -7,11 +7,13 @@ use tokio::sync::Semaphore;
 use crate::commands::model::ModelResult;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const OPENROUTER_TITLE: &str = "AIModal";
 const TEST_PROMPT: &str = "现在的梵蒂冈的教皇是谁,你能为我做什么,你是什么模型,内部代码版本号是多少?";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelProtocol {
     OpenAi,
+    OpenRouter,
     Claude,
     Gemini,
 }
@@ -101,7 +103,9 @@ pub fn infer_protocol_from_model(model: &str) -> ModelProtocol {
 pub fn infer_protocol_from_base_url(base_url: &str) -> ModelProtocol {
     let normalized = base_url.trim().to_ascii_lowercase();
 
-    if normalized.contains("anthropic") || normalized.contains("claude") {
+    if normalized.contains("openrouter.ai") {
+        ModelProtocol::OpenRouter
+    } else if normalized.contains("anthropic") || normalized.contains("claude") {
         ModelProtocol::Claude
     } else if normalized.contains("generativelanguage.googleapis.com")
         || normalized.contains("gemini")
@@ -109,6 +113,14 @@ pub fn infer_protocol_from_base_url(base_url: &str) -> ModelProtocol {
         ModelProtocol::Gemini
     } else {
         ModelProtocol::OpenAi
+    }
+}
+
+fn infer_request_protocol(base_url: &str, model: &str) -> ModelProtocol {
+    let base_protocol = infer_protocol_from_base_url(base_url);
+    match base_protocol {
+        ModelProtocol::OpenRouter | ModelProtocol::Claude | ModelProtocol::Gemini => base_protocol,
+        ModelProtocol::OpenAi => infer_protocol_from_model(model),
     }
 }
 
@@ -126,7 +138,7 @@ async fn test_single_model_with_client(
     api_key: &str,
     model: &str,
 ) -> ModelResult {
-    let protocol = infer_protocol_from_model(model);
+    let protocol = infer_request_protocol(base_url, model);
     let url = build_test_url(base_url, protocol, model);
     let body = build_test_body(protocol, model);
     let start = Instant::now();
@@ -174,6 +186,9 @@ async fn test_single_model_with_client(
 fn apply_auth(builder: RequestBuilder, protocol: ModelProtocol, api_key: &str) -> RequestBuilder {
     match protocol {
         ModelProtocol::OpenAi => builder.bearer_auth(api_key),
+        ModelProtocol::OpenRouter => builder
+            .bearer_auth(api_key)
+            .header("X-Title", OPENROUTER_TITLE),
         ModelProtocol::Claude => builder
             .header("x-api-key", api_key)
             .header("anthropic-version", ANTHROPIC_VERSION),
@@ -183,7 +198,9 @@ fn apply_auth(builder: RequestBuilder, protocol: ModelProtocol, api_key: &str) -
 
 fn build_models_url(base_url: &str, protocol: ModelProtocol) -> String {
     match protocol {
-        ModelProtocol::OpenAi => build_openai_style_url(base_url, "models"),
+        ModelProtocol::OpenAi | ModelProtocol::OpenRouter => {
+            build_openai_style_url(base_url, "models")
+        }
         ModelProtocol::Claude => build_claude_url(base_url, "models"),
         ModelProtocol::Gemini => {
             let base = normalize_gemini_base(base_url);
@@ -194,7 +211,9 @@ fn build_models_url(base_url: &str, protocol: ModelProtocol) -> String {
 
 fn build_test_url(base_url: &str, protocol: ModelProtocol, model: &str) -> String {
     match protocol {
-        ModelProtocol::OpenAi => build_openai_style_url(base_url, "chat/completions"),
+        ModelProtocol::OpenAi | ModelProtocol::OpenRouter => {
+            build_openai_style_url(base_url, "chat/completions")
+        }
         ModelProtocol::Claude => build_claude_url(base_url, "messages"),
         ModelProtocol::Gemini => {
             let base = normalize_gemini_base(base_url);
@@ -273,7 +292,7 @@ fn normalize_gemini_model_path(model_name: &str) -> String {
 
 fn build_test_body(protocol: ModelProtocol, model: &str) -> Value {
     match protocol {
-        ModelProtocol::OpenAi => json!({
+        ModelProtocol::OpenAi | ModelProtocol::OpenRouter => json!({
             "model": model,
             "messages": [{"role": "user", "content": TEST_PROMPT}],
             "max_tokens": 1,
@@ -299,7 +318,7 @@ fn parse_models_response(protocol: ModelProtocol, body: &str) -> Result<Vec<Stri
     let value: Value = serde_json::from_str(body).map_err(|e| format!("解析响应失败：{}", e))?;
 
     match protocol {
-        ModelProtocol::OpenAi | ModelProtocol::Claude => {
+        ModelProtocol::OpenAi | ModelProtocol::OpenRouter | ModelProtocol::Claude => {
             let data = value
                 .get("data")
                 .and_then(|items| items.as_array())
@@ -348,7 +367,8 @@ fn classify_error(status: Option<u16>, msg: &str) -> String {
 mod tests {
     use super::{
         build_openai_style_url, build_test_url, infer_protocol_from_base_url,
-        infer_protocol_from_model, normalize_gemini_model_name, ModelProtocol,
+        infer_protocol_from_model, infer_request_protocol, normalize_gemini_model_name,
+        ModelProtocol,
     };
 
     #[test]
@@ -378,6 +398,10 @@ mod tests {
     #[test]
     fn infers_list_protocol_from_base_url() {
         assert_eq!(
+            infer_protocol_from_base_url("https://openrouter.ai/api"),
+            ModelProtocol::OpenRouter
+        );
+        assert_eq!(
             infer_protocol_from_base_url("https://api.anthropic.com/v1"),
             ModelProtocol::Claude
         );
@@ -393,6 +417,10 @@ mod tests {
 
     #[test]
     fn preserves_openai_compatible_base_urls() {
+        assert_eq!(
+            build_openai_style_url("https://openrouter.ai/api", "chat/completions"),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
         assert_eq!(
             build_openai_style_url(
                 "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -431,6 +459,18 @@ mod tests {
         assert_eq!(
             normalize_gemini_model_name("models/gemini-2.0-flash"),
             "gemini-2.0-flash"
+        );
+    }
+
+    #[test]
+    fn openrouter_base_url_overrides_model_prefix_protocol_detection() {
+        assert_eq!(
+            infer_request_protocol("https://openrouter.ai/api", "openai/gpt-5.2"),
+            ModelProtocol::OpenRouter
+        );
+        assert_eq!(
+            infer_request_protocol("https://openrouter.ai/api", "anthropic/claude-3.7-sonnet"),
+            ModelProtocol::OpenRouter
         );
     }
 }

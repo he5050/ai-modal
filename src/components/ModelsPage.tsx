@@ -32,8 +32,12 @@ import {
   TerminalSquare,
   X,
 } from "lucide-react";
+import { savePersistedJson } from "../lib/persistence";
 
 const RECENT_EXPORT_DIR_KEY = "ai-modal-model-export-dir";
+const SORT_KEY_DB_KEY = "models_sort_key";
+const SORT_DIR_DB_KEY = "models_sort_dir";
+const EXPORT_DIR_DB_KEY = "recent_export_dir";
 
 type ImportSummary = {
   valid: Provider[];
@@ -599,6 +603,10 @@ function buildOpenAiCliBaseUrl(baseUrl: string) {
   return buildOpenAiStyleUrl(baseUrl, "").replace(/\/$/, "");
 }
 
+function isOpenRouterBaseUrl(baseUrl: string) {
+  return normalizeBaseUrl(baseUrl).toLowerCase().includes("openrouter.ai");
+}
+
 function buildClaudeCliBaseUrl(baseUrl: string) {
   return buildClaudeUrl(baseUrl, "").replace(/\/$/, "");
 }
@@ -752,6 +760,9 @@ function buildQuickTestCurlSnippet(
       `curl ${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "chat/completions"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "Authorization: Bearer $OPENAI_API_KEY" \\',
+      ...(isOpenRouterBaseUrl(provider.baseUrl)
+        ? ['  -H "X-Title: AIModal" \\']
+        : []),
       "  -X POST \\",
       '  -d "{',
       `    \\"model\\": \\"${model || "your-model"}\\",`,
@@ -1163,6 +1174,8 @@ export function ModelsPage({
       localStorage.removeItem("ai-modal-sort-key");
       localStorage.setItem("ai-modal-sort-dir", "asc");
     }
+    void savePersistedJson(SORT_KEY_DB_KEY, newKey, "ai-modal-sort-key");
+    void savePersistedJson(SORT_DIR_DB_KEY, newDir, "ai-modal-sort-dir");
   }
 
   function buildCsvContent() {
@@ -1213,6 +1226,7 @@ export function ModelsPage({
     await writeTextFile(filePath, content);
     const exportDir = await dirname(filePath);
     localStorage.setItem(RECENT_EXPORT_DIR_KEY, exportDir);
+    void savePersistedJson(EXPORT_DIR_DB_KEY, exportDir, RECENT_EXPORT_DIR_KEY);
     return { filePath, exportDir };
   }
 

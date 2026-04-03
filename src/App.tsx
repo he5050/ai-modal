@@ -6,10 +6,17 @@ import { DetectPage } from "./components/DetectPage";
 import { ModelsPage } from "./components/ModelsPage";
 import { DevLog } from "./components/DevLog";
 import { ToastContainer } from "./components/Toast";
-import { SettingsPage } from "./components/SettingsPage";
+import {
+  CONCURRENCY_DB_KEY,
+  CONCURRENCY_KEY,
+  DEBUG_DB_KEY,
+  DEBUG_KEY,
+  SettingsPage,
+} from "./components/SettingsPage";
 import { RulesPage } from "./components/RulesPage";
 import { ConfigPage } from "./components/ConfigPage";
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
+import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
 import type {
   AppPage,
   ConfigFormat,
@@ -22,82 +29,76 @@ import type {
 const PROVIDERS_KEY = "ai-modal-providers";
 const RULE_PATHS_KEY = "ai-modal-rule-paths";
 const CONFIG_PATHS_KEY = "ai-modal-config-paths";
+const PROVIDERS_DB_KEY = "providers";
+const RULE_PATHS_DB_KEY = "rule_paths";
+const CONFIG_PATHS_DB_KEY = "config_paths";
+const SORT_KEY_DB_KEY = "models_sort_key";
+const SORT_DIR_DB_KEY = "models_sort_dir";
+const EXPORT_DIR_DB_KEY = "recent_export_dir";
+const SORT_KEY = "ai-modal-sort-key";
+const SORT_DIR_KEY = "ai-modal-sort-dir";
+const EXPORT_DIR_KEY = "ai-modal-model-export-dir";
 
-function loadProviders(): Provider[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PROVIDERS_KEY) ?? "");
-    if (!Array.isArray(raw)) return [];
-    return raw.map((item: Provider & { providerType?: string }) => {
-      const { providerType: _providerType, ...provider } = item;
-      return provider;
-    });
-  } catch {
-    return [];
-  }
+function parseProviders(raw: unknown): Provider[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item: Provider & { providerType?: string }) => {
+    const { providerType: _providerType, ...provider } = item;
+    return provider;
+  });
 }
 
-function loadRulePaths(): RulePath[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(RULE_PATHS_KEY) ?? "");
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .filter(
-        (
-          item,
-        ): item is Pick<
-          RulePath,
-          "id" | "label" | "path" | "isBuiltin" | "kind"
-        > =>
-          typeof item?.id === "string" &&
-          typeof item?.label === "string" &&
-          typeof item?.path === "string",
-      )
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        path: item.path,
-        isBuiltin: item.isBuiltin !== false,
-        kind: item.kind === "directory" ? "directory" : "file",
-      }));
-  } catch {
-    return [];
-  }
+function parseRulePaths(raw: unknown): RulePath[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (
+        item,
+      ): item is Pick<
+        RulePath,
+        "id" | "label" | "path" | "isBuiltin" | "kind"
+      > =>
+        typeof item?.id === "string" &&
+        typeof item?.label === "string" &&
+        typeof item?.path === "string",
+    )
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      path: item.path,
+      isBuiltin: item.isBuiltin !== false,
+      kind: item.kind === "directory" ? "directory" : "file",
+    }));
 }
 
-function loadConfigPaths(): ConfigPath[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(CONFIG_PATHS_KEY) ?? "");
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .filter(
-        (
-          item,
-        ): item is Pick<
-          ConfigPath,
-          "id" | "label" | "path" | "isBuiltin" | "kind" | "format"
-        > =>
-          typeof item?.id === "string" &&
-          typeof item?.label === "string" &&
-          typeof item?.path === "string",
-      )
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        path: item.path,
-        isBuiltin: item.isBuiltin !== false,
-        kind: "file",
-        format:
-          item.format === "toml"
-            ? "toml"
-            : item.format === "yaml"
-              ? "yaml"
-              : item.format === "xml"
-                ? "xml"
-                : "json",
-      }));
-  } catch {
-    return [];
-  }
+function parseConfigPaths(raw: unknown): ConfigPath[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (
+        item,
+      ): item is Pick<
+        ConfigPath,
+        "id" | "label" | "path" | "isBuiltin" | "kind" | "format"
+      > =>
+        typeof item?.id === "string" &&
+        typeof item?.label === "string" &&
+        typeof item?.path === "string",
+    )
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      path: item.path,
+      isBuiltin: item.isBuiltin !== false,
+      kind: "file",
+      format:
+        item.format === "toml"
+          ? "toml"
+          : item.format === "yaml"
+            ? "yaml"
+            : item.format === "xml"
+              ? "xml"
+              : "json",
+    }));
 }
 
 function LeaveConfirmDialog({
@@ -172,9 +173,10 @@ function LeaveConfirmDialog({
 
 export default function App() {
   const [page, setPage] = useState<AppPage>("detect");
-  const [providers, setProviders] = useState<Provider[]>(loadProviders);
-  const [rulePaths, setRulePaths] = useState<RulePath[]>(loadRulePaths);
-  const [configPaths, setConfigPaths] = useState<ConfigPath[]>(loadConfigPaths);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [rulePaths, setRulePaths] = useState<RulePath[]>([]);
+  const [configPaths, setConfigPaths] = useState<ConfigPath[]>([]);
+  const [storageReady, setStorageReady] = useState(false);
   const [editTarget, setEditTarget] = useState<Provider | null>(null);
   const [detailProviderId, setDetailProviderId] = useState<string | null>(null);
   const [editingDirty, setEditingDirty] = useState(false);
@@ -212,9 +214,95 @@ export default function App() {
     animatePage();
   }, [page]);
   useEffect(() => {
-    localStorage.setItem(PROVIDERS_KEY, JSON.stringify(providers));
-  }, [providers]);
+    let active = true;
+
+    async function bootstrapStorage() {
+      try {
+        const [
+          providersRaw,
+          rulePathsRaw,
+          configPathsRaw,
+          debugValue,
+          concurrencyValue,
+          sortKeyValue,
+          sortDirValue,
+          exportDirValue,
+        ] = await Promise.all([
+          loadPersistedJson<unknown[]>(PROVIDERS_DB_KEY, PROVIDERS_KEY, []),
+          loadPersistedJson<unknown[]>(RULE_PATHS_DB_KEY, RULE_PATHS_KEY, []),
+          loadPersistedJson<unknown[]>(
+            CONFIG_PATHS_DB_KEY,
+            CONFIG_PATHS_KEY,
+            [],
+          ),
+          loadPersistedJson<boolean>(
+            DEBUG_DB_KEY,
+            DEBUG_KEY,
+            localStorage.getItem(DEBUG_KEY) === "true",
+          ),
+          loadPersistedJson<number>(
+            CONCURRENCY_DB_KEY,
+            CONCURRENCY_KEY,
+            Number.parseInt(localStorage.getItem(CONCURRENCY_KEY) ?? "", 10) ||
+              3,
+          ),
+          loadPersistedJson<string | null>(
+            SORT_KEY_DB_KEY,
+            SORT_KEY,
+            (localStorage.getItem(SORT_KEY) as string | null) ?? null,
+          ),
+          loadPersistedJson<string>(
+            SORT_DIR_DB_KEY,
+            SORT_DIR_KEY,
+            localStorage.getItem(SORT_DIR_KEY) ?? "asc",
+          ),
+          loadPersistedJson<string | null>(
+            EXPORT_DIR_DB_KEY,
+            EXPORT_DIR_KEY,
+            localStorage.getItem(EXPORT_DIR_KEY),
+          ),
+        ]);
+
+        if (!active) return;
+        setProviders(parseProviders(providersRaw));
+        setRulePaths(parseRulePaths(rulePathsRaw));
+        setConfigPaths(parseConfigPaths(configPathsRaw));
+        localStorage.setItem(DEBUG_KEY, String(debugValue));
+        setDebugEnabled(debugValue);
+        localStorage.setItem(CONCURRENCY_KEY, String(concurrencyValue));
+        if (sortKeyValue) {
+          localStorage.setItem(SORT_KEY, sortKeyValue);
+        } else {
+          localStorage.removeItem(SORT_KEY);
+        }
+        localStorage.setItem(SORT_DIR_KEY, sortDirValue);
+        if (exportDirValue) {
+          localStorage.setItem(EXPORT_DIR_KEY, exportDirValue);
+        } else {
+          localStorage.removeItem(EXPORT_DIR_KEY);
+        }
+      } catch (error) {
+        console.error("Failed to bootstrap persisted state", error);
+      } finally {
+        if (active) setStorageReady(true);
+      }
+    }
+
+    void bootstrapStorage();
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
+    if (!storageReady) return;
+    void savePersistedJson(PROVIDERS_DB_KEY, providers, PROVIDERS_KEY).catch(
+      (error) => {
+        console.error("Failed to persist providers", error);
+      },
+    );
+  }, [providers, storageReady]);
+  useEffect(() => {
+    if (!storageReady) return;
     const payload = rulePaths.map(({ id, label, path, isBuiltin, kind }) => ({
       id,
       label,
@@ -222,9 +310,14 @@ export default function App() {
       isBuiltin,
       kind,
     }));
-    localStorage.setItem(RULE_PATHS_KEY, JSON.stringify(payload));
-  }, [rulePaths]);
+    void savePersistedJson(RULE_PATHS_DB_KEY, payload, RULE_PATHS_KEY).catch(
+      (error) => {
+        console.error("Failed to persist rule paths", error);
+      },
+    );
+  }, [rulePaths, storageReady]);
   useEffect(() => {
+    if (!storageReady) return;
     const payload = configPaths.map(
       ({ id, label, path, isBuiltin, kind, format }) => ({
         id,
@@ -235,8 +328,14 @@ export default function App() {
         format,
       }),
     );
-    localStorage.setItem(CONFIG_PATHS_KEY, JSON.stringify(payload));
-  }, [configPaths]);
+    void savePersistedJson(
+      CONFIG_PATHS_DB_KEY,
+      payload,
+      CONFIG_PATHS_KEY,
+    ).catch((error) => {
+      console.error("Failed to persist config paths", error);
+    });
+  }, [configPaths, storageReady]);
 
   function handleAddProvider(
     data: Omit<Provider, "id" | "createdAt" | "lastResult">,
@@ -432,8 +531,10 @@ export default function App() {
         )}
         {page === "settings" && (
           <SettingsPage
+            providers={providers}
             debugEnabled={debugEnabled}
             onDebugChange={setDebugEnabled}
+            onDirtyChange={setEditingDirty}
           />
         )}
         {page === "rules" && (

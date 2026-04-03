@@ -19,6 +19,8 @@ import {
 } from "@tauri-apps/plugin-fs";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { testModelConfig } from "../api";
+import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import {
   Copy,
   ExternalLink,
@@ -36,7 +38,7 @@ import {
 } from "../lib/formStyles";
 import { toast } from "../lib/toast";
 import { CopyButton } from "./CopyButton";
-import type { ConfigFormat, ConfigPath, Provider } from "../types";
+import type { ConfigFormat, ConfigPath, ModelResult, Provider } from "../types";
 
 interface Props {
   providers: Provider[];
@@ -58,6 +60,15 @@ interface BuiltinConfig {
   relativePath: string;
   accentClass: string;
   format: ConfigFormat;
+}
+
+interface ModelConfigRecord {
+  id: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  lastTestResult?: ModelResult | null;
+  lastTestAt?: number | null;
 }
 
 interface ConfirmModalProps {
@@ -111,6 +122,9 @@ const BUILTIN_CONFIGS: BuiltinConfig[] = [
     format: "json",
   },
 ];
+
+const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
+const MODEL_CONFIGS_DB_KEY = "model_configs";
 
 const configEditorTheme = EditorView.theme(
   {
@@ -245,6 +259,36 @@ function buildDefaultPath(homePath: string, relativePath: string) {
   return `${homePath.replace(/\/$/, "")}/${relativePath}`;
 }
 
+function createEmptyModelConfig(): ModelConfigRecord {
+  return {
+    id: `model-config-${Date.now()}`,
+    baseUrl: "",
+    apiKey: "",
+    model: "",
+    lastTestResult: null,
+    lastTestAt: null,
+  };
+}
+
+function getModelConfigLabel(config: ModelConfigRecord) {
+  const host = (() => {
+    try {
+      return config.baseUrl ? new URL(config.baseUrl).host : "";
+    } catch {
+      return "";
+    }
+  })();
+
+  if (config.model && host) return `${config.model} @ ${host}`;
+  if (config.model) return config.model;
+  return "未命名配置";
+}
+
+function getModelConfigResultText(result?: ModelResult | null) {
+  if (!result) return "尚未测试";
+  return result.response_text?.trim() || result.error || "—";
+}
+
 function ConfirmModal({
   title,
   description,
@@ -308,6 +352,14 @@ export function ConfigPage({
     useState<string>("");
   const [selectedAvailableModelId, setSelectedAvailableModelId] =
     useState<string>("");
+  const [modelConfigs, setModelConfigs] = useState<ModelConfigRecord[]>([]);
+  const [savedModelConfigs, setSavedModelConfigs] = useState<
+    ModelConfigRecord[]
+  >([]);
+  const [selectedModelConfigId, setSelectedModelConfigId] =
+    useState<string>("");
+  const [testingModelConfig, setTestingModelConfig] = useState(false);
+  const [modelConfigsReady, setModelConfigsReady] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -381,7 +433,10 @@ export function ConfigPage({
       new Set(tools.map((tool) => normalizeText(tool.path)).filter(Boolean)),
     [tools],
   );
+  const modelConfigDirty =
+    JSON.stringify(modelConfigs) !== JSON.stringify(savedModelConfigs);
   const dirty =
+    modelConfigDirty ||
     contentDraft !== savedContent ||
     normalizeText(pathDraft) !==
       normalizeText(
@@ -439,11 +494,61 @@ export function ConfigPage({
     ) ??
     selectedAvailableProvider?.models[0] ??
     null;
+  const selectedModelConfig =
+    modelConfigs.find((item) => item.id === selectedModelConfigId) ??
+    modelConfigs[0] ??
+    null;
 
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadModelConfigs() {
+      try {
+        const raw = await loadPersistedJson<unknown[]>(
+          MODEL_CONFIGS_DB_KEY,
+          MODEL_CONFIGS_KEY,
+          [],
+        );
+        if (!active) return;
+        const parsed = Array.isArray(raw)
+          ? raw
+              .filter((item): item is ModelConfigRecord => {
+                return typeof item?.id === "string";
+              })
+              .map((item) => ({
+                id: item.id,
+                baseUrl: typeof item.baseUrl === "string" ? item.baseUrl : "",
+                apiKey: typeof item.apiKey === "string" ? item.apiKey : "",
+                model: typeof item.model === "string" ? item.model : "",
+                lastTestResult:
+                  item.lastTestResult && typeof item.lastTestResult === "object"
+                    ? item.lastTestResult
+                    : null,
+                lastTestAt:
+                  typeof item.lastTestAt === "number" ? item.lastTestAt : null,
+              }))
+          : [];
+        setModelConfigs(parsed);
+        setSavedModelConfigs(parsed);
+        setSelectedModelConfigId(parsed[0]?.id ?? "");
+      } catch (error) {
+        console.error("Failed to load model configs", error);
+        toast("读取模型配置失败", "error");
+      } finally {
+        if (active) setModelConfigsReady(true);
+      }
+    }
+
+    void loadModelConfigs();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (availableProviderOptions.length === 0) {
@@ -478,6 +583,19 @@ export function ConfigPage({
     selectedAvailableProviderId,
     selectedAvailableModelId,
   ]);
+
+  useEffect(() => {
+    if (modelConfigs.length === 0) {
+      setSelectedModelConfigId("");
+      return;
+    }
+    const stillExists = modelConfigs.some(
+      (item) => item.id === selectedModelConfigId,
+    );
+    if (!stillExists) {
+      setSelectedModelConfigId(modelConfigs[0].id);
+    }
+  }, [modelConfigs, selectedModelConfigId]);
 
   async function refreshCurrent(tool = selectedTool, targetPath?: string) {
     if (!tool || !homePath) return;
@@ -704,6 +822,103 @@ export function ConfigPage({
     toast("已删除自定义配置项", "success");
   }
 
+  function updateSelectedModelConfig(
+    patch: Partial<ModelConfigRecord>,
+    targetId = selectedModelConfig?.id,
+  ) {
+    if (!targetId) return;
+    setModelConfigs((prev) =>
+      prev.map((item) => (item.id === targetId ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function handleCreateModelConfig() {
+    const next = createEmptyModelConfig();
+    setModelConfigs((prev) => [...prev, next]);
+    setSelectedModelConfigId(next.id);
+  }
+
+  async function handleSaveModelConfig() {
+    if (!modelConfigsReady || !selectedModelConfig) return;
+    await savePersistedJson(
+      MODEL_CONFIGS_DB_KEY,
+      modelConfigs,
+      MODEL_CONFIGS_KEY,
+    );
+    setSavedModelConfigs(modelConfigs);
+    toast("模型配置已保存", "success");
+  }
+
+  async function handleDeleteModelConfig() {
+    if (!selectedModelConfig) return;
+    const next = modelConfigs.filter(
+      (item) => item.id !== selectedModelConfig.id,
+    );
+    setModelConfigs(next);
+    setSavedModelConfigs(next);
+    setSelectedModelConfigId(next[0]?.id ?? "");
+    await savePersistedJson(MODEL_CONFIGS_DB_KEY, next, MODEL_CONFIGS_KEY);
+    toast("模型配置已删除", "success");
+  }
+
+  function handleImportSelectedAvailableModel() {
+    if (!selectedAvailableModel || !selectedAvailableProvider) return;
+    const next = selectedModelConfig ?? createEmptyModelConfig();
+    const exists = modelConfigs.some((item) => item.id === next.id);
+    const patch: ModelConfigRecord = {
+      ...next,
+      baseUrl: selectedAvailableModel.baseUrl,
+      apiKey: selectedAvailableModel.apiKey,
+      model: selectedAvailableModel.model,
+    };
+    setModelConfigs((prev) =>
+      exists
+        ? prev.map((item) => (item.id === next.id ? patch : item))
+        : [...prev, patch],
+    );
+    setSelectedModelConfigId(next.id);
+  }
+
+  async function handleTestCurrentModelConfig() {
+    if (
+      !selectedModelConfig?.baseUrl ||
+      !selectedModelConfig.apiKey ||
+      !selectedModelConfig.model
+    )
+      return;
+    setTestingModelConfig(true);
+    try {
+      const result = await testModelConfig(
+        selectedModelConfig.baseUrl,
+        selectedModelConfig.apiKey,
+        selectedModelConfig.model,
+      );
+      updateSelectedModelConfig({
+        lastTestResult: result,
+        lastTestAt: Date.now(),
+      });
+      toast(
+        result.available ? "模型配置测试通过" : "模型配置测试失败",
+        result.available ? "success" : "warning",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      updateSelectedModelConfig({
+        lastTestResult: {
+          model: selectedModelConfig.model,
+          available: false,
+          latency_ms: null,
+          error: message,
+          response_text: message,
+        },
+        lastTestAt: Date.now(),
+      });
+      toast(`测试失败：${message}`, "error");
+    } finally {
+      setTestingModelConfig(false);
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-6 pb-6">
@@ -895,141 +1110,330 @@ export function ConfigPage({
                 </div>
               </div>
 
-              <div>
-                <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-200">
-                        可用模型快捷选择
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-gray-500">
-                        从已检测可用的模型里快速取用 URL、Key 和模型名。
-                      </p>
+              {false && (
+                <div>
+                  <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-200">
+                          可用模型快捷选择
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-gray-500">
+                          从已检测可用的模型里快速取用 URL、Key 和模型名。
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
+                        {availableProviderOptions.reduce(
+                          (total, item) => total + item.availableCount,
+                          0,
+                        )}{" "}
+                        个可用模型
+                      </span>
                     </div>
-                    <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                      {availableProviderOptions.reduce(
-                        (total, item) => total + item.availableCount,
-                        0,
-                      )}{" "}
-                      个可用模型
-                    </span>
+
+                    {availableProviderOptions.length > 0 &&
+                    selectedAvailableModel ? (
+                      <>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <div>
+                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              Provider
+                            </p>
+                            <select
+                              value={selectedAvailableProvider?.id ?? ""}
+                              onChange={(event) => {
+                                const nextProvider =
+                                  availableProviderOptions.find(
+                                    (item) => item.id === event.target.value,
+                                  ) ?? null;
+                                setSelectedAvailableProviderId(
+                                  event.target.value,
+                                );
+                                setSelectedAvailableModelId(
+                                  nextProvider?.models[0]?.id ?? "",
+                                );
+                              }}
+                              className={FIELD_SELECT_CLASS}
+                              aria-label="选择可用模型 Provider"
+                            >
+                              {availableProviderOptions.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.providerName} ({option.availableCount}{" "}
+                                  个可用)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              模型
+                            </p>
+                            <select
+                              value={selectedAvailableModel.id}
+                              onChange={(event) =>
+                                setSelectedAvailableModelId(event.target.value)
+                              }
+                              className={FIELD_SELECT_CLASS}
+                              aria-label="选择 Provider 下的可用模型"
+                            >
+                              {(selectedAvailableProvider?.models ?? []).map(
+                                (option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.model}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              模型名
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="truncate font-mono text-xs text-gray-200">
+                                {selectedAvailableModel.model}
+                              </span>
+                              <CopyButton
+                                text={selectedAvailableModel.model}
+                                message="已复制模型名"
+                              />
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              Base URL
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="truncate font-mono text-xs text-gray-200">
+                                {selectedAvailableModel.baseUrl}
+                              </span>
+                              <CopyButton
+                                text={selectedAvailableModel.baseUrl}
+                                message="已复制 Base URL"
+                              />
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              API Key
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="truncate font-mono text-xs text-gray-200">
+                                {selectedAvailableModel.apiKey}
+                              </span>
+                              <CopyButton
+                                text={selectedAvailableModel.apiKey}
+                                message="已复制 API Key"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                          <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
+                            {selectedAvailableProvider?.providerName}
+                          </span>
+                          <span>当前来自可用检测结果</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+                        当前还没有可用模型。请先去模型列表或详情页完成检测。
+                      </div>
+                    )}
                   </div>
 
-                  {availableProviderOptions.length > 0 &&
-                  selectedAvailableModel ? (
-                    <>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div>
-                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            Provider
-                          </p>
-                          <select
-                            value={selectedAvailableProvider?.id ?? ""}
-                            onChange={(event) => {
-                              const nextProvider =
-                                availableProviderOptions.find(
-                                  (item) => item.id === event.target.value,
-                                ) ?? null;
-                              setSelectedAvailableProviderId(
-                                event.target.value,
-                              );
-                              setSelectedAvailableModelId(
-                                nextProvider?.models[0]?.id ?? "",
-                              );
-                            }}
-                            className={FIELD_SELECT_CLASS}
-                            aria-label="选择可用模型 Provider"
+                  <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-200">
+                          模型配置
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-gray-500">
+                          保存可复用的地址 / Key / 模型组合，并支持直接测试。
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedModelConfig && (
+                          <button
+                            onClick={() => void handleDeleteModelConfig()}
+                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
                           >
-                            {availableProviderOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.providerName} ({option.availableCount}{" "}
-                                个可用)
+                            <Trash2 className="h-4 w-4" />
+                            删除
+                          </button>
+                        )}
+                        <button
+                          onClick={handleCreateModelConfig}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
+                        >
+                          <Plus className="h-4 w-4" />
+                          新建
+                        </button>
+                      </div>
+                    </div>
+
+                    {modelConfigs.length > 0 && selectedModelConfig ? (
+                      <>
+                        <div className="mt-3">
+                          <select
+                            value={selectedModelConfig.id}
+                            onChange={(event) =>
+                              setSelectedModelConfigId(event.target.value)
+                            }
+                            className={FIELD_SELECT_CLASS}
+                            aria-label="选择模型配置"
+                          >
+                            {modelConfigs.map((config) => (
+                              <option key={config.id} value={config.id}>
+                                {getModelConfigLabel(config)}
                               </option>
                             ))}
                           </select>
                         </div>
-                        <div>
-                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            模型
-                          </p>
-                          <select
-                            value={selectedAvailableModel.id}
-                            onChange={(event) =>
-                              setSelectedAvailableModelId(event.target.value)
-                            }
-                            className={FIELD_SELECT_CLASS}
-                            aria-label="选择 Provider 下的可用模型"
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                          <div className="min-w-[300px] flex-1">
+                            <input
+                              value={selectedModelConfig.baseUrl}
+                              onChange={(event) =>
+                                updateSelectedModelConfig({
+                                  baseUrl: event.target.value,
+                                })
+                              }
+                              placeholder="https://api.example.com/v1"
+                              className={FIELD_MONO_INPUT_CLASS}
+                            />
+                          </div>
+                          <CopyButton
+                            text={selectedModelConfig.baseUrl}
+                            message="已复制模型配置 Base URL"
+                          />
+                          <div className="min-w-[220px] flex-1">
+                            <input
+                              value={selectedModelConfig.model}
+                              onChange={(event) =>
+                                updateSelectedModelConfig({
+                                  model: event.target.value,
+                                })
+                              }
+                              placeholder="模型名称"
+                              className={FIELD_MONO_INPUT_CLASS}
+                            />
+                          </div>
+                          <CopyButton
+                            text={selectedModelConfig.model}
+                            message="已复制模型配置模型名"
+                          />
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                          <div className="min-w-[320px] flex-1">
+                            <input
+                              value={selectedModelConfig.apiKey}
+                              onChange={(event) =>
+                                updateSelectedModelConfig({
+                                  apiKey: event.target.value,
+                                })
+                              }
+                              placeholder="sk-..."
+                              className={FIELD_MONO_INPUT_CLASS}
+                            />
+                          </div>
+                          <CopyButton
+                            text={selectedModelConfig.apiKey}
+                            message="已复制模型配置 API Key"
+                          />
+                          <button
+                            onClick={() => void handleSaveModelConfig()}
+                            className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                           >
-                            {(selectedAvailableProvider?.models ?? []).map(
-                              (option) => (
-                                <option key={option.id} value={option.id}>
-                                  {option.model}
-                                </option>
-                              ),
+                            <Save className="h-4 w-4" />
+                            保存
+                          </button>
+                          <button
+                            onClick={() => void handleTestCurrentModelConfig()}
+                            disabled={
+                              testingModelConfig ||
+                              !selectedModelConfig.baseUrl.trim() ||
+                              !selectedModelConfig.apiKey.trim() ||
+                              !selectedModelConfig.model.trim()
+                            }
+                            className="inline-flex h-11 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            测试
+                          </button>
+                          <button
+                            onClick={handleImportSelectedAvailableModel}
+                            disabled={!selectedAvailableModel}
+                            className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            带入当前所选模型
+                          </button>
+                        </div>
+
+                        <div className="mt-3 rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span
+                              className={`rounded-full px-2.5 py-1 ${
+                                selectedModelConfig.lastTestResult?.available
+                                  ? "bg-emerald-500/15 text-emerald-300"
+                                  : selectedModelConfig.lastTestResult
+                                    ? "bg-red-500/15 text-red-300"
+                                    : "bg-gray-800 text-gray-400"
+                              }`}
+                            >
+                              {selectedModelConfig.lastTestResult
+                                ? selectedModelConfig.lastTestResult.available
+                                  ? "最近测试可用"
+                                  : "最近测试失败"
+                                : "尚未测试"}
+                            </span>
+                            {selectedModelConfig.lastTestAt && (
+                              <span className="text-gray-500">
+                                {new Date(
+                                  selectedModelConfig.lastTestAt,
+                                ).toLocaleString("zh-CN", { hour12: false })}
+                              </span>
                             )}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            模型名
-                          </p>
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <span className="truncate font-mono text-xs text-gray-200">
-                              {selectedAvailableModel.model}
+                            {selectedModelConfig.lastTestResult?.latency_ms !=
+                              null && (
+                              <span className="text-gray-500">
+                                {selectedModelConfig.lastTestResult.latency_ms}{" "}
+                                ms
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-2 flex items-start gap-1.5">
+                            <span className="max-w-[540px] truncate text-xs text-gray-400">
+                              {getModelConfigResultText(
+                                selectedModelConfig.lastTestResult,
+                              )}
                             </span>
-                            <CopyButton
-                              text={selectedAvailableModel.model}
-                              message="已复制模型名"
-                            />
+                            {selectedModelConfig.lastTestResult && (
+                              <CopyButton
+                                text={getModelConfigResultText(
+                                  selectedModelConfig.lastTestResult,
+                                )}
+                                message="已复制模型配置测试结果"
+                              />
+                            )}
                           </div>
                         </div>
-                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            Base URL
-                          </p>
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <span className="truncate font-mono text-xs text-gray-200">
-                              {selectedAvailableModel.baseUrl}
-                            </span>
-                            <CopyButton
-                              text={selectedAvailableModel.baseUrl}
-                              message="已复制 Base URL"
-                            />
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            API Key
-                          </p>
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <span className="truncate font-mono text-xs text-gray-200">
-                              {selectedAvailableModel.apiKey}
-                            </span>
-                            <CopyButton
-                              text={selectedAvailableModel.apiKey}
-                              message="已复制 API Key"
-                            />
-                          </div>
-                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+                        当前还没有模型配置。点击右上角“新建”创建第一条。
                       </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                        <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
-                          {selectedAvailableProvider?.providerName}
-                        </span>
-                        <span>当前来自可用检测结果</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
-                      当前还没有可用模型。请先去模型列表或详情页完成检测。
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
+              )}
 
+              <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="text-xs uppercase tracking-[0.2em] text-gray-500">
