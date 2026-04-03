@@ -36,6 +36,7 @@ import {
   FIELD_SELECT_CLASS,
 } from "../lib/formStyles";
 import { toast } from "../lib/toast";
+import { HintTooltip } from "./HintTooltip";
 import type { RulePath } from "../types";
 
 interface Props {
@@ -737,12 +738,12 @@ export function RulesPage({
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-6 pb-6">
         <div>
-          <h2 className="text-base font-semibold tracking-tight text-white">
-            规则管理
-          </h2>
-          <p className="mt-2 text-sm text-gray-400">
-            在单个工具维度查看、编辑和保存规则文件，路径切换后立即绑定对应配置。
-          </p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold tracking-tight text-white">
+              规则管理
+            </h2>
+            <HintTooltip content="在单个工具维度查看、编辑和保存规则文件，路径切换后立即绑定对应配置。" />
+          </div>
         </div>
       </div>
 
@@ -831,12 +832,12 @@ export function RulesPage({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-gray-200">
-                        同步目标
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-gray-500">
-                        点选卡片后同步。
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-gray-200">
+                          同步目标
+                        </p>
+                        <HintTooltip content="点选卡片后同步。" />
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {!showCustomForm && (

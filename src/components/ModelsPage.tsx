@@ -11,6 +11,7 @@ import {
 import type { Provider, ProviderLastResult } from "../types";
 import type { ModelResult } from "../types";
 import { CopyButton } from "./CopyButton";
+import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import { toast } from "../lib/toast";
 import { logger } from "../lib/devlog";
@@ -369,13 +370,12 @@ export function QuickTestDialog({
       <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-base font-semibold text-white">
-              模型协议快速测试
-            </h3>
-            <p className="mt-1 text-sm text-gray-400">
-              第一行手动选择协议，第二行选择模型；上方会生成可直接在终端使用的环境变量
-              + CLI 启动命令，下方保留 `curl` 回退测试片段。
-            </p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-white">
+                模型协议快速测试
+              </h3>
+              <HintTooltip content="第一行手动选择协议，第二行选择模型；上方会生成可直接在终端使用的环境变量 + CLI 启动命令，下方保留 curl 回退测试片段。" />
+            </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-indigo-200">
@@ -1423,13 +1423,12 @@ export function ModelsPage({
       <div className="shrink-0 px-6 pb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold tracking-tight text-white">
-              模型列表
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm text-gray-400">
-              管理全部 provider，查看各 provider 下的 model
-              数量、可用情况和最近结果。
-            </p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold tracking-tight text-white">
+                模型列表
+              </h2>
+              <HintTooltip content="管理全部 provider，查看各 provider 下的 model 数量、可用情况和最近结果。" />
+            </div>
           </div>
           <button
             onClick={onGoDetect}

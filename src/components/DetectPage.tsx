@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { listModelsByProvider, testSingleModelByProvider } from "../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../types";
 import { CopyButton } from "./CopyButton";
+import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import { logger } from "../lib/devlog";
 import { FIELD_INPUT_CLASS } from "../lib/formStyles";
@@ -552,10 +553,12 @@ export function DetectPage({
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-5 pb-4">
-        <h2 className="text-base font-semibold tracking-tight text-white">
-          模型检测
-        </h2>
-        <p className="mt-1 text-sm text-gray-400">填写并测试当前 provider。</p>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold tracking-tight text-white">
+            模型检测
+          </h2>
+          <HintTooltip content="填写并测试当前 provider。" />
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {/* 编辑模式提示条 */}
@@ -572,12 +575,12 @@ export function DetectPage({
         <div className="mb-4 space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
           <div className="flex items-start justify-between gap-3 rounded-lg border border-indigo-500/15 bg-indigo-500/5 px-3 py-2.5">
             <div>
-              <p className="text-sm font-medium text-gray-100">
-                {editingId ? "正在编辑当前 provider" : "先填写一个 provider"}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                Base URL 支持根地址、`/v1`、`/v1/models`、`/chat/completions`；系统会自动归一化，本地服务可不填 Key。
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-gray-100">
+                  {editingId ? "正在编辑当前 provider" : "先填写一个 provider"}
+                </p>
+                <HintTooltip content="Base URL 支持根地址、/v1、/v1/models、/chat/completions；系统会自动归一化，本地服务可不填 Key。" />
+              </div>
             </div>
             <button
               onClick={onOpenModels}
@@ -588,7 +591,10 @@ export function DetectPage({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">名称</label>
+              <div className="mb-1 flex items-center gap-1.5">
+                <label className="block text-xs text-gray-400">名称</label>
+                <HintTooltip content="列表中的 provider 名称。" />
+              </div>
               <div className="relative">
                 <input
                   value={name}
@@ -606,14 +612,12 @@ export function DetectPage({
                   </button>
                 )}
               </div>
-              <p className="mt-1 text-[11px] text-gray-600">
-                列表中的 provider 名称。
-              </p>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">
-                Base URL
-              </label>
+              <div className="mb-1 flex items-center gap-1.5">
+                <label className="block text-xs text-gray-400">Base URL</label>
+                <HintTooltip content="示例：https://api.openai.com、https://openrouter.ai/api、https://your-gateway.example.com/v1/models；支持根地址、/v1、/v1/models、/chat/completions。" />
+              </div>
               <div className="flex items-center gap-1.5">
                 <div className="relative flex-1">
                   <input
@@ -661,15 +665,13 @@ export function DetectPage({
               {urlError && (
                 <p className="text-xs text-red-400 mt-1">{urlError}</p>
               )}
-              {!urlError && (
-                <p className="mt-1 text-[11px] text-gray-600">
-                  示例：`https://api.openai.com`、`https://openrouter.ai/api`、`https://your-gateway.example.com/v1/models`；支持根地址、`/v1`、`/v1/models`、`/chat/completions`。
-                </p>
-              )}
             </div>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">API Key</label>
+            <div className="mb-1 flex items-center gap-1.5">
+              <label className="block text-xs text-gray-400">API Key</label>
+              <HintTooltip content="模型测试可能走 OpenAI / Claude / Gemini 协议；导出可能包含明文 Key。" />
+            </div>
             <div className="relative flex items-center">
               <input
                 type={keyVisible ? "text" : "password"}
@@ -701,15 +703,14 @@ export function DetectPage({
                 </button>
               </div>
             </div>
-            <p className="mt-1 text-[11px] text-gray-600">
-              模型测试可能走 OpenAI / Claude / Gemini 协议；导出可能包含明文
-              Key。
-            </p>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">
-              指定模型名测试
-            </label>
+            <div className="mb-1 flex items-center gap-1.5">
+              <label className="block text-xs text-gray-400">
+                指定模型名测试
+              </label>
+              <HintTooltip content="不依赖先拉取模型列表；可直接输入模型名做单模型验证。" />
+            </div>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
@@ -751,9 +752,6 @@ export function DetectPage({
                 测试指定模型
               </button>
             </div>
-            <p className="mt-1 text-[11px] text-gray-600">
-              不依赖先拉取模型列表；可直接输入模型名做单模型验证。
-            </p>
           </div>
           <div className="flex items-center justify-between pt-1">
             <div>
@@ -1055,13 +1053,11 @@ export function DetectPage({
         {recentProviders.length > 0 && (
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <div>
+              <div className="flex items-center gap-1.5">
                 <h3 className="text-xs font-medium uppercase tracking-widest text-gray-500">
                   最近使用接口
                 </h3>
-                <p className="mt-1 text-[11px] text-gray-600">
-                  保留最近 500 条记录，超过 10 条自动分页。
-                </p>
+                <HintTooltip content="保留最近 500 条记录，超过 10 条自动分页。" />
               </div>
               <button
                 onClick={onOpenModels}

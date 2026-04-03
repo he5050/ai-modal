@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Save } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Save, X } from "lucide-react";
 import { testModelConfig } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import { logger } from "../lib/devlog";
 import { toast } from "../lib/toast";
 import { CopyButton } from "./CopyButton";
+import { HintTooltip } from "./HintTooltip";
 import type { ModelResult, Provider } from "../types";
 
 const MODEL_CONFIG_KEY = "ai-modal-model-config";
@@ -39,6 +40,39 @@ function getConnectionStatus(result?: ModelResult | null) {
   return result.available ? "已连接" : "连接失败";
 }
 
+function maskKey(key: string) {
+  if (!key) return "—";
+  if (key.length <= 4) return "*".repeat(key.length);
+  return key.slice(0, 2) + "******" + key.slice(-2);
+}
+
+function maskPreviewText(value: string) {
+  if (!value) return "—";
+  if (value.length <= 4) return `${value.slice(0, 1)}******${value.slice(-1)}`;
+  return `${value.slice(0, 2)}******${value.slice(-2)}`;
+}
+
+function ClearInputButton({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300"
+      tabIndex={-1}
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 export function ModelConfigSection({
   providers,
   onDirtyChange,
@@ -56,9 +90,11 @@ export function ModelConfigSection({
   const [savedModelConfig, setSavedModelConfig] = useState<ModelConfigRecord>(
     createEmptyModelConfig(),
   );
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [testingModelConfig, setTestingModelConfig] = useState(false);
   const [modelConfigReady, setModelConfigReady] = useState(false);
   const [helperExpanded, setHelperExpanded] = useState(false);
+  const [shortcutExpanded, setShortcutExpanded] = useState(false);
 
   const availableProviderOptions = useMemo(() => {
     return providers
@@ -208,7 +244,11 @@ export function ModelConfigSection({
   async function handleSaveModelConfig() {
     if (!modelConfigReady) return;
     try {
-      await savePersistedJson(MODEL_CONFIG_DB_KEY, modelConfig, MODEL_CONFIG_KEY);
+      await savePersistedJson(
+        MODEL_CONFIG_DB_KEY,
+        modelConfig,
+        MODEL_CONFIG_KEY,
+      );
       setSavedModelConfig(modelConfig);
       logger.info("[模型配置] 已保存");
       toast("模型配置已保存", "success");
@@ -229,7 +269,10 @@ export function ModelConfigSection({
       lastTestResult: null,
       lastTestAt: null,
     }));
-    toast(`已带入模型：${selectedAvailableModel.model}，请点击“保存”完成持久化`, "success");
+    toast(
+      `已带入模型：${selectedAvailableModel.model}，请点击“保存”完成持久化`,
+      "success",
+    );
   }
 
   async function handleTestCurrentModelConfig() {
@@ -294,12 +337,12 @@ export function ModelConfigSection({
             className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
           >
             <div>
-              <p className="text-sm font-medium text-gray-100">
-                Base URL 支持常见 OpenAI 兼容写法
-              </p>
-              <p className="mt-1 text-xs leading-5 text-gray-500">
-                支持根地址、`/v1`、`/v1/models`、`/chat/completions`，系统会自动归一化。
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-gray-100">
+                  Base URL 支持常见 OpenAI 兼容写法
+                </p>
+                <HintTooltip content="支持根地址、/v1、/v1/models、/chat/completions，系统会自动归一化。" />
+              </div>
             </div>
             <span className="flex items-center gap-2 text-xs text-gray-400">
               {helperExpanded ? "收起" : "展开"}
@@ -325,64 +368,157 @@ export function ModelConfigSection({
                 </span>
               </div>
 
-              <div className="mt-4 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
-                {availableProviderOptions.length > 0 && selectedAvailableModel ? (
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <div className="min-w-[260px] flex-1">
-                      <select
-                        value={selectedAvailableProvider?.id ?? ""}
-                        onChange={(event) => {
-                          const nextProvider =
-                            availableProviderOptions.find(
-                              (item) => item.id === event.target.value,
-                            ) ?? null;
-                          setSelectedAvailableProviderId(event.target.value);
-                          setSelectedAvailableModelId(
-                            nextProvider?.models[0]?.id ?? "",
-                          );
-                        }}
-                        className={FIELD_SELECT_CLASS}
-                        aria-label="选择可用模型 Provider"
-                      >
-                        {availableProviderOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.providerName} ({option.availableCount} 个可用)
-                          </option>
-                        ))}
-                      </select>
+              <div className="mt-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShortcutExpanded((prev) => !prev)}
+                  className="flex w-full items-start justify-between gap-3 text-left"
+                >
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-100">
+                        可用模型快捷选择
+                      </p>
+                      <HintTooltip content="从已检测可用的 Provider 和模型中一键带入当前配置。" />
                     </div>
-                    <div className="min-w-[220px] flex-1">
-                      <select
-                        value={selectedAvailableModel.id}
-                        onChange={(event) =>
-                          setSelectedAvailableModelId(event.target.value)
-                        }
-                        className={FIELD_SELECT_CLASS}
-                        aria-label="选择 Provider 下的可用模型"
-                      >
-                        {(selectedAvailableProvider?.models ?? []).map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.model}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={handleApplySelectedModel}
-                      className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                    >
-                      应用
-                    </button>
-                    <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                      {availableProviderOptions.reduce(
-                        (total, item) => total + item.availableCount,
-                        0,
-                      )}{" "}
-                      个可用模型
-                    </span>
                   </div>
-                ) : (
-                  <div className="text-sm text-gray-500">当前没有可用模型。</div>
+                  <span className="flex items-center gap-2 rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
+                    {availableProviderOptions.reduce(
+                      (total, item) => total + item.availableCount,
+                      0,
+                    )}{" "}
+                    个可用模型
+                    {shortcutExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </span>
+                </button>
+
+                {shortcutExpanded && (
+                  <div className="mt-3 border-t border-gray-800 pt-3">
+                    {availableProviderOptions.length > 0 &&
+                    selectedAvailableModel ? (
+                      <>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div>
+                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              Provider
+                            </p>
+                            <select
+                              value={selectedAvailableProvider?.id ?? ""}
+                              onChange={(event) => {
+                                const nextProvider =
+                                  availableProviderOptions.find(
+                                    (item) => item.id === event.target.value,
+                                  ) ?? null;
+                                setSelectedAvailableProviderId(
+                                  event.target.value,
+                                );
+                                setSelectedAvailableModelId(
+                                  nextProvider?.models[0]?.id ?? "",
+                                );
+                              }}
+                              className={FIELD_SELECT_CLASS}
+                              aria-label="选择可用模型 Provider"
+                            >
+                              {availableProviderOptions.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.providerName} ({option.availableCount}{" "}
+                                  个可用)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              模型
+                            </p>
+                            <select
+                              value={selectedAvailableModel.id}
+                              onChange={(event) =>
+                                setSelectedAvailableModelId(event.target.value)
+                              }
+                              className={FIELD_SELECT_CLASS}
+                              aria-label="选择 Provider 下的可用模型"
+                            >
+                              {(selectedAvailableProvider?.models ?? []).map(
+                                (option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.model}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              模型名
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="truncate font-mono text-xs text-gray-200">
+                                {selectedAvailableModel.model}
+                              </span>
+                              <CopyButton
+                                text={selectedAvailableModel.model}
+                                message="已复制模型名"
+                              />
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              Base URL
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="truncate font-mono text-xs text-gray-200">
+                                {maskPreviewText(
+                                  selectedAvailableModel.baseUrl,
+                                )}
+                              </span>
+                              <CopyButton
+                                text={selectedAvailableModel.baseUrl}
+                                message="已复制 Base URL"
+                              />
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                              API Key
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="truncate font-mono text-xs text-gray-200">
+                                {maskKey(selectedAvailableModel.apiKey)}
+                              </span>
+                              <CopyButton
+                                text={selectedAvailableModel.apiKey}
+                                message="已复制 API Key"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                          <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
+                            {selectedAvailableProvider?.providerName}
+                          </span>
+                          <HintTooltip content="当前来自可用检测结果。" />
+                          <button
+                            onClick={handleApplySelectedModel}
+                            className="inline-flex h-9 items-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                          >
+                            应用到当前配置
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+                        当前还没有可用模型。请先去模型列表或详情页完成检测。
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -390,7 +526,7 @@ export function ModelConfigSection({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
-          <div className="min-w-[300px] flex-1">
+          <div className="relative min-w-[300px] flex-1">
             <input
               value={modelConfig.baseUrl}
               onChange={(event) =>
@@ -399,14 +535,24 @@ export function ModelConfigSection({
                 })
               }
               placeholder="例如：https://openrouter.ai/api"
-              className={FIELD_MONO_INPUT_CLASS}
+              className={`${FIELD_MONO_INPUT_CLASS} pr-8`}
             />
+            {modelConfig.baseUrl && (
+              <ClearInputButton
+                onClick={() =>
+                  updateModelConfig({
+                    baseUrl: "",
+                  })
+                }
+                label="清空模型配置 Base URL"
+              />
+            )}
           </div>
           <CopyButton
             text={modelConfig.baseUrl}
             message="已复制模型配置 Base URL"
           />
-          <div className="min-w-[220px] flex-1">
+          <div className="relative min-w-[220px] flex-1">
             <input
               value={modelConfig.model}
               onChange={(event) =>
@@ -415,16 +561,26 @@ export function ModelConfigSection({
                 })
               }
               placeholder="模型名称"
-              className={FIELD_MONO_INPUT_CLASS}
+              className={`${FIELD_MONO_INPUT_CLASS} pr-8`}
             />
+            {modelConfig.model && (
+              <ClearInputButton
+                onClick={() =>
+                  updateModelConfig({
+                    model: "",
+                  })
+                }
+                label="清空模型配置模型名"
+              />
+            )}
           </div>
           <CopyButton text={modelConfig.model} message="已复制模型配置模型名" />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2.5">
-          <div className="min-w-[320px] flex-1">
+          <div className="relative w-full min-w-[220px] flex-1 sm:w-[240px] sm:flex-none">
             <input
-              type="password"
+              type={apiKeyVisible ? "text" : "password"}
               value={modelConfig.apiKey}
               onChange={(event) =>
                 updateModelConfig({
@@ -432,8 +588,47 @@ export function ModelConfigSection({
                 })
               }
               placeholder="sk-..."
-              className={FIELD_MONO_INPUT_CLASS}
+              className={`${FIELD_MONO_INPUT_CLASS} pr-16`}
             />
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
+              {modelConfig.apiKey && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateModelConfig({
+                      apiKey: "",
+                    })
+                  }
+                  aria-label="清空模型配置 API Key"
+                  title="清空模型配置 API Key"
+                  className="text-gray-500 transition-colors hover:text-gray-300"
+                  tabIndex={-1}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setApiKeyVisible((visible) => !visible)}
+                aria-label={
+                  apiKeyVisible
+                    ? "隐藏模型配置 API Key"
+                    : "显示模型配置 API Key"
+                }
+                title={
+                  apiKeyVisible
+                    ? "隐藏模型配置 API Key"
+                    : "显示模型配置 API Key"
+                }
+                className="text-gray-500 transition-colors hover:text-gray-300"
+              >
+                {apiKeyVisible ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
           <CopyButton
             text={modelConfig.apiKey}
@@ -470,10 +665,6 @@ export function ModelConfigSection({
             {getConnectionStatus(modelConfig.lastTestResult)}
           </span>
         </div>
-
-        <p className="mt-2 text-[11px] leading-5 text-gray-600">
-          示例：`https://api.openai.com`、`https://openrouter.ai/api`、`https://your-gateway.example.com/v1` 都可以直接填写。
-        </p>
       </div>
     </section>
   );

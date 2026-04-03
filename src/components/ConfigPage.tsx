@@ -22,6 +22,8 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { testModelConfig } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import {
+  ChevronDown,
+  ChevronUp,
   Copy,
   ExternalLink,
   FilePenLine,
@@ -38,6 +40,7 @@ import {
 } from "../lib/formStyles";
 import { toast } from "../lib/toast";
 import { CopyButton } from "./CopyButton";
+import { HintTooltip } from "./HintTooltip";
 import type { ConfigFormat, ConfigPath, ModelResult, Provider } from "../types";
 
 interface Props {
@@ -372,6 +375,7 @@ export function ConfigPage({
     useState<string>("");
   const [testingModelConfig, setTestingModelConfig] = useState(false);
   const [modelConfigsReady, setModelConfigsReady] = useState(false);
+  const [shortcutExpanded, setShortcutExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -935,13 +939,12 @@ export function ConfigPage({
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-6 pb-6">
         <div>
-          <h2 className="text-base font-semibold tracking-tight text-white">
-            配置管理
-          </h2>
-          <p className="mt-2 text-sm text-gray-400">
-            管理 Claude、Codex、Gemini、OpenCode、Qwen
-            的主配置文件，和规则文件分开维护。
-          </p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold tracking-tight text-white">
+              配置管理
+            </h2>
+            <HintTooltip content="管理 Claude、Codex、Gemini、OpenCode、Qwen 的主配置文件，和规则文件分开维护。" />
+          </div>
         </div>
       </div>
 
@@ -1028,12 +1031,12 @@ export function ConfigPage({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-gray-200">
-                        自定义配置项
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-gray-500">
-                        为额外配置文件添加独立入口，方便切换和维护。
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-gray-200">
+                          自定义配置项
+                        </p>
+                        <HintTooltip content="为额外配置文件添加独立入口，方便切换和维护。" />
+                      </div>
                     </div>
                     {!showCustomForm && (
                       <button
@@ -1123,133 +1126,147 @@ export function ConfigPage({
               </div>
 
               <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShortcutExpanded((prev) => !prev)}
+                  className="flex w-full items-start justify-between gap-3 text-left"
+                >
                   <div>
-                    <p className="text-sm font-medium text-gray-200">
-                      可用模型快捷选择
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500">
-                      从已检测可用的模型里快速取用 URL、Key 和模型名。
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-200">
+                        可用模型快捷选择
+                      </p>
+                      <HintTooltip content="从已检测可用的模型里快速取用 URL、Key 和模型名。" />
+                    </div>
                   </div>
-                  <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
+                  <span className="flex items-center gap-2 rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
                     {availableProviderOptions.reduce(
                       (total, item) => total + item.availableCount,
                       0,
                     )}{" "}
                     个可用模型
+                    {shortcutExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
                   </span>
-                </div>
+                </button>
 
-                {availableProviderOptions.length > 0 && selectedAvailableModel ? (
-                  <>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div>
-                        <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                          Provider
-                        </p>
-                        <select
-                          value={selectedAvailableProvider?.id ?? ""}
-                          onChange={(event) => {
-                            const nextProvider =
-                              availableProviderOptions.find(
-                                (item) => item.id === event.target.value,
-                              ) ?? null;
-                            setSelectedAvailableProviderId(event.target.value);
-                            setSelectedAvailableModelId(
-                              nextProvider?.models[0]?.id ?? "",
-                            );
-                          }}
-                          className={FIELD_SELECT_CLASS}
-                          aria-label="选择可用模型 Provider"
-                        >
-                          {availableProviderOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.providerName} ({option.availableCount} 个可用)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                          模型
-                        </p>
-                        <select
-                          value={selectedAvailableModel.id}
-                          onChange={(event) =>
-                            setSelectedAvailableModelId(event.target.value)
-                          }
-                          className={FIELD_SELECT_CLASS}
-                          aria-label="选择 Provider 下的可用模型"
-                        >
-                          {(selectedAvailableProvider?.models ?? []).map(
-                            (option) => (
+                {shortcutExpanded &&
+                  (availableProviderOptions.length > 0 &&
+                  selectedAvailableModel ? (
+                    <>
+                      <div className="mt-3 grid gap-3 border-t border-gray-800 pt-3 md:grid-cols-2">
+                        <div>
+                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            Provider
+                          </p>
+                          <select
+                            value={selectedAvailableProvider?.id ?? ""}
+                            onChange={(event) => {
+                              const nextProvider =
+                                availableProviderOptions.find(
+                                  (item) => item.id === event.target.value,
+                                ) ?? null;
+                              setSelectedAvailableProviderId(
+                                event.target.value,
+                              );
+                              setSelectedAvailableModelId(
+                                nextProvider?.models[0]?.id ?? "",
+                              );
+                            }}
+                            className={FIELD_SELECT_CLASS}
+                            aria-label="选择可用模型 Provider"
+                          >
+                            {availableProviderOptions.map((option) => (
                               <option key={option.id} value={option.id}>
-                                {option.model}
+                                {option.providerName} ({option.availableCount}{" "}
+                                个可用)
                               </option>
-                            ),
-                          )}
-                        </select>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            模型
+                          </p>
+                          <select
+                            value={selectedAvailableModel.id}
+                            onChange={(event) =>
+                              setSelectedAvailableModelId(event.target.value)
+                            }
+                            className={FIELD_SELECT_CLASS}
+                            aria-label="选择 Provider 下的可用模型"
+                          >
+                            {(selectedAvailableProvider?.models ?? []).map(
+                              (option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.model}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
-                      <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                          模型名
-                        </p>
-                        <div className="mt-2 flex items-center gap-1.5">
-                          <span className="truncate font-mono text-xs text-gray-200">
-                            {selectedAvailableModel.model}
-                          </span>
-                          <CopyButton
-                            text={selectedAvailableModel.model}
-                            message="已复制模型名"
-                          />
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            模型名
+                          </p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs text-gray-200">
+                              {selectedAvailableModel.model}
+                            </span>
+                            <CopyButton
+                              text={selectedAvailableModel.model}
+                              message="已复制模型名"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            Base URL
+                          </p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs text-gray-200">
+                              {maskPreviewText(selectedAvailableModel.baseUrl)}
+                            </span>
+                            <CopyButton
+                              text={selectedAvailableModel.baseUrl}
+                              message="已复制 Base URL"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                            API Key
+                          </p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs text-gray-200">
+                              {maskKey(selectedAvailableModel.apiKey)}
+                            </span>
+                            <CopyButton
+                              text={selectedAvailableModel.apiKey}
+                              message="已复制 API Key"
+                            />
+                          </div>
                         </div>
                       </div>
-                      <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                          Base URL
-                        </p>
-                        <div className="mt-2 flex items-center gap-1.5">
-                          <span className="truncate font-mono text-xs text-gray-200">
-                            {maskPreviewText(selectedAvailableModel.baseUrl)}
-                          </span>
-                          <CopyButton
-                            text={selectedAvailableModel.baseUrl}
-                            message="已复制 Base URL"
-                          />
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                          API Key
-                        </p>
-                        <div className="mt-2 flex items-center gap-1.5">
-                          <span className="truncate font-mono text-xs text-gray-200">
-                            {maskKey(selectedAvailableModel.apiKey)}
-                          </span>
-                          <CopyButton
-                            text={selectedAvailableModel.apiKey}
-                            message="已复制 API Key"
-                          />
-                        </div>
-                      </div>
-                    </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                      <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
-                        {selectedAvailableProvider?.providerName}
-                      </span>
-                      <span>当前来自可用检测结果</span>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                        <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
+                          {selectedAvailableProvider?.providerName}
+                        </span>
+                        <HintTooltip content="当前来自可用检测结果。" />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+                      当前还没有可用模型。请先去模型列表或详情页完成检测。
                     </div>
-                  </>
-                ) : (
-                  <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
-                    当前还没有可用模型。请先去模型列表或详情页完成检测。
-                  </div>
-                )}
+                  ))}
               </div>
 
               {false && (

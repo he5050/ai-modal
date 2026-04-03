@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { savePersistedJson } from "../lib/persistence";
 import { ModelConfigSection } from "./ModelConfigSection";
+import { HintTooltip } from "./HintTooltip";
 import type { Provider } from "../types";
 import { toast } from "../lib/toast";
 
@@ -62,10 +63,12 @@ export function SettingsPage({
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-6 pb-6">
-        <h2 className="text-base font-semibold tracking-tight text-white">
-          系统配置
-        </h2>
-        <p className="mt-2 text-sm text-gray-400">全局配置与调试辅助。</p>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold tracking-tight text-white">
+            系统配置
+          </h2>
+          <HintTooltip content="全局配置与调试辅助。" />
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         <section>
@@ -75,10 +78,12 @@ export function SettingsPage({
           <div className="divide-y divide-gray-800 rounded-xl border border-gray-800 bg-gray-900">
             <div className="flex items-center justify-between px-5 py-4">
               <div>
-                <p className="text-sm font-medium text-gray-200">Debug 模式</p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  开启后右下角显示实时操作日志面板
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-200">
+                    Debug 模式
+                  </p>
+                  <HintTooltip content="开启后右下角显示实时操作日志面板。" />
+                </div>
               </div>
               <button
                 onClick={() => void handleToggle()}
@@ -98,10 +103,14 @@ export function SettingsPage({
 
             <div className="flex items-center justify-between px-5 py-4">
               <div>
-                <p className="text-sm font-medium text-gray-200">检测并发数</p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  同时发起检测的最大请求数，范围 1 – {MAX_CONCURRENCY}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-200">
+                    检测并发数
+                  </p>
+                  <HintTooltip
+                    content={`同时发起检测的最大请求数，范围 1 - ${MAX_CONCURRENCY}。`}
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button

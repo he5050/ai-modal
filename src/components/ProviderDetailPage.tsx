@@ -4,6 +4,7 @@ import { animate, spring } from "animejs";
 import { listModelsByProvider, testSingleModelByProvider } from "../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../types";
 import { CopyButton } from "./CopyButton";
+import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import {
   QuickTestDialog,
@@ -256,13 +257,12 @@ export function ProviderDetailPage({
               返回模型列表
             </button>
             <div>
-              <h2 className="text-base font-semibold tracking-tight text-white">
-                {currentProvider.name}
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm text-gray-400">
-                独立查看当前 provider
-                的模型明细、错误细节、一键测试与终端测试片段。
-              </p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold tracking-tight text-white">
+                  {currentProvider.name}
+                </h2>
+                <HintTooltip content="独立查看当前 provider 的模型明细、错误细节、一键测试与终端测试片段。" />
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
