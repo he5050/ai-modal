@@ -49,6 +49,8 @@ import {
   Search,
   Trash2,
   Upload,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const SKILL_TARGETS_KEY = "ai-modal-skill-targets";
@@ -256,6 +258,9 @@ export function SkillsPage({
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searchDuration, setSearchDuration] = useState<number | null>(null);
   const [searched, setSearched] = useState(false);
+
+  // Command log collapsed state
+  const [commandLogExpanded, setCommandLogExpanded] = useState(false);
 
   useEffect(() => {
     onDirtyChange(false);
@@ -983,13 +988,7 @@ export function SkillsPage({
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-6 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold tracking-tight text-white">
-              技能管理
-            </h2>
-            <HintTooltip content="统一读取 ~/.agents/skills，本地安装更新删除走 npx skills，目标工具通过软连接分发。" />
-          </div>
+        <div className="flex items-center justify-end gap-3">
           <div className={ACTION_GROUP_WRAPPER_CLASS}>
             {[
               ["list", "技能列表"],
@@ -1210,152 +1209,107 @@ export function SkillsPage({
                 </div>
               </div>
 
-              {selectedTarget ? (
-                <div className="mt-4 space-y-4">
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-center">
-                    <div className="min-w-0">
-                      <select
-                        value={selectedTargetId}
-                        onChange={(event) =>
-                          setSelectedTargetId(event.target.value)
-                        }
-                        aria-label="选择同步目标"
-                        className={FIELD_SELECT_CLASS}
+              {/* Target overview cards */}
+              {targets.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  {targets.map((target) => {
+                    const status = targetStatuses[target.id];
+                    const accent = BUILTIN_TARGETS.find((t) => t.id === target.id)?.accentClass ?? "border-gray-700 bg-gray-950 text-gray-300";
+                    return (
+                      <div
+                        key={target.id}
+                        className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5"
                       >
-                        {targets.map((target) => (
-                          <option key={target.id} value={target.id}>
+                        <div className="flex items-center justify-between">
+                          <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${accent}`}>
                             {target.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="min-w-0">
-                      <input
-                        value={pathDraft}
-                        onChange={(event) => setPathDraft(event.target.value)}
-                        placeholder="~/tool/skills"
-                        aria-label="同步目标路径"
-                        className={FIELD_MONO_INPUT_CLASS}
-                      />
-                    </div>
-
-                    <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
-                      <button
-                        onClick={() => void handlePickTargetPath()}
-                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                      >
-                        选择目录
-                      </button>
-                      <button
-                        onClick={handleSaveTargetPath}
-                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                      >
-                        <FilePenLine className="h-4 w-4" />
-                        保存
-                      </button>
-                      <button
-                        onClick={() => void openPath(selectedTarget.path)}
-                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                      >
-                        <FolderOpen className="h-4 w-4" />
-                        打开目录
-                      </button>
-                      {!selectedTarget.isBuiltin && (
-                        <button
-                          onClick={() =>
-                            handleDeleteCustomTarget(selectedTarget.id)
-                          }
-                          className="inline-flex h-11 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          删除
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-800 bg-black/10 px-4 py-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
+                          </span>
                           <button
-                            onClick={() =>
-                              setTargetEnabled(
-                                selectedTarget.id,
-                                !selectedTarget.enabled,
-                              )
-                            }
-                            className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                              selectedTarget.enabled
-                                ? "bg-indigo-600"
-                                : "bg-gray-700"
-                            }`}
+                            onClick={() => setTargetEnabled(target.id, !target.enabled)}
+                            className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border border-transparent transition-colors ${target.enabled ? "bg-indigo-600" : "bg-gray-700"}`}
                             role="switch"
-                            aria-checked={selectedTarget.enabled}
+                            aria-checked={target.enabled}
                           >
-                            <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                                selectedTarget.enabled
-                                  ? "translate-x-5"
-                                  : "translate-x-0"
-                              }`}
-                            />
+                            <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-200 ${target.enabled ? "translate-x-3" : "translate-x-0"}`} />
                           </button>
-                          <p className="text-sm font-medium text-gray-100">
-                            {selectedTarget.label}
-                          </p>
-                          <span
-                            className={`rounded-full border px-2 py-0.5 text-[10px] ${selectedTargetAccent}`}
-                          >
-                            {selectedTarget.isBuiltin ? "内置" : "自定义"}
-                          </span>
-                          <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400">
-                            {selectedTarget.enabled ? "已启用" : "未启用"}
-                          </span>
                         </div>
-                        <p className="mt-2 truncate font-mono text-xs text-gray-400">
-                          {selectedTarget.path}
-                        </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                          <span>
-                            {selectedTargetStatus?.exists
-                              ? "目录存在"
-                              : "目录缺失"}
+                        <div className="mt-2 flex items-baseline gap-2 text-[10px] text-gray-500">
+                          <span className={status?.exists ? "text-emerald-400" : "text-red-400"}>
+                            {status?.exists ? "存在" : "缺失"}
                           </span>
-                          <span>
-                            托管链接 {selectedTargetStatus?.managedCount ?? 0}
-                          </span>
-                          <span>
-                            损坏链接 {selectedTargetStatus?.brokenCount ?? 0}
-                          </span>
-                          <span>
-                            总条目 {selectedTargetStatus?.totalEntries ?? 0}
-                          </span>
+                          <span>{status?.managedCount ?? 0} 链接</span>
+                          {(status?.brokenCount ?? 0) > 0 && (
+                            <span className="text-amber-400">{status?.brokenCount} 损坏</span>
+                          )}
                         </div>
                       </div>
-
-                      <div className="rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs text-gray-400">
-                        已启用 {enabledTargets.length} / {targets.length} 个目标
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-5 text-sm text-gray-500">
-                  正在读取同步目标。
+                    );
+                  })}
                 </div>
               )}
 
-              <div className="mt-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-gray-200">
-                      自定义目标
-                    </p>
-                    <HintTooltip content="用于分发到非内置工具目录；路径以目录为单位保存和同步。" />
+              {/* Edit target inline */}
+              {selectedTarget && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={selectedTargetId}
+                      onChange={(event) => {
+                        setSelectedTargetId(event.target.value);
+                        const t = targets.find((item) => item.id === event.target.value);
+                        if (t) setPathDraft(t.path);
+                      }}
+                      className={`w-36 ${FIELD_SELECT_CLASS}`}
+                    >
+                      {targets.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={pathDraft}
+                      onChange={(event) => setPathDraft(event.target.value)}
+                      placeholder="~/tool/skills"
+                      className={`${FIELD_MONO_INPUT_CLASS} flex-1`}
+                    />
+                    <button
+                      onClick={() => void handlePickTargetPath()}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    >
+                      选择目录
+                    </button>
+                    <button
+                      onClick={handleSaveTargetPath}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 text-sm text-indigo-200 transition-colors hover:border-indigo-400/50 hover:text-indigo-100"
+                    >
+                      <FilePenLine className="h-4 w-4" />
+                      保存
+                    </button>
+                    <button
+                      onClick={() => void openPath(selectedTarget.path)}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      打开
+                    </button>
+                    {!selectedTarget.isBuiltin && (
+                      <button
+                        onClick={() => handleDeleteCustomTarget(selectedTarget.id)}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        删除
+                      </button>
+                    )}
                   </div>
-                  {!showCustomForm && (
+                </div>
+              )}
+
+              <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-200">自定义目标</p>
+                  {!showCustomForm ? (
                     <button
                       onClick={() => setShowCustomForm(true)}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
@@ -1363,43 +1317,45 @@ export function SkillsPage({
                       <Plus className="h-3.5 w-3.5" />
                       新增
                     </button>
+                  ) : (
+                    <button
+                      onClick={() => { setShowCustomForm(false); setCustomLabel(""); setCustomPath(""); }}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    >
+                      取消
+                    </button>
                   )}
                 </div>
-
                 {showCustomForm && (
                   <div className="mt-3 flex flex-wrap items-center gap-2.5">
-                    <div className="w-[180px] flex-shrink-0">
-                      <input
-                        value={customLabel}
-                        onChange={(event) => setCustomLabel(event.target.value)}
-                        placeholder="目标名称"
-                        className={FIELD_INPUT_CLASS}
-                      />
-                    </div>
-                    <div className="min-w-[260px] flex-1">
-                      <input
-                        value={customPath}
-                        onChange={(event) => setCustomPath(event.target.value)}
-                        placeholder="~/custom-tool/skills"
-                        className={FIELD_MONO_INPUT_CLASS}
-                      />
-                    </div>
+                    <input
+                      value={customLabel}
+                      onChange={(event) => setCustomLabel(event.target.value)}
+                      placeholder="目标名称"
+                      className={`${FIELD_INPUT_CLASS} w-40`}
+                    />
+                    <input
+                      value={customPath}
+                      onChange={(event) => setCustomPath(event.target.value)}
+                      placeholder="~/custom-tool/skills"
+                      className={`${FIELD_MONO_INPUT_CLASS} min-w-[260px] flex-1`}
+                    />
                     <button
                       onClick={async () => {
                         const selected = await pickPath({
                           directory: true,
                           defaultPath: homePath || undefined,
                         });
-                        if (typeof selected === "string")
-                          setCustomPath(selected);
+                        if (typeof selected === "string") setCustomPath(selected);
                       }}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                     >
+                      <FolderOpen className="h-4 w-4" />
                       选择目录
                     </button>
                     <button
                       onClick={() => void handleAddCustomTarget()}
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 text-sm text-indigo-200 transition-colors hover:border-indigo-400/50 hover:text-indigo-100"
                     >
                       保存
                     </button>
@@ -1418,6 +1374,8 @@ export function SkillsPage({
                   ["search", "搜索技能"],
                   ["github", "GitHub 安装"],
                   ["local", "本地目录导入"],
+                  ["update", "更新全部"],
+                  ["remove", "移除技能"],
                 ].map(([mode, label]) => (
                   <button
                     key={mode}
@@ -1572,7 +1530,7 @@ export function SkillsPage({
                         )
                       }
                       disabled={commandRunning}
-                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {commandRunning ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1595,7 +1553,7 @@ export function SkillsPage({
                       />
                       <button
                         onClick={() => void handlePickLocalSource()}
-                        className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                       >
                         <FolderOpen className="h-4 w-4" />
                         选择目录
@@ -1616,7 +1574,7 @@ export function SkillsPage({
                         )
                       }
                       disabled={commandRunning}
-                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {commandRunning ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1629,18 +1587,28 @@ export function SkillsPage({
                 )}
 
                 {installMode === "update" && (
-                  <button
-                    onClick={() => void handleRunCommand("update")}
-                    disabled={commandRunning}
-                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {commandRunning ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCcw className="h-4 w-4" />
-                    )}
-                    更新 ~/.agents/skills
-                  </button>
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                      <p className="text-sm text-amber-200">
+                        更新所有已安装的技能到最新版本
+                      </p>
+                      <p className="mt-1 text-xs text-amber-300/70">
+                        此操作将更新 ~/.agents/skills 目录下的所有技能，并刷新技能目录。
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void handleRunCommand("update")}
+                      disabled={commandRunning}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-sm text-amber-200 transition-colors hover:border-amber-400/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {commandRunning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      更新全部技能
+                    </button>
+                  </div>
                 )}
 
                 {installMode === "remove" && (
@@ -1654,7 +1622,7 @@ export function SkillsPage({
                     <button
                       onClick={() => void handleRunCommand("remove")}
                       disabled={commandRunning}
-                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {commandRunning ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1668,13 +1636,23 @@ export function SkillsPage({
               </div>
 
               <div className="mt-4 rounded-xl border border-gray-800 bg-black/10 px-4 py-3">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">
-                    最近命令结果
-                  </p>
-                  <HintTooltip content="展示原始 command / stdout / stderr，避免假成功。" />
-                </div>
-                {commandResult ? (
+                <button
+                  onClick={() => setCommandLogExpanded(!commandLogExpanded)}
+                  className="flex w-full items-center justify-between gap-1.5"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500">
+                      最近命令结果
+                    </p>
+                    <HintTooltip content="展示原始 command / stdout / stderr，避免假成功。" />
+                  </div>
+                  {commandLogExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
+                {commandLogExpanded && commandResult && (
                   <div className="mt-3 space-y-2">
                     <div className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
                       <div>cwd: {commandResult.cwd || "—"}</div>
@@ -1695,7 +1673,18 @@ export function SkillsPage({
                       </pre>
                     </div>
                   </div>
-                ) : (
+                )}
+                {!commandLogExpanded && commandResult && (
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <span className={`rounded-full px-2 py-0.5 ${commandResult.success ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border border-red-500/30 bg-red-500/10 text-red-300'}`}>
+                      {commandResult.success ? '成功' : '失败'}
+                    </span>
+                    <span className="font-mono text-gray-500">
+                      {commandResult.command.join(" ")}
+                    </span>
+                  </div>
+                )}
+                {!commandResult && (
                   <div className="mt-3 text-sm text-gray-500">
                     还没有执行记录。
                   </div>

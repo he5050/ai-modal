@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { savePersistedJson } from "../lib/persistence";
-import { ModelConfigSection } from "./ModelConfigSection";
 import { HintTooltip } from "./HintTooltip";
-import type { Provider } from "../types";
 import { toast } from "../lib/toast";
 
 export const DEBUG_KEY = "ai-modal-debug";
@@ -20,14 +18,12 @@ export function getConcurrency(): number {
 }
 
 interface Props {
-  providers: Provider[];
   debugEnabled: boolean;
   onDebugChange: (v: boolean) => void;
   onDirtyChange: (v: boolean) => void;
 }
 
 export function SettingsPage({
-  providers,
   debugEnabled,
   onDebugChange,
   onDirtyChange,
@@ -140,10 +136,6 @@ export function SettingsPage({
             </div>
           </div>
         </section>
-        <ModelConfigSection
-          providers={providers}
-          onDirtyChange={onDirtyChange}
-        />
       </div>
     </div>
   );

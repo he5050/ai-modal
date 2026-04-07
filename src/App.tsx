@@ -533,7 +533,6 @@ export default function App() {
         {page === "skills" && <SkillsPage onDirtyChange={setEditingDirty} />}
         {page === "settings" && (
           <SettingsPage
-            providers={providers}
             debugEnabled={debugEnabled}
             onDebugChange={setDebugEnabled}
             onDirtyChange={setEditingDirty}
