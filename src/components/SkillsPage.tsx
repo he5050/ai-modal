@@ -6,10 +6,15 @@ import {
   inspectSkillTargets,
   runSkillsCommand,
   scanLocalSkills,
+  searchOnlineSkills,
   syncSkillTargets,
 } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
+import {
+  FIELD_INPUT_CLASS,
+  FIELD_MONO_INPUT_CLASS,
+  FIELD_SELECT_CLASS,
+} from "../lib/formStyles";
 import { logger } from "../lib/devlog";
 import {
   ACTION_GROUP_BUTTON_ACTIVE_CLASS,
@@ -20,6 +25,7 @@ import {
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
 import type {
+  OnlineSkill,
   SkillRecord,
   SkillSourceMeta,
   SkillSourceType,
@@ -27,16 +33,20 @@ import type {
   SkillTargetStatus,
   SkillsCatalogSnapshot,
   SkillsCommandAction,
+  SkillsCommandRequest,
   SkillsCommandResult,
 } from "../types";
 import {
-  ExternalLink,
+  Check,
+  Copy,
+  FilePenLine,
   FolderOpen,
   GitBranch,
   Link2,
   Loader2,
   Plus,
   RefreshCcw,
+  Search,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -48,7 +58,7 @@ const SKILLS_CATALOG_DB_KEY = "skills_catalog";
 const SKILL_SOURCES_KEY = "ai-modal-skill-sources";
 const SKILL_SOURCES_DB_KEY = "skills_sources";
 
-type InstallMode = "github" | "local" | "update" | "remove";
+type InstallMode = "search" | "github" | "local" | "update" | "remove";
 type SkillsTab = "list" | "manage";
 
 type BuiltinSkillTarget = {
@@ -57,6 +67,12 @@ type BuiltinSkillTarget = {
   relativePath: string;
   accentClass: string;
 };
+
+function formatInstalls(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 const BUILTIN_TARGETS: BuiltinSkillTarget[] = [
   {
@@ -116,22 +132,6 @@ function formatUpdatedAt(timestamp?: number | null) {
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
   return `${year}/${month}/${day} ${hour}:${minute}`;
-}
-
-function getSkillSourceLabel(sourceType?: SkillSourceType | null) {
-  switch (sourceType) {
-    case "github":
-      return "GitHub";
-    case "npx":
-      return "npx";
-    case "local":
-      return "本地导入";
-    case "manual":
-      return "本地自写";
-    case "unknown":
-    default:
-      return "未记录";
-  }
 }
 
 function mergeCatalogWithSources(
@@ -240,13 +240,22 @@ export function SkillsPage({
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("全部");
   const [selectedTab, setSelectedTab] = useState<SkillsTab>("list");
-  const [installMode, setInstallMode] = useState<InstallMode>("github");
+  const [installMode, setInstallMode] = useState<InstallMode>("search");
   const [githubSource, setGithubSource] = useState("");
   const [localSource, setLocalSource] = useState("");
   const [removeNames, setRemoveNames] = useState("");
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
+  const [selectedTargetId, setSelectedTargetId] = useState("");
+  const [pathDraft, setPathDraft] = useState("");
+
+  // Online search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<OnlineSkill[]>([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [searchDuration, setSearchDuration] = useState<number | null>(null);
+  const [searched, setSearched] = useState(false);
 
   useEffect(() => {
     onDirtyChange(false);
@@ -282,6 +291,9 @@ export function SkillsPage({
         const stored = parseStoredTargets(raw);
         const mergedBuiltins = builtins.map((builtin) => ({
           ...builtin,
+          path:
+            stored.find((item) => item.id === builtin.id)?.path?.trim() ||
+            builtin.path,
           enabled:
             stored.find((item) => item.id === builtin.id)?.enabled ??
             builtin.enabled,
@@ -322,6 +334,7 @@ export function SkillsPage({
       console.error("Failed to persist skill targets", error);
     });
   }, [targets, targetsReady]);
+
 
   useEffect(() => {
     if (!targetsReady) return;
@@ -382,6 +395,29 @@ export function SkillsPage({
     if (!targetsReady) return;
     void refreshTargetStatuses();
   }, [targets, targetsReady]);
+    // Auto-load top skills when switching to search tab
+    useEffect(() => {
+        if (installMode === "search" && !searched) {
+            void handleSearch("");
+        }
+    }, [installMode, searched]);
+
+  useEffect(() => {
+    if (targets.length === 0) {
+      setSelectedTargetId("");
+      setPathDraft("");
+      return;
+    }
+
+    setSelectedTargetId((prev) =>
+      targets.some((item) => item.id === prev) ? prev : targets[0].id,
+    );
+  }, [targets]);
+
+  useEffect(() => {
+    const selected = targets.find((item) => item.id === selectedTargetId);
+    setPathDraft(selected?.path ?? "");
+  }, [selectedTargetId, targets]);
 
   const localSkills = catalog?.skills ?? [];
   const categories = useMemo(() => {
@@ -407,6 +443,14 @@ export function SkillsPage({
   }, [localSkills, query, selectedCategory]);
 
   const enabledTargets = targets.filter((item) => item.enabled);
+  const selectedTarget =
+    targets.find((item) => item.id === selectedTargetId) ?? null;
+  const selectedTargetStatus = selectedTarget
+    ? targetStatuses[selectedTarget.id]
+    : null;
+  const selectedTargetAccent =
+    BUILTIN_TARGETS.find((item) => item.id === selectedTarget?.id)
+      ?.accentClass ?? "border-gray-700 bg-gray-950 text-gray-300";
 
   function setTargetEnabled(id: string, enabled: boolean) {
     setTargets((prev) =>
@@ -416,6 +460,33 @@ export function SkillsPage({
 
   function handleDeleteCustomTarget(id: string) {
     setTargets((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  async function handlePickTargetPath() {
+    const selected = await pickPath({
+      directory: true,
+      defaultPath: selectedTarget?.path || homePath || undefined,
+    });
+    if (typeof selected === "string") {
+      setPathDraft(selected);
+    }
+  }
+
+  function handleSaveTargetPath() {
+    if (!selectedTarget) return;
+
+    const path = toAbsolutePath(pathDraft, homePath);
+    if (!path) {
+      toast("路径不能为空", "warning");
+      return;
+    }
+
+    setTargets((prev) =>
+      prev.map((item) =>
+        item.id === selectedTarget.id ? { ...item, path } : item,
+      ),
+    );
+    toast("路径已更新", "success");
   }
 
   async function handlePickLocalSource() {
@@ -436,19 +507,309 @@ export function SkillsPage({
       return;
     }
 
-    setTargets((prev) => [
-      ...prev,
-      {
-        id: `custom-skill-target-${Date.now()}`,
-        label,
-        path,
-        isBuiltin: false,
-        enabled: true,
-      },
-    ]);
+    if (targets.some((item) => item.path === path)) {
+      toast("目标路径已存在，请不要重复添加", "warning");
+      return;
+    }
+
+    const nextTarget = {
+      id: `custom-skill-target-${Date.now()}`,
+      label,
+      path,
+      isBuiltin: false,
+      enabled: true,
+    };
+
+    setTargets((prev) => [...prev, nextTarget]);
+    setSelectedTargetId(nextTarget.id);
+    setPathDraft(nextTarget.path);
     setCustomLabel("");
     setCustomPath("");
     setShowCustomForm(false);
+  }
+
+  async function handleSearch(query: string) {
+    setSearchQuery(query);
+    setLoadingSearch(true);
+    setSearched(true);
+    try {
+      const q = query.trim() || 'skill';
+      const res = await searchOnlineSkills(q, 100);
+      setSearchResults(res.skills);
+      setSearchDuration(res.durationMs);
+    } catch (err) {
+      console.error('Failed to search skills', err);
+      toast('搜索技能失败', 'error');
+      setSearchResults([]);
+    } finally {
+      setLoadingSearch(false);
+    }
+  }
+
+  // Track which online skills are being installed
+  const [installingOnlineSkillIds, setInstallingOnlineSkillIds] = useState<Set<string>>(new Set());
+  // Track installation progress messages
+  const [installProgress, setInstallProgress] = useState<Record<string, string>>({});
+  // Track which skills have their command copied
+  const [copiedSkillIds, setCopiedSkillIds] = useState<Set<string>>(new Set());
+  // Track skill pending removal (confirmation state)
+  const [pendingRemoveSkill, setPendingRemoveSkill] = useState<string | null>(null);
+
+  function confirmRemoveSkill(skillName: string) {
+    setPendingRemoveSkill(skillName);
+  }
+
+  async function executeRemoveSkill(skillName: string) {
+    setPendingRemoveSkill(null);
+    await executeSkillsCommand(
+      { action: "remove", skillNames: [skillName] },
+      `已移除技能：${skillName}`,
+    );
+  }
+
+  function isOnlineSkillInstalled(skill: OnlineSkill): boolean {
+    const localNames = new Set(catalog?.skills.map((s) => s.name) ?? new Set());
+    const localDirs = new Set(catalog?.skills.map((s) => s.dir) ?? new Set());
+    const skillName = skill.name;
+    const skillId = skill.skillId;
+    // Check by name, skillId, or common directory patterns
+    return localNames.has(skillName) || localNames.has(skillId) || localDirs.has(skillId);
+  }
+
+  function getInstallCommand(skill: OnlineSkill): string {
+    return `npx -y skills add https://github.com/${skill.source} --agent * -g --skill ${skill.skillId} -y`;
+  }
+
+  async function handleCopyInstallCommand(skill: OnlineSkill) {
+    const command = getInstallCommand(skill);
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedSkillIds((prev) => {
+        const next = new Set(prev);
+        next.add(skill.skillId);
+        return next;
+      });
+      toast("命令已复制到剪贴板", "success");
+      
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedSkillIds((prev) => {
+          const next = new Set(prev);
+          next.delete(skill.skillId);
+          return next;
+        });
+      }, 2000);
+    } catch (error) {
+      // Fallback for older browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = command;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      toast("命令已复制到剪贴板", "success");
+      
+      setCopiedSkillIds((prev) => {
+        const next = new Set(prev);
+        next.add(skill.skillId);
+        return next;
+      });
+      
+      setTimeout(() => {
+        setCopiedSkillIds((prev) => {
+          const next = new Set(prev);
+          next.delete(skill.skillId);
+          return next;
+        });
+      }, 2000);
+    }
+  }
+
+  async function handleInstallOnlineSkill(skill: OnlineSkill) {
+    const skillKey = skill.skillId;
+    setInstallingOnlineSkillIds((prev) => {
+      const next = new Set(prev);
+      next.add(skillKey);
+      return next;
+    });
+    
+    // Set initial progress message
+    setInstallProgress((prev) => ({
+      ...prev,
+      [skillKey]: "⬇️ 正在下载技能...",
+    }));
+    
+    logger.info(`[技能安装] 开始安装: ${skill.name} (${skill.skillId})`);
+    logger.debug(`[技能安装] 来源: https://github.com/${skill.source}`);
+    console.log(`[技能安装] 开始安装: ${skill.name}`, {
+      skillId: skill.skillId,
+      source: skill.source,
+      url: `https://github.com/${skill.source}`,
+    });
+
+    try {
+      // Step 1: Install skill
+      logger.info(`[技能安装] 执行 npx skills add 命令...`);
+      setInstallProgress((prev) => ({
+        ...prev,
+        [skillKey]: "📦 正在安装技能到 ~/.agents/skills...",
+      }));
+      console.log(`[技能安装] 执行命令: npx -y skills add https://github.com/${skill.source} --agent * -g --skill ${skill.skillId} -y`);
+      
+      // Track previous skills to detect new additions
+      const previousDirs = new Set((catalog?.skills ?? []).map((s) => s.dir));
+      
+      const installResult = await runSkillsCommand({
+        action: "add",
+        source: `https://github.com/${skill.source}`,
+        skillNames: [skill.skillId],
+      });
+      
+      setCommandResult(installResult);
+      
+      // Check if installation was successful
+      if (!installResult.success) {
+        const errorMsg = installResult.stderr.trim() || "安装失败，未知错误";
+        logger.error(`[技能安装] 安装失败: ${skill.name}`);
+        logger.error(`[技能安装] stderr: ${errorMsg}`);
+        console.error(`[技能安装] 安装失败:`, {
+          skill: skill.name,
+          stderr: errorMsg,
+          stdout: installResult.stdout,
+        });
+        
+        setInstallProgress((prev) => ({
+          ...prev,
+          [skillKey]: `❌ 安装失败: ${errorMsg.substring(0, 100)}`,
+        }));
+        
+        toast(`${skill.name} 安装失败`, "error");
+        
+        // Clear progress after delay
+        setTimeout(() => {
+          setInstallProgress((prev) => {
+            const next = { ...prev };
+            delete next[skillKey];
+            return next;
+          });
+        }, 5000);
+        
+        return; // STOP here, don't continue to sync
+      }
+      
+      // Installation succeeded, refresh catalog
+      logger.success(`[技能安装] ${skill.name} 安装成功`);
+      if (installResult.stdout.trim()) {
+        logger.debug(`[技能安装] stdout: ${installResult.stdout.trim()}`);
+      }
+      
+      const nextCatalog = await scanLocalSkills();
+      const nextSources = { ...skillSources };
+      const addedDirs = nextCatalog.skills
+        .map((s) => s.dir)
+        .filter((dir) => !previousDirs.has(dir));
+      
+      if (addedDirs.length > 0) {
+        addedDirs.forEach((dir) => {
+          nextSources[dir] = {
+            sourceType: "github",
+            sourceValue: skill.source,
+            trackedAt: Date.now(),
+          };
+        });
+        setSkillSources(nextSources);
+        await refreshCatalog(nextSources);
+      } else {
+        await refreshCatalog();
+      }
+      
+      // Step 2: Auto-sync to enabled targets
+      if (enabledTargets.length > 0) {
+        logger.info(`[技能安装] 开始同步到 ${enabledTargets.length} 个目标...`);
+        console.log(`[技能安装] 同步目标: ${enabledTargets.map(t => t.label).join(', ')}`);
+        setInstallProgress((prev) => ({
+          ...prev,
+          [skillKey]: `🔄 正在同步到 ${enabledTargets.map(t => t.label).join(', ')}...`,
+        }));
+        
+        try {
+          const syncResult = await syncSkillTargets(enabledTargets);
+          const failed = syncResult.filter((item) => item.errors.length > 0);
+          
+          if (failed.length === 0) {
+            logger.success(`[技能安装] 同步完成: ${enabledTargets.map(t => t.label).join(', ')}`);
+            console.log(`[技能安装] 同步成功到: ${enabledTargets.map(t => t.label).join(', ')}`);
+            setInstallProgress((prev) => ({
+              ...prev,
+              [skillKey]: `✅ 已同步到 ${enabledTargets.map(t => t.label).join(', ')}`,
+            }));
+          } else {
+            logger.warn(`[技能安装] 同步部分失败: ${failed.map(f => f.label).join(', ')}`);
+            console.warn(`[技能安装] 同步失败: ${failed.map(f => f.label).join(', ')}`, failed);
+            setInstallProgress((prev) => ({
+              ...prev,
+              [skillKey]: `⚠️ 同步部分失败: ${failed.map(f => f.label).join(', ')}`,
+            }));
+          }
+          
+          await refreshTargetStatuses();
+        } catch (syncError) {
+          logger.error(`[技能安装] 同步失败: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+          console.error(`[技能安装] 同步失败:`, syncError);
+          setInstallProgress((prev) => ({
+            ...prev,
+            [skillKey]: "❌ 同步失败，请手动点击同步按钮",
+          }));
+        }
+      } else {
+        logger.warn(`[技能安装] 未启用任何同步目标，请手动同步`);
+        console.warn(`[技能安装] 未启用任何同步目标`);
+        setInstallProgress((prev) => ({
+          ...prev,
+          [skillKey]: "⚠️ 安装成功，但未启用同步目标",
+        }));
+      }
+      
+      // Show final success toast
+      const successMsg = `${skill.name} 安装完成${enabledTargets.length > 0 ? '并已同步' : '（请手动同步）'}`;
+      console.log(`[技能安装] ✅ ${successMsg}`);
+      toast(successMsg, "success");
+      
+      // Clear progress after delay
+      setTimeout(() => {
+        setInstallProgress((prev) => {
+          const next = { ...prev };
+          delete next[skillKey];
+          return next;
+        });
+      }, 3000);
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`[技能安装] 安装异常: ${errorMsg}`);
+      console.error(`[技能安装] 安装异常:`, error);
+      setInstallProgress((prev) => ({
+        ...prev,
+        [skillKey]: `❌ 安装失败: ${errorMsg}`,
+      }));
+      
+      toast(`${skill.name} 安装失败`, "error");
+      
+      // Clear progress after delay
+      setTimeout(() => {
+        setInstallProgress((prev) => {
+          const next = { ...prev };
+          delete next[skillKey];
+          return next;
+        });
+      }, 5000);
+    } finally {
+      setInstallingOnlineSkillIds((prev) => {
+        const next = new Set(prev);
+        next.delete(skillKey);
+        return next;
+      });
+    }
   }
 
   async function handleSyncEnabledTargets() {
@@ -463,7 +824,7 @@ export function SkillsPage({
       const failed = result.filter((item) => item.errors.length > 0);
       setCommandResult({
         action: "update",
-        command: ["symlink-sync"],
+        command: ["sync", "--targets", enabledTargets.map(t => t.label).join(", ")],
         cwd: catalog?.sourceDir ?? "",
         success: failed.length === 0,
         code: failed.length === 0 ? 0 : 1,
@@ -548,6 +909,21 @@ export function SkillsPage({
           });
         }
 
+        setSkillSources(nextSources);
+        await refreshCatalog(nextSources);
+      } else if (result.success && request.action === "remove") {
+        // Clean up source metadata for removed skills
+        const nextCatalog = await scanLocalSkills();
+        const currentDirs = new Set(nextCatalog.skills.map((s) => s.dir));
+        const nextSources = { ...skillSources };
+        
+        // Remove entries for directories that no longer exist
+        Object.keys(nextSources).forEach((dir) => {
+          if (!currentDirs.has(dir)) {
+            delete nextSources[dir];
+          }
+        });
+        
         setSkillSources(nextSources);
         await refreshCatalog(nextSources);
       } else {
@@ -723,26 +1099,15 @@ export function SkillsPage({
                         </div>
                         <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() =>
-                              void executeSkillsCommand(
-                                { action: "update" },
-                                "技能更新命令已执行",
-                              )
-                            }
-                            disabled={commandRunning}
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-700 text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                            title="更新技能"
-                            aria-label={`更新 ${skill.name}`}
+                            onClick={() => void openPath(skill.path)}
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-700 text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                            title="打开技能目录"
+                            aria-label={`打开 ${skill.name} 目录`}
                           >
-                            <RefreshCcw className="h-3.5 w-3.5" />
+                            <FolderOpen className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onClick={() =>
-                              void executeSkillsCommand(
-                                { action: "remove", skillNames: [skill.name] },
-                                `已触发移除：${skill.name}`,
-                              )
-                            }
+                            onClick={() => confirmRemoveSkill(skill.name)}
                             disabled={commandRunning}
                             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-red-500/30 text-red-200 transition-colors hover:border-red-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                             title="移除技能"
@@ -758,9 +1123,6 @@ export function SkillsPage({
                             v{skill.version}
                           </span>
                         )}
-                        <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400">
-                          {getSkillSourceLabel(skill.sourceType)}
-                        </span>
                         {skill.internal && (
                           <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-gray-400">
                             internal
@@ -795,13 +1157,6 @@ export function SkillsPage({
                           </span>
                         )}
                       </div>
-                      <button
-                        onClick={() => void openPath(skill.path)}
-                        className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-white"
-                      >
-                        打开
-                        <ExternalLink className="h-3 w-3" />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -855,86 +1210,142 @@ export function SkillsPage({
                 </div>
               </div>
 
-              <div className="mt-4 space-y-3">
-                {targets.map((target) => {
-                  const status = targetStatuses[target.id];
-                  const accent =
-                    BUILTIN_TARGETS.find((item) => item.id === target.id)
-                      ?.accentClass ??
-                    "border-gray-700 bg-gray-950 text-gray-300";
+              {selectedTarget ? (
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-center">
+                    <div className="min-w-0">
+                      <select
+                        value={selectedTargetId}
+                        onChange={(event) =>
+                          setSelectedTargetId(event.target.value)
+                        }
+                        aria-label="选择同步目标"
+                        className={FIELD_SELECT_CLASS}
+                      >
+                        {targets.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {target.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  return (
-                    <div
-                      key={target.id}
-                      className="rounded-xl border border-gray-800 bg-black/10 px-4 py-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                setTargetEnabled(target.id, !target.enabled)
-                              }
-                              className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                                target.enabled ? "bg-indigo-600" : "bg-gray-700"
-                              }`}
-                              role="switch"
-                              aria-checked={target.enabled}
-                            >
-                              <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                                  target.enabled
-                                    ? "translate-x-5"
-                                    : "translate-x-0"
-                                }`}
-                              />
-                            </button>
-                            <p className="text-sm font-medium text-gray-100">
-                              {target.label}
-                            </p>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] ${accent}`}
-                            >
-                              {target.isBuiltin ? "内置" : "自定义"}
-                            </span>
-                          </div>
-                          <p className="mt-2 truncate font-mono text-xs text-gray-400">
-                            {target.path}
-                          </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                            <span>
-                              {status?.exists ? "目录存在" : "目录缺失"}
-                            </span>
-                            <span>托管链接 {status?.managedCount ?? 0}</span>
-                            <span>损坏链接 {status?.brokenCount ?? 0}</span>
-                            <span>总条目 {status?.totalEntries ?? 0}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <input
+                        value={pathDraft}
+                        onChange={(event) => setPathDraft(event.target.value)}
+                        placeholder="~/tool/skills"
+                        aria-label="同步目标路径"
+                        className={FIELD_MONO_INPUT_CLASS}
+                      />
+                    </div>
+
+                    <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                      <button
+                        onClick={() => void handlePickTargetPath()}
+                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      >
+                        选择目录
+                      </button>
+                      <button
+                        onClick={handleSaveTargetPath}
+                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      >
+                        <FilePenLine className="h-4 w-4" />
+                        保存
+                      </button>
+                      <button
+                        onClick={() => void openPath(selectedTarget.path)}
+                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                        打开目录
+                      </button>
+                      {!selectedTarget.isBuiltin && (
+                        <button
+                          onClick={() =>
+                            handleDeleteCustomTarget(selectedTarget.id)
+                          }
+                          className="inline-flex h-11 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          删除
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-800 bg-black/10 px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
-                            onClick={() => void openPath(target.path)}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                            onClick={() =>
+                              setTargetEnabled(
+                                selectedTarget.id,
+                                !selectedTarget.enabled,
+                              )
+                            }
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                              selectedTarget.enabled
+                                ? "bg-indigo-600"
+                                : "bg-gray-700"
+                            }`}
+                            role="switch"
+                            aria-checked={selectedTarget.enabled}
                           >
-                            <FolderOpen className="h-3.5 w-3.5" />
-                            打开
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                                selectedTarget.enabled
+                                  ? "translate-x-5"
+                                  : "translate-x-0"
+                              }`}
+                            />
                           </button>
-                          {!target.isBuiltin && (
-                            <button
-                              onClick={() =>
-                                handleDeleteCustomTarget(target.id)
-                              }
-                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-500/30 px-2.5 text-xs text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              删除
-                            </button>
-                          )}
+                          <p className="text-sm font-medium text-gray-100">
+                            {selectedTarget.label}
+                          </p>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10px] ${selectedTargetAccent}`}
+                          >
+                            {selectedTarget.isBuiltin ? "内置" : "自定义"}
+                          </span>
+                          <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400">
+                            {selectedTarget.enabled ? "已启用" : "未启用"}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate font-mono text-xs text-gray-400">
+                          {selectedTarget.path}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                          <span>
+                            {selectedTargetStatus?.exists
+                              ? "目录存在"
+                              : "目录缺失"}
+                          </span>
+                          <span>
+                            托管链接 {selectedTargetStatus?.managedCount ?? 0}
+                          </span>
+                          <span>
+                            损坏链接 {selectedTargetStatus?.brokenCount ?? 0}
+                          </span>
+                          <span>
+                            总条目 {selectedTargetStatus?.totalEntries ?? 0}
+                          </span>
                         </div>
                       </div>
+
+                      <div className="rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs text-gray-400">
+                        已启用 {enabledTargets.length} / {targets.length} 个目标
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-5 text-sm text-gray-500">
+                  正在读取同步目标。
+                </div>
+              )}
 
               <div className="mt-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
@@ -999,15 +1410,14 @@ export function SkillsPage({
             <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-medium text-gray-100">在线安装</h3>
-                <HintTooltip content="统一通过 npx skills add / update / remove 操作 ~/.agents/skills；GitHub 安装和本地目录导入都走 add。" />
+                <HintTooltip content="浏览仓库查看技能列表、搜索 skills.sh 技能库，或通过 GitHub / 本地目录安装。安装后自动同步到已启用的目标工具。" />
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
+                  ["search", "搜索技能"],
                   ["github", "GitHub 安装"],
                   ["local", "本地目录导入"],
-                  ["update", "更新本地技能"],
-                  ["remove", "移除技能"],
                 ].map(([mode, label]) => (
                   <button
                     key={mode}
@@ -1024,6 +1434,118 @@ export function SkillsPage({
               </div>
 
               <div className="mt-4 space-y-3">
+                {/* Search mode */}
+                {installMode === "search" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                        <input
+                          value={searchQuery}
+                          onChange={(e) => void handleSearch(e.target.value)}
+                          placeholder="搜索 skills.sh 上的技能..."
+                          className={`${FIELD_MONO_INPUT_CLASS} pl-9`}
+                        />
+                      </div>
+                      {loadingSearch && (
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                      )}
+                    </div>
+
+                    {searchDuration !== null && (
+                      <p className="text-xs text-gray-500">
+                        {searchResults.length} 个结果 ({searchDuration}ms)
+                      </p>
+                    )}
+
+                    {!loadingSearch && searched && searchResults.length > 0 && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {searchResults.map((skill) => (
+                          <div
+                            key={skill.id}
+                            className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5"
+                          >
+                            {/* Progress message */}
+                            {installProgress[skill.skillId] && (
+                              <div className="mb-2 rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-2 py-1 text-[10px] text-indigo-200">
+                                {installProgress[skill.skillId]}
+                              </div>
+                            )}
+                            
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-gray-100">
+                                  {skill.name}
+                                </p>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                  <span className="rounded-full border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] text-gray-400">
+                                    {formatInstalls(skill.installs)}
+                                  </span>
+                                  <span className="truncate rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-200">
+                                    {skill.source}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {/* Action buttons on the right */}
+                              <div className="flex flex-shrink-0 flex-col gap-1">
+                                {isOnlineSkillInstalled(skill) ? (
+                                  <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-300">
+                                    <Check className="h-3 w-3" />
+                                    已安装
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => void handleInstallOnlineSkill(skill)}
+                                      disabled={commandRunning || installingOnlineSkillIds.has(skill.skillId)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-200 transition-colors hover:border-indigo-400/50 hover:text-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      {installingOnlineSkillIds.has(skill.skillId) ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Upload className="h-3 w-3" />
+                                      )}
+                                      {installingOnlineSkillIds.has(skill.skillId) ? "安装中" : "安装"}
+                                    </button>
+                                    <button
+                                      onClick={() => void handleCopyInstallCommand(skill)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                                      title="复制安装命令"
+                                    >
+                                      {copiedSkillIds.has(skill.skillId) ? (
+                                        <>
+                                          <Check className="h-3 w-3 text-emerald-400" />
+                                          <span className="text-emerald-400">已复制</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="h-3 w-3" />
+                                          命令
+                                        </>
+                                      )}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!loadingSearch && searched && searchResults.length === 0 && (
+                      <p className="text-xs text-gray-500">未找到匹配的技能</p>
+                    )}
+
+                    {!loadingSearch && !searched && (
+                      <p className="text-xs text-gray-500">
+                        输入关键词搜索 skills.sh 上的所有技能
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {installMode === "github" && (
                   <div className="space-y-3">
                     <input
@@ -1183,6 +1705,34 @@ export function SkillsPage({
           </div>
         )}
       </div>
+
+      {/* Remove skill confirmation dialog */}
+      {pendingRemoveSkill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-white">确认移除技能</h3>
+            <p className="mt-3 text-sm text-gray-400">
+              确定要移除技能 <span className="font-medium text-gray-200">"{pendingRemoveSkill}"</span> 吗？
+              <br />
+              <span className="text-xs text-gray-500">此操作将从 ~/.agents/skills 中删除该技能及其所有同步目标。</span>
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setPendingRemoveSkill(null)}
+                className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => void executeRemoveSkill(pendingRemoveSkill)}
+                className="flex-1 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200 transition-colors hover:border-red-400/50 hover:text-white"
+              >
+                确认移除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

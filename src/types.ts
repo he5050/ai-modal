@@ -126,3 +126,27 @@ export interface SkillSourceMeta {
   sourceValue?: string | null;
   trackedAt: number;
 }
+
+export interface OnlineSkill {
+  id: string;
+  skillId: string;
+  name: string;
+  installs: number;
+  source: string;
+}
+
+export interface OnlineSearchResponse {
+  query: string;
+  searchType: string;
+  skills: OnlineSkill[];
+  count: number;
+  durationMs: number;
+}
+
+export interface PopularSkillRepo {
+  owner: string;
+  repo: string;
+  label: string;
+  accentClass: string;
+  websiteUrl?: string;
+}

@@ -1,3 +1,5 @@
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -95,6 +97,55 @@ pub struct SkillsCommandResult {
     pub catalog_refreshed: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineSkill {
+    pub id: String,
+    pub name: String,
+    pub installs: i64,
+    pub skill_id: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchOnlineResult {
+    pub count: i64,
+    pub duration_ms: i64,
+    pub skills: Vec<OnlineSkill>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ApiSkill {
+    id: String,
+    #[serde(rename = "skillId")]
+    skill_id: String,
+    name: String,
+    installs: i64,
+    source: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ApiResponse {
+    query: String,
+    skills: Vec<ApiSkill>,
+    count: i64,
+    #[serde(rename = "duration_ms")]
+    duration_ms: i64,
+}
+
+impl ApiSkill {
+    fn into_online_skill(self) -> OnlineSkill {
+        OnlineSkill {
+            id: self.id,
+            skill_id: self.skill_id,
+            name: self.name,
+            installs: self.installs,
+            source: self.source,
+        }
+    }
+}
+
 fn home_dir() -> Result<PathBuf, String> {
     env::var("HOME")
         .map(PathBuf::from)
@@ -119,6 +170,16 @@ fn now_epoch_ms() -> u128 {
         .unwrap_or(0)
 }
 
+fn sanitize_update_catalogs_stderr(stderr: &str) -> String {
+    stderr
+        .lines()
+        .filter(|line| !line.contains("未配置 API Key，跳过 AI 丰富处理"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 fn is_hidden_name(name: &str) -> bool {
     name.starts_with('.')
 }
@@ -135,86 +196,137 @@ fn source_is_single_skill(source: &str, home: &Path) -> bool {
     let normalized = normalize_source_input(source, home);
     let path = PathBuf::from(&normalized);
     if path.is_absolute() {
-        return path.join("SKILL.md").exists();
+        // 如果路径本身有 SKILL.md，视为单技能
+        if path.join("SKILL.md").exists() {
+            return true;
+        }
+        // 检查是否包含多个子技能目录
+        return count_skill_subdirs(&path) <= 1;
     }
 
     normalized.contains("/tree/") && normalized.contains("/skills/")
 }
 
-fn source_needs_wildcard(source: &str) -> bool {
+/// 统计路径下包含 SKILL.md 的子目录数量
+fn count_skill_subdirs(path: &Path) -> usize {
+    let mut count = 0;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                if dir_name.starts_with('.') {
+                    continue;
+                }
+                if entry_path.join("SKILL.md").exists() {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn source_needs_wildcard(source: &str, home: &Path) -> bool {
     let trimmed = source.trim();
     if trimmed.is_empty() {
         return false;
     }
-    if trimmed.starts_with('/') || trimmed.starts_with("~/") {
-        return false;
+    // GitHub URL 需要通配符（除非是单技能 tree 链接）
+    if !trimmed.starts_with('/') && !trimmed.starts_with("~/") {
+        return !trimmed.contains("/tree/") || !trimmed.contains("/skills/");
     }
-
-    !trimmed.contains("/tree/")
+    // 本地路径：检查是否为多技能目录
+    let normalized = normalize_source_input(trimmed, home);
+    let path = PathBuf::from(&normalized);
+    if path.exists() && path.is_dir() {
+        // 如果目录本身没有 SKILL.md 但有多个子技能，需要通配符
+        if !path.join("SKILL.md").exists() && count_skill_subdirs(&path) > 1 {
+            return true;
+        }
+    }
+    false
 }
 
 fn parse_frontmatter(path: &Path) -> (String, String, Option<String>, Vec<String>, bool) {
     let text = fs::read_to_string(path).unwrap_or_default();
-    let mut name = String::new();
-    let mut description = String::new();
-    let mut version = None;
-    let mut categories = Vec::new();
-    let mut internal = false;
+    
+    // Find YAML frontmatter between --- markers
     let mut lines = text.lines();
-
     if lines.next().map(str::trim) != Some("---") {
-        return (name, description, version, categories, internal);
+        return (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), String::new(), None, Vec::new(), false);
     }
-
+    
+    let mut frontmatter_lines = Vec::new();
     for line in lines {
         let trimmed = line.trim();
         if trimmed == "---" {
             break;
         }
-        if let Some(value) = trimmed.strip_prefix("name:") {
-            name = value.trim().trim_matches('"').to_string();
-        } else if let Some(value) = trimmed.strip_prefix("description:") {
-            description = value.trim().trim_matches('"').to_string();
-        } else if let Some(value) = trimmed.strip_prefix("version:") {
-            let parsed = value.trim().trim_matches('"').to_string();
-            if !parsed.is_empty() {
-                version = Some(parsed);
+        frontmatter_lines.push(line.to_string());
+    }
+    
+    if frontmatter_lines.is_empty() {
+        return (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), String::new(), None, Vec::new(), false);
+    }
+    
+    let yaml_content = frontmatter_lines.join("\n");
+    
+    // Parse YAML using serde_yaml
+    match serde_yaml::from_str::<serde_yaml::Value>(&yaml_content) {
+        Ok(value) => {
+            let name = value.get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+            
+            let description = value.get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            
+            let version = value.get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty());
+            
+            let mut categories = Vec::new();
+            
+            // Parse category/tags
+            if let Some(cat) = value.get("category") {
+                if let Some(s) = cat.as_str() {
+                    categories.extend(s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()));
+                } else if let Some(arr) = cat.as_sequence() {
+                    categories.extend(arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())));
+                }
             }
-        } else if let Some(value) = trimmed.strip_prefix("category:") {
-            categories.extend(
-                value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|item| !item.is_empty())
-                    .map(str::to_string),
-            );
-        } else if let Some(value) = trimmed.strip_prefix("tags:") {
-            let parsed = value
-                .trim()
-                .trim_matches('[')
-                .trim_matches(']')
-                .split(',')
-                .map(str::trim)
-                .map(|item| item.trim_matches('"').trim_matches('\''))
-                .filter(|item| !item.is_empty())
-                .map(str::to_string)
-                .collect::<Vec<_>>();
-            categories.extend(parsed);
-        } else if let Some(value) = trimmed.strip_prefix("metadata:") {
-            if value.contains("internal") {
-                internal = true;
+            
+            if let Some(tags) = value.get("tags") {
+                if let Some(arr) = tags.as_sequence() {
+                    categories.extend(arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())));
+                }
             }
-        } else if let Some(value) = trimmed.strip_prefix("user-invokable:") {
-            if value.trim() == "false" {
-                internal = true;
-            }
+            
+            // Check for internal flag
+            let internal = value.get("metadata")
+                .and_then(|v| v.as_str())
+                .map(|s| s.contains("internal"))
+                .unwrap_or(false)
+                || value.get("user-invokable")
+                    .and_then(|v| v.as_bool())
+                    .map(|b| !b)
+                    .unwrap_or(false);
+            
+            categories.sort();
+            categories.dedup();
+            
+            (name, description, version, categories, internal)
+        }
+        Err(_) => {
+            // Fallback: use directory name if YAML parsing fails
+            (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), String::new(), None, Vec::new(), false)
         }
     }
-
-    categories.sort();
-    categories.dedup();
-
-    (name, description, version, categories, internal)
 }
 
 fn system_time_to_epoch_ms(time: SystemTime) -> Option<u64> {
@@ -430,7 +542,9 @@ pub async fn inspect_skill_targets(
                     if let Ok(metadata) = fs::symlink_metadata(&entry_path) {
                         if metadata.file_type().is_symlink() {
                             if let Ok(resolved) = resolve_symlink_target(&entry_path) {
-                                if resolved.to_string_lossy().starts_with(&source_dir_string) {
+                                // Exact match: resolved path should be source_dir/skill_dir
+                                let expected_source = source_dir.join(&entry_name);
+                                if paths_equal(&resolved, &expected_source) {
                                     managed_count += 1;
                                     if !resolved.exists() {
                                         broken_count += 1;
@@ -455,6 +569,42 @@ pub async fn inspect_skill_targets(
         .collect::<Vec<_>>();
 
     Ok(statuses)
+}
+
+/// 清理旧备份目录，保留最新的 max_keep 个
+fn cleanup_old_backups(target_path: &Path, max_keep: usize) {
+    let backup_root = target_path.join(".sync-backups");
+    if !backup_root.exists() {
+        return;
+    }
+
+    let mut backups = Vec::new();
+    if let Ok(entries) = fs::read_dir(&backup_root) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                // 只清理 skills-<timestamp> 格式的目录
+                if name.starts_with("skills-") {
+                    if let Ok(metadata) = fs::metadata(&entry_path) {
+                        if let Ok(modified) = metadata.modified() {
+                            backups.push((entry_path, modified));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 按修改时间降序排序
+    backups.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // 删除超出保留数量的备份
+    if backups.len() > max_keep {
+        for (path, _) in backups.iter().skip(max_keep) {
+            let _ = fs::remove_dir_all(path);
+        }
+    }
 }
 
 #[tauri::command]
@@ -515,6 +665,9 @@ pub async fn sync_skill_targets(
             .join(".sync-backups")
             .join(format!("skills-{}", now_epoch_ms()));
 
+        // Clean up old backups (keep only last 5)
+        cleanup_old_backups(&target_path, 5);
+
         for skill in &skills {
             let source_path = source_dir.join(&skill.dir);
             let target_skill_path = target_path.join(&skill.dir);
@@ -568,6 +721,35 @@ pub async fn sync_skill_targets(
             }
         }
 
+        // Clean up orphaned symlinks (skills that no longer exist in source)
+        let mut _cleaned_count = 0usize;
+        if let Ok(entries) = fs::read_dir(&target_path) {
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                let entry_name = entry.file_name().to_string_lossy().to_string();
+                
+                // Skip hidden files and backup directory
+                if entry_name.starts_with('.') {
+                    continue;
+                }
+                
+                // Check if this is a symlink to a skill that no longer exists in source
+                if let Ok(metadata) = fs::symlink_metadata(&entry_path) {
+                    if metadata.file_type().is_symlink() {
+                        // Check if this skill exists in source
+                        if !skills.iter().any(|s| s.dir == entry_name) {
+                            // This is an orphaned symlink, clean it up
+                            if let Err(error) = fs::remove_file(&entry_path) {
+                                errors.push(format!("清理孤立链接失败：{} ({error})", entry_name));
+                            } else {
+                                _cleaned_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         summaries.push(SyncSkillTargetResult {
             id: target.id,
             label: target.label,
@@ -604,11 +786,12 @@ pub async fn run_skills_command(
             command.push("add".to_string());
             command.push(source.clone());
             command.push("--agent".to_string());
-            command.push("universal".to_string());
+            command.push("*".to_string());
+            command.push("-g".to_string());
 
             let names = request.skill_names.unwrap_or_default();
             if names.is_empty() {
-                if source_needs_wildcard(&source) && !source_is_single_skill(&source, &home) {
+                if source_needs_wildcard(&source, &home) && !source_is_single_skill(&source, &home) {
                     command.push("--skill".to_string());
                     command.push("*".to_string());
                 }
@@ -665,6 +848,7 @@ pub async fn run_skills_command(
                 stdout.push_str("[update-catalogs]\n");
                 stdout.push_str(&refresh_stdout);
             }
+            let refresh_stderr = sanitize_update_catalogs_stderr(&refresh_stderr);
             if !refresh_stderr.trim().is_empty() {
                 if !stderr.trim().is_empty() {
                     stderr.push_str("\n\n");
@@ -684,5 +868,57 @@ pub async fn run_skills_command(
         stdout,
         stderr,
         catalog_refreshed,
+    })
+}
+
+#[tauri::command]
+pub async fn search_online_skills(
+    query: String,
+    limit: Option<u32>,
+    source: Option<String>,
+) -> Result<SearchOnlineResult, String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP client 创建失败：{e}"))?;
+
+    let limit = limit.unwrap_or(20).min(100);
+    let url = {
+        let base = format!(
+            "https://skills.sh/api/search?q={}&limit={}",
+            utf8_percent_encode(&query, NON_ALPHANUMERIC),
+            limit
+        );
+        if let Some(ref src) = source {
+            format!("{}&source={}", base, utf8_percent_encode(src, NON_ALPHANUMERIC))
+        } else {
+            base
+        }
+    };
+
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("skills.sh API 请求失败：{e}"))?;
+
+    if resp.status() == 401 || resp.status() == 403 {
+        return Err("skills.sh API 需要认证，请检查网络".to_string());
+    }
+
+    if !resp.status().is_success() {
+        return Err(format!("skills.sh API 返回错误：{}", resp.status()));
+    }
+
+    let api_resp: ApiResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 API 响应失败：{e}"))?;
+
+    Ok(SearchOnlineResult {
+        skills: api_resp.skills.into_iter().map(ApiSkill::into_online_skill).collect(),
+        count: api_resp.count,
+        duration_ms: api_resp.duration_ms,
     })
 }

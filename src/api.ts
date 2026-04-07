@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ModelResult,
+  OnlineSearchResponse,
+  OnlineSkill,
   SkillTargetConfig,
   SkillTargetStatus,
   SkillsCatalogSnapshot,
@@ -75,4 +77,16 @@ export async function runSkillsCommand(
   request: SkillsCommandRequest,
 ): Promise<SkillsCommandResult> {
   return invoke("run_skills_command", { request });
+}
+
+export async function searchOnlineSkills(
+  query: string,
+  limit = 20,
+  source?: string,
+): Promise<OnlineSearchResponse> {
+  return invoke("search_online_skills", {
+    query,
+    limit,
+    source: source ?? null,
+  });
 }

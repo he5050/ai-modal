@@ -8,7 +8,7 @@ use crate::commands::model::ModelResult;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const OPENROUTER_TITLE: &str = "AIModal";
-const TEST_PROMPT: &str = "现在的梵蒂冈的教皇是谁,你能为我做什么,别都叫你啥?我打算去洗车,我这边有两家一家离我有50米,另外一家我200米,我是否应该开车去";
+const TEST_PROMPT: &str = "现在的梵蒂冈的教皇是谁,你能为我做什么,别都叫你啥?我打算去洗车,我这边有两家一家离我有50米,另外一家离我200米,我是否应该开车去";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelProtocol {
