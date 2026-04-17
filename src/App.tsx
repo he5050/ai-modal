@@ -535,7 +535,6 @@ export default function App() {
           <SettingsPage
             debugEnabled={debugEnabled}
             onDebugChange={setDebugEnabled}
-            onDirtyChange={setEditingDirty}
           />
         )}
         {page === "rules" && (

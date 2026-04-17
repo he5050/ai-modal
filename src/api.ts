@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ModelResult,
   OnlineSearchResponse,
-  OnlineSkill,
   SkillTargetConfig,
   SkillTargetStatus,
   SkillsCatalogSnapshot,

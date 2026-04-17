@@ -20,14 +20,10 @@ export function getConcurrency(): number {
 interface Props {
   debugEnabled: boolean;
   onDebugChange: (v: boolean) => void;
-  onDirtyChange: (v: boolean) => void;
+  _onDirtyChange?: (v: boolean) => void;
 }
 
-export function SettingsPage({
-  debugEnabled,
-  onDebugChange,
-  onDirtyChange,
-}: Props) {
+export function SettingsPage({ debugEnabled, onDebugChange }: Props) {
   const [concurrency, setConcurrency] = useState<number>(getConcurrency);
 
   async function handleToggle() {

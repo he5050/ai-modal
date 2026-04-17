@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -340,7 +340,6 @@ export function SkillsPage({
     });
   }, [targets, targetsReady]);
 
-
   useEffect(() => {
     if (!targetsReady) return;
     void savePersistedJson(
@@ -400,12 +399,12 @@ export function SkillsPage({
     if (!targetsReady) return;
     void refreshTargetStatuses();
   }, [targets, targetsReady]);
-    // Auto-load top skills when switching to search tab
-    useEffect(() => {
-        if (installMode === "search" && !searched) {
-            void handleSearch("");
-        }
-    }, [installMode, searched]);
+  // Auto-load top skills when switching to search tab
+  useEffect(() => {
+    if (installMode === "search" && !searched) {
+      void handleSearch("");
+    }
+  }, [installMode, searched]);
 
   useEffect(() => {
     if (targets.length === 0) {
@@ -450,12 +449,6 @@ export function SkillsPage({
   const enabledTargets = targets.filter((item) => item.enabled);
   const selectedTarget =
     targets.find((item) => item.id === selectedTargetId) ?? null;
-  const selectedTargetStatus = selectedTarget
-    ? targetStatuses[selectedTarget.id]
-    : null;
-  const selectedTargetAccent =
-    BUILTIN_TARGETS.find((item) => item.id === selectedTarget?.id)
-      ?.accentClass ?? "border-gray-700 bg-gray-950 text-gray-300";
 
   function setTargetEnabled(id: string, enabled: boolean) {
     setTargets((prev) =>
@@ -533,32 +526,59 @@ export function SkillsPage({
     setShowCustomForm(false);
   }
 
-  async function handleSearch(query: string) {
+  // Debounce & abort controller for search
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    setLoadingSearch(true);
     setSearched(true);
-    try {
-      const q = query.trim() || 'skill';
-      const res = await searchOnlineSkills(q, 100);
-      setSearchResults(res.skills);
-      setSearchDuration(res.durationMs);
-    } catch (err) {
-      console.error('Failed to search skills', err);
-      toast('搜索技能失败', 'error');
-      setSearchResults([]);
-    } finally {
-      setLoadingSearch(false);
-    }
-  }
+
+    // Cancel previous pending request
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+
+    // Debounce: 300ms
+    searchTimerRef.current = setTimeout(async () => {
+      // Mark previous in-flight request as stale
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      setLoadingSearch(true);
+      try {
+        const q = query.trim() || "skill";
+        const res = await searchOnlineSkills(q, 100);
+        // Ignore result if a newer search was triggered
+        if (controller.signal.aborted) return;
+        setSearchResults(res.skills);
+        setSearchDuration(res.durationMs);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("Failed to search skills", err);
+        toast("搜索技能失败", "error");
+        setSearchResults([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingSearch(false);
+        }
+      }
+    }, 300);
+  }, []);
 
   // Track which online skills are being installed
-  const [installingOnlineSkillIds, setInstallingOnlineSkillIds] = useState<Set<string>>(new Set());
+  const [installingOnlineSkillIds, setInstallingOnlineSkillIds] = useState<
+    Set<string>
+  >(new Set());
   // Track installation progress messages
-  const [installProgress, setInstallProgress] = useState<Record<string, string>>({});
+  const [installProgress, setInstallProgress] = useState<
+    Record<string, string>
+  >({});
   // Track which skills have their command copied
   const [copiedSkillIds, setCopiedSkillIds] = useState<Set<string>>(new Set());
   // Track skill pending removal (confirmation state)
-  const [pendingRemoveSkill, setPendingRemoveSkill] = useState<string | null>(null);
+  const [pendingRemoveSkill, setPendingRemoveSkill] = useState<string | null>(
+    null,
+  );
 
   function confirmRemoveSkill(skillName: string) {
     setPendingRemoveSkill(skillName);
@@ -578,7 +598,11 @@ export function SkillsPage({
     const skillName = skill.name;
     const skillId = skill.skillId;
     // Check by name, skillId, or common directory patterns
-    return localNames.has(skillName) || localNames.has(skillId) || localDirs.has(skillId);
+    return (
+      localNames.has(skillName) ||
+      localNames.has(skillId) ||
+      localDirs.has(skillId)
+    );
   }
 
   function getInstallCommand(skill: OnlineSkill): string {
@@ -595,7 +619,7 @@ export function SkillsPage({
         return next;
       });
       toast("命令已复制到剪贴板", "success");
-      
+
       // Reset copied state after 2 seconds
       setTimeout(() => {
         setCopiedSkillIds((prev) => {
@@ -613,13 +637,13 @@ export function SkillsPage({
       document.execCommand("copy");
       document.body.removeChild(textArea);
       toast("命令已复制到剪贴板", "success");
-      
+
       setCopiedSkillIds((prev) => {
         const next = new Set(prev);
         next.add(skill.skillId);
         return next;
       });
-      
+
       setTimeout(() => {
         setCopiedSkillIds((prev) => {
           const next = new Set(prev);
@@ -637,13 +661,13 @@ export function SkillsPage({
       next.add(skillKey);
       return next;
     });
-    
+
     // Set initial progress message
     setInstallProgress((prev) => ({
       ...prev,
       [skillKey]: "⬇️ 正在下载技能...",
     }));
-    
+
     logger.info(`[技能安装] 开始安装: ${skill.name} (${skill.skillId})`);
     logger.debug(`[技能安装] 来源: https://github.com/${skill.source}`);
     console.log(`[技能安装] 开始安装: ${skill.name}`, {
@@ -659,19 +683,21 @@ export function SkillsPage({
         ...prev,
         [skillKey]: "📦 正在安装技能到 ~/.agents/skills...",
       }));
-      console.log(`[技能安装] 执行命令: npx -y skills add https://github.com/${skill.source} --agent * -g --skill ${skill.skillId} -y`);
-      
+      console.log(
+        `[技能安装] 执行命令: npx -y skills add https://github.com/${skill.source} --agent * -g --skill ${skill.skillId} -y`,
+      );
+
       // Track previous skills to detect new additions
       const previousDirs = new Set((catalog?.skills ?? []).map((s) => s.dir));
-      
+
       const installResult = await runSkillsCommand({
         action: "add",
         source: `https://github.com/${skill.source}`,
         skillNames: [skill.skillId],
       });
-      
+
       setCommandResult(installResult);
-      
+
       // Check if installation was successful
       if (!installResult.success) {
         const errorMsg = installResult.stderr.trim() || "安装失败，未知错误";
@@ -682,14 +708,14 @@ export function SkillsPage({
           stderr: errorMsg,
           stdout: installResult.stdout,
         });
-        
+
         setInstallProgress((prev) => ({
           ...prev,
           [skillKey]: `❌ 安装失败: ${errorMsg.substring(0, 100)}`,
         }));
-        
+
         toast(`${skill.name} 安装失败`, "error");
-        
+
         // Clear progress after delay
         setTimeout(() => {
           setInstallProgress((prev) => {
@@ -698,22 +724,22 @@ export function SkillsPage({
             return next;
           });
         }, 5000);
-        
+
         return; // STOP here, don't continue to sync
       }
-      
+
       // Installation succeeded, refresh catalog
       logger.success(`[技能安装] ${skill.name} 安装成功`);
       if (installResult.stdout.trim()) {
         logger.debug(`[技能安装] stdout: ${installResult.stdout.trim()}`);
       }
-      
+
       const nextCatalog = await scanLocalSkills();
       const nextSources = { ...skillSources };
       const addedDirs = nextCatalog.skills
         .map((s) => s.dir)
         .filter((dir) => !previousDirs.has(dir));
-      
+
       if (addedDirs.length > 0) {
         addedDirs.forEach((dir) => {
           nextSources[dir] = {
@@ -727,39 +753,52 @@ export function SkillsPage({
       } else {
         await refreshCatalog();
       }
-      
+
       // Step 2: Auto-sync to enabled targets
       if (enabledTargets.length > 0) {
         logger.info(`[技能安装] 开始同步到 ${enabledTargets.length} 个目标...`);
-        console.log(`[技能安装] 同步目标: ${enabledTargets.map(t => t.label).join(', ')}`);
+        console.log(
+          `[技能安装] 同步目标: ${enabledTargets.map((t) => t.label).join(", ")}`,
+        );
         setInstallProgress((prev) => ({
           ...prev,
-          [skillKey]: `🔄 正在同步到 ${enabledTargets.map(t => t.label).join(', ')}...`,
+          [skillKey]: `🔄 正在同步到 ${enabledTargets.map((t) => t.label).join(", ")}...`,
         }));
-        
+
         try {
           const syncResult = await syncSkillTargets(enabledTargets);
           const failed = syncResult.filter((item) => item.errors.length > 0);
-          
+
           if (failed.length === 0) {
-            logger.success(`[技能安装] 同步完成: ${enabledTargets.map(t => t.label).join(', ')}`);
-            console.log(`[技能安装] 同步成功到: ${enabledTargets.map(t => t.label).join(', ')}`);
+            logger.success(
+              `[技能安装] 同步完成: ${enabledTargets.map((t) => t.label).join(", ")}`,
+            );
+            console.log(
+              `[技能安装] 同步成功到: ${enabledTargets.map((t) => t.label).join(", ")}`,
+            );
             setInstallProgress((prev) => ({
               ...prev,
-              [skillKey]: `✅ 已同步到 ${enabledTargets.map(t => t.label).join(', ')}`,
+              [skillKey]: `✅ 已同步到 ${enabledTargets.map((t) => t.label).join(", ")}`,
             }));
           } else {
-            logger.warn(`[技能安装] 同步部分失败: ${failed.map(f => f.label).join(', ')}`);
-            console.warn(`[技能安装] 同步失败: ${failed.map(f => f.label).join(', ')}`, failed);
+            logger.warn(
+              `[技能安装] 同步部分失败: ${failed.map((f) => f.label).join(", ")}`,
+            );
+            console.warn(
+              `[技能安装] 同步失败: ${failed.map((f) => f.label).join(", ")}`,
+              failed,
+            );
             setInstallProgress((prev) => ({
               ...prev,
-              [skillKey]: `⚠️ 同步部分失败: ${failed.map(f => f.label).join(', ')}`,
+              [skillKey]: `⚠️ 同步部分失败: ${failed.map((f) => f.label).join(", ")}`,
             }));
           }
-          
+
           await refreshTargetStatuses();
         } catch (syncError) {
-          logger.error(`[技能安装] 同步失败: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+          logger.error(
+            `[技能安装] 同步失败: ${syncError instanceof Error ? syncError.message : String(syncError)}`,
+          );
           console.error(`[技能安装] 同步失败:`, syncError);
           setInstallProgress((prev) => ({
             ...prev,
@@ -774,12 +813,12 @@ export function SkillsPage({
           [skillKey]: "⚠️ 安装成功，但未启用同步目标",
         }));
       }
-      
+
       // Show final success toast
-      const successMsg = `${skill.name} 安装完成${enabledTargets.length > 0 ? '并已同步' : '（请手动同步）'}`;
+      const successMsg = `${skill.name} 安装完成${enabledTargets.length > 0 ? "并已同步" : "（请手动同步）"}`;
       console.log(`[技能安装] ✅ ${successMsg}`);
       toast(successMsg, "success");
-      
+
       // Clear progress after delay
       setTimeout(() => {
         setInstallProgress((prev) => {
@@ -788,7 +827,6 @@ export function SkillsPage({
           return next;
         });
       }, 3000);
-      
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error(`[技能安装] 安装异常: ${errorMsg}`);
@@ -797,9 +835,9 @@ export function SkillsPage({
         ...prev,
         [skillKey]: `❌ 安装失败: ${errorMsg}`,
       }));
-      
+
       toast(`${skill.name} 安装失败`, "error");
-      
+
       // Clear progress after delay
       setTimeout(() => {
         setInstallProgress((prev) => {
@@ -829,7 +867,11 @@ export function SkillsPage({
       const failed = result.filter((item) => item.errors.length > 0);
       setCommandResult({
         action: "update",
-        command: ["sync", "--targets", enabledTargets.map(t => t.label).join(", ")],
+        command: [
+          "sync",
+          "--targets",
+          enabledTargets.map((t) => t.label).join(", "),
+        ],
         cwd: catalog?.sourceDir ?? "",
         success: failed.length === 0,
         code: failed.length === 0 ? 0 : 1,
@@ -921,14 +963,14 @@ export function SkillsPage({
         const nextCatalog = await scanLocalSkills();
         const currentDirs = new Set(nextCatalog.skills.map((s) => s.dir));
         const nextSources = { ...skillSources };
-        
+
         // Remove entries for directories that no longer exist
         Object.keys(nextSources).forEach((dir) => {
           if (!currentDirs.has(dir)) {
             delete nextSources[dir];
           }
         });
-        
+
         setSkillSources(nextSources);
         await refreshCatalog(nextSources);
       } else {
@@ -1214,32 +1256,49 @@ export function SkillsPage({
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                   {targets.map((target) => {
                     const status = targetStatuses[target.id];
-                    const accent = BUILTIN_TARGETS.find((t) => t.id === target.id)?.accentClass ?? "border-gray-700 bg-gray-950 text-gray-300";
+                    const accent =
+                      BUILTIN_TARGETS.find((t) => t.id === target.id)
+                        ?.accentClass ??
+                      "border-gray-700 bg-gray-950 text-gray-300";
                     return (
                       <div
                         key={target.id}
                         className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5"
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${accent}`}>
+                          <span
+                            className={`rounded-full border px-1.5 py-0.5 text-[10px] ${accent}`}
+                          >
                             {target.label}
                           </span>
                           <button
-                            onClick={() => setTargetEnabled(target.id, !target.enabled)}
+                            onClick={() =>
+                              setTargetEnabled(target.id, !target.enabled)
+                            }
                             className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border border-transparent transition-colors ${target.enabled ? "bg-indigo-600" : "bg-gray-700"}`}
                             role="switch"
                             aria-checked={target.enabled}
                           >
-                            <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-200 ${target.enabled ? "translate-x-3" : "translate-x-0"}`} />
+                            <span
+                              className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-200 ${target.enabled ? "translate-x-3" : "translate-x-0"}`}
+                            />
                           </button>
                         </div>
                         <div className="mt-2 flex items-baseline gap-2 text-[10px] text-gray-500">
-                          <span className={status?.exists ? "text-emerald-400" : "text-red-400"}>
+                          <span
+                            className={
+                              status?.exists
+                                ? "text-emerald-400"
+                                : "text-red-400"
+                            }
+                          >
                             {status?.exists ? "存在" : "缺失"}
                           </span>
                           <span>{status?.managedCount ?? 0} 链接</span>
                           {(status?.brokenCount ?? 0) > 0 && (
-                            <span className="text-amber-400">{status?.brokenCount} 损坏</span>
+                            <span className="text-amber-400">
+                              {status?.brokenCount} 损坏
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1256,7 +1315,9 @@ export function SkillsPage({
                       value={selectedTargetId}
                       onChange={(event) => {
                         setSelectedTargetId(event.target.value);
-                        const t = targets.find((item) => item.id === event.target.value);
+                        const t = targets.find(
+                          (item) => item.id === event.target.value,
+                        );
                         if (t) setPathDraft(t.path);
                       }}
                       className={`w-36 ${FIELD_SELECT_CLASS}`}
@@ -1295,7 +1356,9 @@ export function SkillsPage({
                     </button>
                     {!selectedTarget.isBuiltin && (
                       <button
-                        onClick={() => handleDeleteCustomTarget(selectedTarget.id)}
+                        onClick={() =>
+                          handleDeleteCustomTarget(selectedTarget.id)
+                        }
                         className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1308,7 +1371,9 @@ export function SkillsPage({
 
               <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-200">自定义目标</p>
+                  <p className="text-sm font-medium text-gray-200">
+                    自定义目标
+                  </p>
                   {!showCustomForm ? (
                     <button
                       onClick={() => setShowCustomForm(true)}
@@ -1319,7 +1384,11 @@ export function SkillsPage({
                     </button>
                   ) : (
                     <button
-                      onClick={() => { setShowCustomForm(false); setCustomLabel(""); setCustomPath(""); }}
+                      onClick={() => {
+                        setShowCustomForm(false);
+                        setCustomLabel("");
+                        setCustomPath("");
+                      }}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                     >
                       取消
@@ -1346,7 +1415,8 @@ export function SkillsPage({
                           directory: true,
                           defaultPath: homePath || undefined,
                         });
-                        if (typeof selected === "string") setCustomPath(selected);
+                        if (typeof selected === "string")
+                          setCustomPath(selected);
                       }}
                       className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                     >
@@ -1429,7 +1499,7 @@ export function SkillsPage({
                                 {installProgress[skill.skillId]}
                               </div>
                             )}
-                            
+
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-medium text-gray-100">
@@ -1444,7 +1514,7 @@ export function SkillsPage({
                                   </span>
                                 </div>
                               </div>
-                              
+
                               {/* Action buttons on the right */}
                               <div className="flex flex-shrink-0 flex-col gap-1">
                                 {isOnlineSkillInstalled(skill) ? (
@@ -1455,26 +1525,43 @@ export function SkillsPage({
                                 ) : (
                                   <>
                                     <button
-                                      onClick={() => void handleInstallOnlineSkill(skill)}
-                                      disabled={commandRunning || installingOnlineSkillIds.has(skill.skillId)}
+                                      onClick={() =>
+                                        void handleInstallOnlineSkill(skill)
+                                      }
+                                      disabled={
+                                        commandRunning ||
+                                        installingOnlineSkillIds.has(
+                                          skill.skillId,
+                                        )
+                                      }
                                       className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-200 transition-colors hover:border-indigo-400/50 hover:text-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
-                                      {installingOnlineSkillIds.has(skill.skillId) ? (
+                                      {installingOnlineSkillIds.has(
+                                        skill.skillId,
+                                      ) ? (
                                         <Loader2 className="h-3 w-3 animate-spin" />
                                       ) : (
                                         <Upload className="h-3 w-3" />
                                       )}
-                                      {installingOnlineSkillIds.has(skill.skillId) ? "安装中" : "安装"}
+                                      {installingOnlineSkillIds.has(
+                                        skill.skillId,
+                                      )
+                                        ? "安装中"
+                                        : "安装"}
                                     </button>
                                     <button
-                                      onClick={() => void handleCopyInstallCommand(skill)}
+                                      onClick={() =>
+                                        void handleCopyInstallCommand(skill)
+                                      }
                                       className="inline-flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                                       title="复制安装命令"
                                     >
                                       {copiedSkillIds.has(skill.skillId) ? (
                                         <>
                                           <Check className="h-3 w-3 text-emerald-400" />
-                                          <span className="text-emerald-400">已复制</span>
+                                          <span className="text-emerald-400">
+                                            已复制
+                                          </span>
                                         </>
                                       ) : (
                                         <>
@@ -1492,9 +1579,13 @@ export function SkillsPage({
                       </div>
                     )}
 
-                    {!loadingSearch && searched && searchResults.length === 0 && (
-                      <p className="text-xs text-gray-500">未找到匹配的技能</p>
-                    )}
+                    {!loadingSearch &&
+                      searched &&
+                      searchResults.length === 0 && (
+                        <p className="text-xs text-gray-500">
+                          未找到匹配的技能
+                        </p>
+                      )}
 
                     {!loadingSearch && !searched && (
                       <p className="text-xs text-gray-500">
@@ -1593,7 +1684,8 @@ export function SkillsPage({
                         更新所有已安装的技能到最新版本
                       </p>
                       <p className="mt-1 text-xs text-amber-300/70">
-                        此操作将更新 ~/.agents/skills 目录下的所有技能，并刷新技能目录。
+                        此操作将更新 ~/.agents/skills
+                        目录下的所有技能，并刷新技能目录。
                       </p>
                     </div>
                     <button
@@ -1676,8 +1768,10 @@ export function SkillsPage({
                 )}
                 {!commandLogExpanded && commandResult && (
                   <div className="mt-2 flex items-center gap-2 text-xs">
-                    <span className={`rounded-full px-2 py-0.5 ${commandResult.success ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border border-red-500/30 bg-red-500/10 text-red-300'}`}>
-                      {commandResult.success ? '成功' : '失败'}
+                    <span
+                      className={`rounded-full px-2 py-0.5 ${commandResult.success ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border border-red-500/30 bg-red-500/10 text-red-300"}`}
+                    >
+                      {commandResult.success ? "成功" : "失败"}
                     </span>
                     <span className="font-mono text-gray-500">
                       {commandResult.command.join(" ")}
@@ -1701,9 +1795,15 @@ export function SkillsPage({
           <div className="mx-4 w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
             <h3 className="text-base font-semibold text-white">确认移除技能</h3>
             <p className="mt-3 text-sm text-gray-400">
-              确定要移除技能 <span className="font-medium text-gray-200">"{pendingRemoveSkill}"</span> 吗？
+              确定要移除技能{" "}
+              <span className="font-medium text-gray-200">
+                "{pendingRemoveSkill}"
+              </span>{" "}
+              吗？
               <br />
-              <span className="text-xs text-gray-500">此操作将从 ~/.agents/skills 中删除该技能及其所有同步目标。</span>
+              <span className="text-xs text-gray-500">
+                此操作将从 ~/.agents/skills 中删除该技能及其所有同步目标。
+              </span>
             </p>
             <div className="mt-5 flex gap-3">
               <button

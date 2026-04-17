@@ -534,7 +534,10 @@ export function ConfigPage({
         const parsed = Array.isArray(raw)
           ? raw
               .filter((item): item is ModelConfigRecord => {
-                return typeof item?.id === "string";
+                return (
+                  item != null &&
+                  typeof (item as Record<string, unknown>).id === "string"
+                );
               })
               .map((item) => ({
                 id: item.id,
@@ -1402,35 +1405,42 @@ export function ConfigPage({
 
                         <div className="mt-3 rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
                           <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span
-                              className={`rounded-full px-2.5 py-1 ${
-                                selectedModelConfig.lastTestResult?.available
-                                  ? "bg-emerald-500/15 text-emerald-300"
-                                  : selectedModelConfig.lastTestResult
-                                    ? "bg-red-500/15 text-red-300"
-                                    : "bg-gray-800 text-gray-400"
-                              }`}
-                            >
-                              {selectedModelConfig.lastTestResult
-                                ? selectedModelConfig.lastTestResult.available
-                                  ? "最近测试可用"
-                                  : "最近测试失败"
-                                : "尚未测试"}
-                            </span>
-                            {selectedModelConfig.lastTestAt && (
-                              <span className="text-gray-500">
-                                {new Date(
-                                  selectedModelConfig.lastTestAt,
-                                ).toLocaleString("zh-CN", { hour12: false })}
-                              </span>
-                            )}
-                            {selectedModelConfig.lastTestResult?.latency_ms !=
-                              null && (
-                              <span className="text-gray-500">
-                                {selectedModelConfig.lastTestResult.latency_ms}{" "}
-                                ms
-                              </span>
-                            )}
+                            {(() => {
+                              const result = selectedModelConfig.lastTestResult;
+                              return (
+                                <>
+                                  <span
+                                    className={`rounded-full px-2.5 py-1 ${
+                                      result?.available
+                                        ? "bg-emerald-500/15 text-emerald-300"
+                                        : result
+                                          ? "bg-red-500/15 text-red-300"
+                                          : "bg-gray-800 text-gray-400"
+                                    }`}
+                                  >
+                                    {result
+                                      ? result!.available
+                                        ? "最近测试可用"
+                                        : "最近测试失败"
+                                      : "尚未测试"}
+                                  </span>
+                                  {selectedModelConfig.lastTestAt != null && (
+                                    <span className="text-gray-500">
+                                      {new Date(
+                                        selectedModelConfig.lastTestAt!,
+                                      ).toLocaleString("zh-CN", {
+                                        hour12: false,
+                                      })}
+                                    </span>
+                                  )}
+                                  {result?.latency_ms != null && (
+                                    <span className="text-gray-500">
+                                      {result!.latency_ms} ms
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                           <div className="mt-2 flex items-start gap-1.5">
                             <span className="max-w-[540px] truncate text-xs text-gray-400">
