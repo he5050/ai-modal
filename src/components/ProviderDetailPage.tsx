@@ -159,6 +159,8 @@ export function ProviderDetailPage({
       available: false,
       latency_ms: null,
       error: null,
+      response_text: null,
+      supported_protocols: [],
       status: "pending",
     }));
     setLiveResults(initial);
@@ -202,6 +204,8 @@ export function ProviderDetailPage({
           available: false,
           latency_ms: null,
           error: String(err),
+          response_text: String(err),
+          supported_protocols: [],
           status: "done",
         };
         logger.error(

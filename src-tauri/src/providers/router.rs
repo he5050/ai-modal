@@ -69,6 +69,7 @@ pub async fn test_models(
                 latency_ms: None,
                 error: Some(format!("任务异常：{}", e)),
                 response_text: Some(format!("任务异常：{}", e)),
+                supported_protocols: Vec::new(),
             }),
         }
     }
@@ -138,52 +139,121 @@ async fn test_single_model_with_client(
     api_key: &str,
     model: &str,
 ) -> ModelResult {
-    let protocol = infer_request_protocol(base_url, model);
-    let url = build_test_url(base_url, protocol, model);
-    let body = build_test_body(protocol, model);
-    let start = Instant::now();
+    let protocols = determine_test_protocols(base_url, model);
+    let mut supported_protocols = Vec::new();
+    let mut last_error = None;
+    let mut last_response_text = None;
+    let mut total_latency_ms = 0u64;
+    let mut any_success = false;
 
-    let resp = match apply_auth(client.post(&url), protocol, api_key)
-        .json(&body)
-        .send()
-        .await
-    {
-        Ok(response) => response,
-        Err(e) => {
-            return ModelResult {
-                model: model.to_string(),
-                available: false,
-                latency_ms: None,
-                error: Some(classify_error(None, &e.to_string())),
-                response_text: Some(e.to_string()),
-            };
+    for protocol in protocols {
+        let url = build_test_url(base_url, protocol, model);
+        let body = build_test_body(protocol, model);
+        let start = Instant::now();
+
+        let resp = match apply_auth(client.post(&url), protocol, api_key)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                let err_msg = classify_error(None, &e.to_string());
+                last_error = Some(err_msg.clone());
+                last_response_text = Some(e.to_string());
+                continue;
+            }
+        };
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        total_latency_ms += latency_ms;
+        let status = resp.status().as_u16();
+        
+        // 尝试读取响应文本，如果失败则使用空字符串
+        let response_text = match resp.text().await {
+            Ok(text) => text,
+            Err(e) => format!("读取响应失败: {}", e),
+        };
+
+        if (200..300).contains(&status) {
+            supported_protocols.push(protocol_to_string(protocol));
+            any_success = true;
+            // 继续测试下一个协议，不提前返回
+        } else {
+            let err_msg = classify_error(Some(status), &response_text);
+            last_error = Some(err_msg);
+            last_response_text = Some(response_text);
+            // 对于 401/403/429 等认证或限流错误，通常不是协议不匹配，停止测试
+            if status == 401 || status == 403 || status == 429 {
+                break;
+            }
         }
-    };
+    }
 
-    let latency_ms = start.elapsed().as_millis() as u64;
-    let status = resp.status().as_u16();
-    let response_text = resp.text().await.unwrap_or_default();
+    ModelResult {
+        model: model.to_string(),
+        available: any_success,
+        latency_ms: if total_latency_ms > 0 { Some(total_latency_ms) } else { None },
+        error: if any_success { None } else { last_error },
+        response_text: if any_success { None } else { last_response_text },
+        supported_protocols,
+    }
+}
 
-    if (200..300).contains(&status) {
-        ModelResult {
-            model: model.to_string(),
-            available: true,
-            latency_ms: Some(latency_ms),
-            error: None,
-            response_text: Some(response_text),
+fn protocol_to_string(protocol: ModelProtocol) -> String {
+    match protocol {
+        ModelProtocol::OpenAi => "openai".to_string(),
+        ModelProtocol::OpenRouter => "openrouter".to_string(),
+        ModelProtocol::Claude => "claude".to_string(),
+        ModelProtocol::Gemini => "gemini".to_string(),
+    }
+}
+
+fn determine_test_protocols(base_url: &str, model: &str) -> Vec<ModelProtocol> {
+    let base_protocol = infer_protocol_from_base_url(base_url);
+    let model_protocol = infer_protocol_from_model(model);
+
+    match base_protocol {
+        // OpenRouter 统一走 OpenRouter 协议，不 fallback
+        ModelProtocol::OpenRouter => vec![ModelProtocol::OpenRouter],
+        // 对于 Claude/Gemini 专用 base_url，优先走对应协议，然后尝试 OpenAI
+        ModelProtocol::Claude => {
+            if model_protocol == ModelProtocol::Claude {
+                vec![ModelProtocol::Claude, ModelProtocol::OpenAi]
+            } else {
+                vec![ModelProtocol::Claude, ModelProtocol::OpenAi, ModelProtocol::Gemini]
+            }
         }
-    } else {
-        ModelResult {
-            model: model.to_string(),
-            available: false,
-            latency_ms: Some(latency_ms),
-            error: Some(classify_error(Some(status), &response_text)),
-            response_text: Some(response_text),
+        ModelProtocol::Gemini => {
+            if model_protocol == ModelProtocol::Gemini {
+                vec![ModelProtocol::Gemini, ModelProtocol::OpenAi]
+            } else {
+                vec![ModelProtocol::Gemini, ModelProtocol::OpenAi, ModelProtocol::Claude]
+            }
+        }
+        // 通用 OpenAI 兼容地址：按模型名推断优先，然后 fallback 其他协议
+        ModelProtocol::OpenAi => {
+            let mut protocols = Vec::new();
+            // 优先使用模型推断的协议
+            protocols.push(model_protocol);
+            // 然后尝试 OpenAI
+            if !protocols.contains(&ModelProtocol::OpenAi) {
+                protocols.push(ModelProtocol::OpenAi);
+            }
+            // 再尝试 Claude 和 Gemini
+            if !protocols.contains(&ModelProtocol::Claude) {
+                protocols.push(ModelProtocol::Claude);
+            }
+            if !protocols.contains(&ModelProtocol::Gemini) {
+                protocols.push(ModelProtocol::Gemini);
+            }
+            protocols
         }
     }
 }
 
 fn apply_auth(builder: RequestBuilder, protocol: ModelProtocol, api_key: &str) -> RequestBuilder {
+    let builder = builder.header("Accept", "application/json");
     match protocol {
         ModelProtocol::OpenAi => builder.bearer_auth(api_key),
         ModelProtocol::OpenRouter => builder

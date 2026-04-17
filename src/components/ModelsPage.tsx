@@ -872,6 +872,8 @@ export function DetailRow({
       available: false,
       latency_ms: null,
       error: null,
+      response_text: null,
+      supported_protocols: [],
       status: "pending",
     }));
     setLiveResults(initial);
@@ -893,9 +895,12 @@ export function DetailRow({
           model,
         );
         final[idx] = { ...res, status: "done" };
+        logger.debug(
+          `[${provider.name}] ${model} 支持的协议: ${JSON.stringify(res.supported_protocols)}`,
+        );
         if (res.available) {
           logger.success(
-            `[${provider.name}] ✓ ${model}  ${res.latency_ms != null ? res.latency_ms + "ms" : ""}`,
+            `[${provider.name}] ✓ ${model} 协议:${res.supported_protocols?.join(",") || "unknown"} ${res.latency_ms != null ? res.latency_ms + "ms" : ""}`,
           );
         } else {
           const detail = getResultDetails(res);
@@ -909,6 +914,8 @@ export function DetailRow({
           available: false,
           latency_ms: null,
           error: String(e),
+          response_text: String(e),
+          supported_protocols: [],
           status: "done",
         };
         logger.error(`[${provider.name}] ✗ ${model} 请求失败：${String(e)}`);
@@ -1014,6 +1021,30 @@ export function DetailRow({
                           {r.model}
                         </span>
                         {r.status === "done" && <CopyButton text={r.model} />}
+                        {r.status === "done" &&
+                          r.supported_protocols &&
+                          r.supported_protocols.length > 0 && (
+                            <span className="inline-flex items-center gap-1">
+                              {r.supported_protocols.map((proto) => (
+                                <span
+                                  key={proto}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                    proto === "openai"
+                                      ? "bg-blue-500/15 text-blue-400"
+                                      : proto === "claude"
+                                        ? "bg-purple-500/15 text-purple-400"
+                                        : proto === "gemini"
+                                          ? "bg-amber-500/15 text-amber-400"
+                                          : proto === "openrouter"
+                                            ? "bg-emerald-500/15 text-emerald-400"
+                                            : "bg-gray-700 text-gray-400"
+                                  }`}
+                                >
+                                  {proto.toUpperCase()}
+                                </span>
+                              ))}
+                            </span>
+                          )}
                       </div>
                     </td>
                     <td className="px-6 py-2">

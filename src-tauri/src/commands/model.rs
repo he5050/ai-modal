@@ -9,6 +9,8 @@ pub struct ModelResult {
     pub latency_ms: Option<u64>,
     pub error: Option<String>,
     pub response_text: Option<String>,
+    /// 该模型支持的协议列表，按优先级排序
+    pub supported_protocols: Vec<String>,
 }
 
 #[tauri::command]

@@ -341,6 +341,8 @@ export function DetectPage({
       available: false,
       latency_ms: null,
       error: null,
+      response_text: null,
+      supported_protocols: [],
       status: "pending",
     }));
     setLiveResults(initial);
@@ -378,6 +380,8 @@ export function DetectPage({
           available: false,
           latency_ms: null,
           error: String(e),
+          response_text: String(e),
+          supported_protocols: [],
           status: "done",
         };
         logger.error(`✗ ${model} 请求失败：${String(e)}`);
@@ -435,6 +439,7 @@ export function DetectPage({
         latency_ms: null,
         error: null,
         response_text: null,
+        supported_protocols: [],
         status: "pending",
       },
     ]);

@@ -7,7 +7,7 @@ export const DEBUG_KEY = "ai-modal-debug";
 export const DEBUG_DB_KEY = "debug_enabled";
 export const CONCURRENCY_KEY = "ai-modal-concurrency";
 export const CONCURRENCY_DB_KEY = "concurrency";
-export const DEFAULT_CONCURRENCY = 3;
+export const DEFAULT_CONCURRENCY = 5;
 export const MAX_CONCURRENCY = 20;
 
 export function getConcurrency(): number {

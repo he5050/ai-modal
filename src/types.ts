@@ -33,6 +33,8 @@ export interface ModelResult {
   latency_ms: number | null;
   error: string | null;
   response_text?: string | null;
+  /** 该模型支持的协议列表，如 ["openai", "claude", "gemini"] */
+  supported_protocols?: string[];
 }
 
 export interface ProviderLastResult {
