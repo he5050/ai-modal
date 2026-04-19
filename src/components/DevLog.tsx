@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
 import type { LogEntry } from "../lib/devlog"
 
 const LEVEL_STYLE: Record<LogEntry["level"], string> = {
@@ -84,7 +85,7 @@ export function DevLog() {
           {entries.length > 0 && (
             <button
               onClick={e => { e.stopPropagation(); setEntries([]); setFilter("all") }}
-              className="text-gray-600 hover:text-gray-300 transition-colors text-[10px]"
+              className={`${BUTTON_GHOST_CLASS} h-6 px-2 text-[10px] text-gray-500 hover:text-gray-300`}
             >
               清空
             </button>
@@ -100,10 +101,12 @@ export function DevLog() {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+              className={`rounded text-[10px] transition-colors ${
                 filter === f
-                  ? f === "all" ? "bg-gray-700 text-gray-200" : `${LEVEL_BADGE[f as LogEntry["level"]]} font-semibold`
-                  : "text-gray-600 hover:text-gray-400"
+                  ? f === "all"
+                    ? "bg-gray-700 px-2 py-0.5 text-gray-200"
+                    : `${LEVEL_BADGE[f as LogEntry["level"]]} px-2 py-0.5 font-semibold`
+                  : `${BUTTON_GHOST_CLASS} h-6 px-2 text-gray-500 hover:text-gray-300`
               }`}
             >
               {f === "all" ? `全部 (${entries.length})` :

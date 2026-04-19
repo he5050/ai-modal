@@ -22,6 +22,13 @@ import {
   ACTION_GROUP_BUTTON_INACTIVE_CLASS,
   ACTION_GROUP_WRAPPER_CLASS,
 } from "../lib/actionGroupStyles";
+import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_ICON_SM_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
 import type {
@@ -1074,7 +1081,7 @@ export function SkillsPage({
                 <button
                   onClick={() => void refreshCatalog()}
                   disabled={loadingCatalog}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   {loadingCatalog ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1089,7 +1096,7 @@ export function SkillsPage({
                       catalog?.sourceDir || `${homePath}/.agents/skills`,
                     )
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   <FolderOpen className="h-4 w-4" />
                   打开目录
@@ -1141,7 +1148,7 @@ export function SkillsPage({
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => void openPath(skill.path)}
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-700 text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                            className={BUTTON_ICON_SM_CLASS}
                             title="打开技能目录"
                             aria-label={`打开 ${skill.name} 目录`}
                           >
@@ -1150,7 +1157,7 @@ export function SkillsPage({
                           <button
                             onClick={() => confirmRemoveSkill(skill.name)}
                             disabled={commandRunning}
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-red-500/30 text-red-200 transition-colors hover:border-red-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${BUTTON_DANGER_OUTLINE_CLASS}`}
                             title="移除技能"
                             aria-label={`移除 ${skill.name}`}
                           >
@@ -1227,7 +1234,7 @@ export function SkillsPage({
                   <button
                     onClick={() => void refreshTargetStatuses()}
                     disabled={checkingTargets}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     {checkingTargets ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1239,7 +1246,7 @@ export function SkillsPage({
                   <button
                     onClick={() => void handleSyncEnabledTargets()}
                     disabled={syncing || enabledTargets.length === 0}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     {syncing ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1336,20 +1343,20 @@ export function SkillsPage({
                     />
                     <button
                       onClick={() => void handlePickTargetPath()}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                     >
                       选择目录
                     </button>
                     <button
                       onClick={handleSaveTargetPath}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 text-sm text-indigo-200 transition-colors hover:border-indigo-400/50 hover:text-indigo-100"
+                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                     >
                       <FilePenLine className="h-4 w-4" />
                       保存
                     </button>
                     <button
                       onClick={() => void openPath(selectedTarget.path)}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                     >
                       <FolderOpen className="h-4 w-4" />
                       打开
@@ -1359,7 +1366,7 @@ export function SkillsPage({
                         onClick={() =>
                           handleDeleteCustomTarget(selectedTarget.id)
                         }
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
+                        className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                       >
                         <Trash2 className="h-4 w-4" />
                         删除
@@ -1377,7 +1384,7 @@ export function SkillsPage({
                   {!showCustomForm ? (
                     <button
                       onClick={() => setShowCustomForm(true)}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
+                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} h-8 px-3 text-sm`}
                     >
                       <Plus className="h-3.5 w-3.5" />
                       新增
@@ -1389,7 +1396,7 @@ export function SkillsPage({
                         setCustomLabel("");
                         setCustomPath("");
                       }}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      className={`${BUTTON_SECONDARY_CLASS} h-8 px-3 text-sm`}
                     >
                       取消
                     </button>

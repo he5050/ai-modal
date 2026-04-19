@@ -35,6 +35,16 @@ import {
   FIELD_MONO_INPUT_CLASS,
   FIELD_SELECT_CLASS,
 } from "../lib/formStyles";
+import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_GHOST_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_MD_CLASS,
+  BUTTON_SIZE_SM_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
 import type { RulePath } from "../types";
@@ -306,11 +316,7 @@ function ConfirmModal({
           <button
             onClick={onPrimary}
             disabled={busy}
-            className={`flex w-full items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              danger
-                ? "bg-red-500 text-white hover:bg-red-400"
-                : "bg-indigo-600 text-white hover:bg-indigo-500"
-            }`}
+            className={`flex w-full ${danger ? BUTTON_DANGER_CLASS : BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
           >
             {primaryLabel}
           </button>
@@ -318,7 +324,7 @@ function ConfirmModal({
             <button
               onClick={onSecondary}
               disabled={busy}
-              className="flex w-full items-center justify-center rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className={`flex w-full ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
             >
               {secondaryLabel}
             </button>
@@ -328,7 +334,7 @@ function ConfirmModal({
           <div className="mt-4 flex justify-end">
             <button
               onClick={onTertiary}
-              className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
             >
               {tertiaryLabel}
             </button>
@@ -788,7 +794,7 @@ export function RulesPage({
                 <div className="flex flex-nowrap items-center gap-2">
                   <button
                     onClick={handlePickCurrentPath}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
                     {selectedTool.kind === "directory"
                       ? "选择目录"
@@ -796,14 +802,14 @@ export function RulesPage({
                   </button>
                   <button
                     onClick={handleSavePath}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
                     <FilePenLine className="h-4 w-4" />
                     保存
                   </button>
                   <button
                     onClick={handleOpenDirectory}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
                     <FolderOpen className="h-4 w-4" />
                     打开目录
@@ -811,7 +817,7 @@ export function RulesPage({
                   <button
                     onClick={handleOpenFile}
                     disabled={!fileExists}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
                     <ExternalLink className="h-4 w-4" />
                     文件
@@ -819,7 +825,7 @@ export function RulesPage({
                   {!selectedTool.isBuiltin && (
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="inline-flex h-11 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
+                      className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                     >
                       <Trash2 className="h-4 w-4" />
                       删除
@@ -843,7 +849,7 @@ export function RulesPage({
                       {!showCustomForm && (
                         <button
                           onClick={() => setShowCustomForm(true)}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
+                          className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                         >
                           <Plus className="h-4 w-4" />
                           新增
@@ -886,7 +892,7 @@ export function RulesPage({
                             setCustomLabel("");
                             setCustomPath("");
                           }}
-                          className="inline-flex h-8 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
+                          className={`${BUTTON_GHOST_CLASS} h-8 px-2 text-sm text-gray-500 hover:text-gray-300`}
                         >
                           取消
                         </button>
@@ -914,13 +920,13 @@ export function RulesPage({
                         </div>
                         <button
                           onClick={handlePickCustomPath}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-gray-700 bg-black/10 px-3 text-sm text-gray-200 transition-colors hover:border-indigo-300/55 hover:bg-indigo-400/12 hover:text-white"
+                          className={`${BUTTON_SECONDARY_CLASS} h-10 px-3 text-sm`}
                         >
                           选择文件
                         </button>
                         <button
                           onClick={handleAddCustomPath}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 text-sm text-emerald-100 transition-colors hover:border-emerald-300/70 hover:bg-emerald-400/18 hover:text-white"
+                          className={`${BUTTON_ACCENT_OUTLINE_CLASS} h-10 px-3 text-sm`}
                         >
                           保存
                         </button>
@@ -1006,7 +1012,7 @@ export function RulesPage({
                       disabled={
                         !contentDraft || selectedTool.kind === "directory"
                       }
-                      className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
                       title="格式化 Markdown"
                     >
                       <WandSparkles className="h-4 w-4" />
@@ -1015,7 +1021,7 @@ export function RulesPage({
                     <button
                       onClick={handleCopy}
                       disabled={!contentDraft}
-                      className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
                     >
                       <Copy className="h-4 w-4" />
                       复制
@@ -1023,7 +1029,7 @@ export function RulesPage({
                     <button
                       onClick={handleSaveContent}
                       disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
                     >
                       <Save className="h-4 w-4" />
                       保存

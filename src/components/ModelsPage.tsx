@@ -16,6 +16,14 @@ import { Tooltip } from "./Tooltip";
 import { toast } from "../lib/toast";
 import { logger } from "../lib/devlog";
 import {
+  BUTTON_ICON_MD_CLASS,
+  BUTTON_ICON_GHOST_SM_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
+import { openExternalUrl } from "../lib/openExternalUrl";
+import {
   ACTION_GROUP_BUTTON_ACTIVE_CLASS,
   ACTION_GROUP_BUTTON_BASE_CLASS,
   ACTION_GROUP_BUTTON_INACTIVE_CLASS,
@@ -398,14 +406,14 @@ export function QuickTestDialog({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopyEnv}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                  className={`${BUTTON_SECONDARY_CLASS} px-3 py-2 text-sm`}
                 >
                   <Copy className="h-4 w-4" />
                   复制终端变量 + 启动命令
                 </button>
                 <button
                   onClick={handleCopySnippet}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                  className={`${BUTTON_SECONDARY_CLASS} px-3 py-2 text-sm`}
                 >
                   <TerminalSquare className="h-4 w-4" />
                   复制 curl 回退命令
@@ -415,7 +423,7 @@ export function QuickTestDialog({
           </div>
           <button
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            className={BUTTON_ICON_MD_CLASS}
             aria-label="关闭"
             title="关闭"
           >
@@ -1213,14 +1221,14 @@ export function DetailRow({
             <button
               onClick={handleTest}
               disabled={testing || !!singleTestingModel}
-              className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
               {testing ? "检测中..." : "一键测试"}
             </button>
             <button
               onClick={() => onOpenQuickTest(provider)}
               disabled={!provider.baseUrl.trim() || !provider.apiKey.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
               <TerminalSquare className="h-3.5 w-3.5" />
               生成终端测试
@@ -2062,8 +2070,8 @@ export function ModelsPage({
                               message="已复制 Base URL"
                             />
                             <button
-                              onClick={() => void openPath(p.baseUrl)}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+                              onClick={() => void openExternalUrl(p.baseUrl)}
+                              className={BUTTON_ICON_GHOST_SM_CLASS}
                               title="浏览器打开 Base URL"
                               aria-label="浏览器打开 Base URL"
                             >

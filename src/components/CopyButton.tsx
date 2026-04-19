@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { Copy, Check } from "lucide-react"
 import { animate, spring } from "animejs"
+import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
 import { toast } from "../lib/toast"
 import { Tooltip } from "./Tooltip"
 
@@ -35,7 +36,7 @@ export function CopyButton({ text, message = "已复制到剪贴板" }: { text: 
       <button
         ref={btnRef}
         onClick={handleCopy}
-        className="text-gray-500 hover:text-gray-300 transition-colors"
+        className={`${BUTTON_GHOST_CLASS} h-7 w-7 rounded-md p-0 text-gray-500 hover:text-gray-300`}
       >
         {copied ? (
           <Check className="w-3.5 h-3.5 text-emerald-400" />

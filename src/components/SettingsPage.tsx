@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BUTTON_ICON_SM_CLASS } from "../lib/buttonStyles";
 import { savePersistedJson } from "../lib/persistence";
 import { HintTooltip } from "./HintTooltip";
 import { toast } from "../lib/toast";
@@ -110,7 +111,7 @@ export function SettingsPage({ debugEnabled, onDebugChange }: Props) {
                     void handleConcurrencyChange(Math.max(1, concurrency - 1))
                   }
                   disabled={concurrency <= 1}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-700 bg-gray-800 text-base leading-none text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-30"
+                  className={BUTTON_ICON_SM_CLASS}
                 >
                   −
                 </button>
@@ -124,7 +125,7 @@ export function SettingsPage({ debugEnabled, onDebugChange }: Props) {
                     )
                   }
                   disabled={concurrency >= MAX_CONCURRENCY}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-700 bg-gray-800 text-base leading-none text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-30"
+                  className={BUTTON_ICON_SM_CLASS}
                 >
                   +
                 </button>

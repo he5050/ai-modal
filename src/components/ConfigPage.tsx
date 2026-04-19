@@ -31,6 +31,16 @@ import {
 } from "lucide-react";
 import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_GHOST_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_MD_CLASS,
+  BUTTON_SIZE_SM_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
+import {
   formatConfigContent,
   getSupportedConfigFormatsLabel,
   isSupportedConfigFormat,
@@ -267,8 +277,8 @@ function ConfirmModal({
 }: ConfirmModalProps) {
   const primaryButtonClass =
     primaryTone === "danger"
-      ? "border border-red-500/35 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-white"
-      : "bg-indigo-600 text-white hover:bg-indigo-500";
+      ? BUTTON_DANGER_OUTLINE_CLASS
+      : BUTTON_PRIMARY_CLASS;
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
@@ -300,7 +310,7 @@ function ConfirmModal({
           {tertiaryLabel && onTertiary && (
             <button
               onClick={onTertiary}
-              className="flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+              className={`flex w-full rounded-xl px-4 py-3 text-sm font-semibold ${BUTTON_PRIMARY_CLASS}`}
             >
               {tertiaryLabel}
             </button>
@@ -309,7 +319,7 @@ function ConfirmModal({
             {secondaryLabel && onSecondary && (
               <button
                 onClick={onSecondary}
-                className="flex w-full items-center justify-center rounded-xl border border-gray-700 bg-gray-900/80 px-4 py-2.5 text-sm font-medium text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-900 hover:text-white"
+                className={`flex w-full bg-gray-900/80 ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
                 {secondaryLabel}
               </button>
@@ -987,7 +997,7 @@ export function ConfigPage({
                 <div className="flex flex-nowrap items-center gap-2">
                   <button
                     onClick={handleOpenDirectory}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
                     <FolderOpen className="h-4 w-4" />
                     打开目录
@@ -995,7 +1005,7 @@ export function ConfigPage({
                   <button
                     onClick={handleOpenFile}
                     disabled={!activeFileExists}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
                     <ExternalLink className="h-4 w-4" />
                     文件
@@ -1003,7 +1013,7 @@ export function ConfigPage({
                   {!selectedFile.isBuiltin && (
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="inline-flex h-11 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
+                      className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                     >
                       <Trash2 className="h-4 w-4" />
                       删除
@@ -1026,7 +1036,7 @@ export function ConfigPage({
                     {!showAddFileForm && (
                       <button
                         onClick={() => setShowAddFileForm(true)}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
+                        className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                       >
                         <Plus className="h-4 w-4" />
                         添加文件
@@ -1068,7 +1078,7 @@ export function ConfigPage({
                             setShowAddFileForm(false);
                             setNewRelativePath("");
                           }}
-                          className="inline-flex h-8 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
+                          className={`${BUTTON_GHOST_CLASS} h-8 px-2 text-sm text-gray-500 hover:text-gray-300`}
                         >
                           取消
                         </button>
@@ -1086,7 +1096,7 @@ export function ConfigPage({
                         </div>
                         <button
                           onClick={handleAddGroupFile}
-                          className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                         >
                           保存
                         </button>
@@ -1487,7 +1497,7 @@ export function ConfigPage({
                     <button
                       onClick={handleFormat}
                       disabled={!activeContentDraft}
-                      className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
                       title="格式化配置"
                     >
                       <WandSparkles className="h-4 w-4" />
@@ -1496,7 +1506,7 @@ export function ConfigPage({
                     <button
                       onClick={handleCopy}
                       disabled={!activeContentDraft}
-                      className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
                     >
                       <Copy className="h-4 w-4" />
                       复制
@@ -1504,7 +1514,7 @@ export function ConfigPage({
                     <button
                       onClick={handleSaveContent}
                       disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
                     >
                       <Save className="h-4 w-4" />
                       保存

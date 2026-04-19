@@ -497,6 +497,7 @@ export default function App() {
             }
             onBack={() => handlePageChange("models")}
             onEdit={handleEditFromList}
+            onDelete={handleDeleteProvider}
             onSaveResult={handleSaveResult}
           />
         )}

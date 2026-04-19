@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Eye, EyeOff, Save, X } from "lucide-react";
 import { testModelConfig } from "../api";
+import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_MD_CLASS,
+} from "../lib/buttonStyles";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import { logger } from "../lib/devlog";
@@ -636,7 +641,7 @@ export function ModelConfigSection({
           />
           <button
             onClick={() => void handleSaveModelConfig()}
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
           >
             <Save className="h-4 w-4" />
             保存
@@ -649,7 +654,7 @@ export function ModelConfigSection({
               !modelConfig.apiKey.trim() ||
               !modelConfig.model.trim()
             }
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
           >
             测试
           </button>

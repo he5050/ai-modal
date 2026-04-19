@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, TerminalSquare } from "lucide-react";
+import { ArrowLeft, ExternalLink, TerminalSquare, Trash2 } from "lucide-react";
 import { animate, spring } from "animejs";
 import { listModelsByProvider, testSingleModelByProvider } from "../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../types";
@@ -25,6 +25,15 @@ import {
   getProtocolSupportState,
   normalizeSupportedProtocolTag,
 } from "./ProtocolTestUI";
+import {
+  BUTTON_DANGER_CLASS,
+  BUTTON_ICON_GHOST_MD_CLASS,
+  BUTTON_ICON_MD_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
+import { openExternalUrl } from "../lib/openExternalUrl";
 import { toast } from "../lib/toast";
 import { logger } from "../lib/devlog";
 import { getConcurrency } from "./SettingsPage";
@@ -61,6 +70,7 @@ interface Props {
   provider: Provider | null;
   onBack: () => void;
   onEdit: (provider: Provider) => void;
+  onDelete: (id: string) => void;
   onSaveResult: (id: string, result: ProviderLastResult) => void;
 }
 
@@ -68,6 +78,7 @@ export function ProviderDetailPage({
   provider,
   onBack,
   onEdit,
+  onDelete,
   onSaveResult,
 }: Props) {
   const [testing, setTesting] = useState(false);
@@ -88,6 +99,7 @@ export function ProviderDetailPage({
     null,
   );
   const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -108,6 +120,7 @@ export function ProviderDetailPage({
     setLiveResults([]);
     setQuickTestTarget(null);
     setDetailDialogResult(null);
+    setDeleteConfirmOpen(false);
   }, [provider?.id]);
 
   if (!provider) {
@@ -116,7 +129,7 @@ export function ProviderDetailPage({
         <div className="shrink-0 px-6 pb-6">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             返回模型列表
@@ -402,7 +415,7 @@ export function ProviderDetailPage({
           <div className="space-y-4">
             <button
               onClick={onBack}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               返回模型列表
@@ -419,14 +432,21 @@ export function ProviderDetailPage({
           <div className="flex items-center gap-2">
             <button
               onClick={() => onEdit(currentProvider)}
-              className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
-              编辑接口
+              编辑
+            </button>
+            <button
+              onClick={() => setDeleteConfirmOpen(true)}
+              className={`${BUTTON_DANGER_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              删除
             </button>
             <button
               onClick={handleTest}
               disabled={testing}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
               {testing ? "检测中..." : "一键测试"}
             </button>
@@ -436,7 +456,7 @@ export function ProviderDetailPage({
                 !currentProvider.baseUrl.trim() ||
                 !currentProvider.apiKey.trim()
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
               <TerminalSquare className="h-3.5 w-3.5" />
               生成终端测试
@@ -459,6 +479,14 @@ export function ProviderDetailPage({
                 text={currentProvider.baseUrl}
                 message="已复制 Base URL"
               />
+              <button
+                onClick={() => void openExternalUrl(currentProvider.baseUrl)}
+                className={BUTTON_ICON_GHOST_MD_CLASS}
+                title="浏览器打开 Base URL"
+                aria-label="浏览器打开 Base URL"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
             </div>
           </div>
           <div className="rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
@@ -693,6 +721,38 @@ export function ProviderDetailPage({
           provider={quickTestTarget}
           onClose={() => setQuickTestTarget(null)}
         />
+      )}
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-white">确认删除</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              确定要删除当前接口{" "}
+              <span className="font-medium text-gray-200">
+                {currentProvider.name}
+              </span>
+              吗？此操作不可撤销。
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirmOpen(false)}
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  onDelete(currentProvider.id);
+                  setDeleteConfirmOpen(false);
+                  toast(`「${currentProvider.name}」已删除`, "info");
+                }}
+                className={`${BUTTON_DANGER_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {retestScopeDialogOpen && currentProvider.lastResult?.results && (
         <RetestScopeDialog

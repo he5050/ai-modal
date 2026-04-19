@@ -3,6 +3,7 @@ import { listenToast } from "../lib/toast"
 import type { ToastItem } from "../lib/toast"
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react"
 import { animate, spring } from "animejs"
+import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
 
 const ICONS = {
   success: <CheckCircle className="w-4 h-4 text-emerald-400" />,
@@ -66,7 +67,7 @@ function ToastEl({ item, onRemove }: { item: ToastItem; onRemove: (id: string) =
     >
       {ICONS[item.type]}
       <span className="flex-1">{item.message}</span>
-      <button onClick={handleRemove} className="ml-auto text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0">
+      <button onClick={handleRemove} className={`ml-auto flex-shrink-0 ${BUTTON_GHOST_CLASS} h-7 w-7 rounded-md p-0 text-gray-500 hover:text-gray-300`}>
         <X className="w-3.5 h-3.5" />
       </button>
     </div>

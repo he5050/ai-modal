@@ -1,5 +1,12 @@
 import { Check, X } from "lucide-react";
 import type { ModelResult, ProtocolTestResult } from "../types";
+import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_ICON_MD_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
 import { CopyButton } from "./CopyButton";
 
 export type ModelTestProtocol = "openApi" | "claude" | "gemini";
@@ -150,7 +157,7 @@ export function ModelProtocolDialog({
           </div>
           <button
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            className={BUTTON_ICON_MD_CLASS}
             aria-label="关闭"
             title="关闭"
           >
@@ -166,11 +173,11 @@ export function ModelProtocolDialog({
                 key={protocol}
                 type="button"
                 onClick={() => onToggle(protocol)}
-                className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                  checked
-                    ? "border-indigo-500/40 bg-indigo-500/10"
-                    : "border-gray-700 bg-gray-950/70 hover:border-gray-600 hover:bg-gray-950"
-                }`}
+            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+              checked
+                ? "border-indigo-500/40 bg-indigo-500/10"
+                : "border-gray-700 bg-gray-950/70 hover:border-gray-600 hover:bg-gray-950"
+            }`}
               >
                 <div>
                   <p className="text-sm font-medium text-white">
@@ -196,14 +203,14 @@ export function ModelProtocolDialog({
         <div className="mt-6 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
             取消
           </button>
           <button
             onClick={onConfirm}
             disabled={testing || selectedProtocols.length === 0}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
+            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
             {testing ? "测试中..." : "开始测试"}
           </button>
@@ -235,7 +242,7 @@ export function ProtocolResultDetailDialog({
           </div>
           <button
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            className={BUTTON_ICON_MD_CLASS}
             aria-label="关闭"
             title="关闭"
           >
@@ -316,7 +323,7 @@ export function RetestScopeDialog({
         <div className="mt-5 space-y-2.5">
           <button
             onClick={onAll}
-            className="flex w-full items-center justify-between rounded-xl border border-indigo-500/35 bg-indigo-500/10 px-4 py-3 text-left transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18"
+            className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left ${BUTTON_ACCENT_OUTLINE_CLASS}`}
           >
             <div>
               <p className="text-sm font-medium text-white">全部重新检测</p>
@@ -332,7 +339,7 @@ export function RetestScopeDialog({
           <button
             onClick={onAvailableOnly}
             disabled={availableCount === 0}
-            className="flex w-full items-center justify-between rounded-xl border border-gray-700 bg-gray-950/70 px-4 py-3 text-left transition-colors hover:border-gray-600 hover:bg-gray-950 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`flex w-full items-center justify-between rounded-xl bg-gray-950/70 px-4 py-3 text-left ${BUTTON_SECONDARY_CLASS}`}
           >
             <div>
               <p className="text-sm font-medium text-white">只检测上次可用</p>
@@ -348,7 +355,7 @@ export function RetestScopeDialog({
           <button
             onClick={onUnavailableOnly}
             disabled={unavailableCount === 0}
-            className="flex w-full items-center justify-between rounded-xl border border-gray-700 bg-gray-950/70 px-4 py-3 text-left transition-colors hover:border-gray-600 hover:bg-gray-950 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`flex w-full items-center justify-between rounded-xl bg-gray-950/70 px-4 py-3 text-left ${BUTTON_SECONDARY_CLASS}`}
           >
             <div>
               <p className="text-sm font-medium text-white">
@@ -367,7 +374,7 @@ export function RetestScopeDialog({
         <div className="mt-5 flex justify-end">
           <button
             onClick={onCancel}
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
             取消
           </button>

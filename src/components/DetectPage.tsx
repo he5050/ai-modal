@@ -7,7 +7,15 @@ import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import { logger } from "../lib/devlog";
 import { FIELD_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
+import {
+  BUTTON_ICON_MD_CLASS,
+  BUTTON_ICON_GHOST_MD_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
 import { toast } from "../lib/toast";
+import { openExternalUrl } from "../lib/openExternalUrl";
 import { animate, spring } from "animejs";
 import { getConcurrency } from "./SettingsPage";
 import { X, Eye, EyeOff, Loader2, ExternalLink } from "lucide-react";
@@ -738,7 +746,7 @@ export function DetectPage({
             </div>
             <button
               onClick={onOpenModels}
-              className="flex-shrink-0 rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+              className={`flex-shrink-0 ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
               前往模型列表
             </button>
@@ -817,8 +825,8 @@ export function DetectPage({
                 {baseUrl && <CopyButton text={baseUrl} />}
                 {baseUrl && (
                   <button
-                    onClick={() => void openPath(baseUrl.trim())}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+                    onClick={() => void openExternalUrl(baseUrl)}
+                    className={BUTTON_ICON_GHOST_MD_CLASS}
                     title="浏览器打开 Base URL"
                     aria-label="浏览器打开 Base URL"
                   >
@@ -931,12 +939,12 @@ export function DetectPage({
                 <button
                   onClick={handleTestSingleModel}
                   disabled={
-                  isLoading ||
-                  !baseUrl.trim() ||
-                  !!urlError ||
-                  !manualModel.trim()
-                }
-                className="rounded-lg border border-gray-700 px-4 py-1.5 text-sm text-gray-200 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-600"
+                    isLoading ||
+                    !baseUrl.trim() ||
+                    !!urlError ||
+                    !manualModel.trim()
+                  }
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   测试指定模型
                 </button>
@@ -965,7 +973,7 @@ export function DetectPage({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleReset}
-                className="text-sm text-gray-400 hover:text-gray-200 px-4 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors"
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
                 {editingId ? "新建接口" : "重置"}
               </button>
@@ -982,7 +990,7 @@ export function DetectPage({
                   handleTest();
                 }}
                 disabled={isLoading || !baseUrl.trim() || !!urlError}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium px-5 py-1.5 rounded-lg transition-colors"
+                className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
                 {isLoading ? "检测中..." : "检测全部模型"}
               </button>
@@ -1011,7 +1019,7 @@ export function DetectPage({
                       handleSave();
                     }}
                     disabled={!name.trim() || !baseUrl.trim() || saving}
-                    className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium px-5 py-1.5 rounded-lg transition-colors"
+                    className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     {saving ? "保存中..." : "保存"}
                   </button>
@@ -1032,7 +1040,7 @@ export function DetectPage({
                   <button
                     onClick={handleSaveAsNew}
                     disabled={!name.trim() || !baseUrl.trim() || saving}
-                    className="text-sm text-gray-400 hover:text-gray-200 px-4 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600 disabled:opacity-40 transition-colors"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     {saving ? "保存中..." : "另存为新接口"}
                   </button>
@@ -1334,7 +1342,7 @@ export function DetectPage({
                 </span>
                 <button
                   onClick={onOpenModels}
-                  className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   查看全部接口管理
                 </button>
@@ -1451,14 +1459,14 @@ export function DetectPage({
                   <button
                     onClick={() => setRecentPage(1)}
                     disabled={recentPage === 1}
-                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     首页
                   </button>
                   <button
                     onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
                     disabled={recentPage === 1}
-                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     上一页
                   </button>
@@ -1470,14 +1478,14 @@ export function DetectPage({
                       setRecentPage((p) => Math.min(recentTotalPages, p + 1))
                     }
                     disabled={recentPage === recentTotalPages}
-                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     下一页
                   </button>
                   <button
                     onClick={() => setRecentPage(recentTotalPages)}
                     disabled={recentPage === recentTotalPages}
-                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
                     末页
                   </button>
