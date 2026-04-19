@@ -1,4 +1,4 @@
-import { Check, X } from "lucide-react";
+import { Check, Save, Trash2, X } from "lucide-react";
 import type { ModelResult, ProtocolTestResult } from "../types";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
@@ -205,6 +205,7 @@ export function ModelProtocolDialog({
             onClick={onClose}
             className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
+            <X className="h-3.5 w-3.5" />
             取消
           </button>
           <button
@@ -212,6 +213,7 @@ export function ModelProtocolDialog({
             disabled={testing || selectedProtocols.length === 0}
             className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
+            <Save className="h-3.5 w-3.5" />
             {testing ? "测试中..." : "开始测试"}
           </button>
         </div>
@@ -376,6 +378,7 @@ export function RetestScopeDialog({
             onClick={onCancel}
             className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
+            <X className="h-3.5 w-3.5" />
             取消
           </button>
         </div>

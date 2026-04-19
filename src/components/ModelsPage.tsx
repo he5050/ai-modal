@@ -18,6 +18,7 @@ import { logger } from "../lib/devlog";
 import {
   BUTTON_ICON_MD_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
@@ -38,8 +39,12 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Copy,
+  Download,
   ExternalLink,
+  ScanSearch,
   TerminalSquare,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { savePersistedJson } from "../lib/persistence";
@@ -1223,6 +1228,7 @@ export function DetailRow({
               disabled={testing || !!singleTestingModel}
               className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
+              <ScanSearch className="h-3.5 w-3.5" />
               {testing ? "检测中..." : "一键测试"}
             </button>
             <button
@@ -1723,8 +1729,9 @@ export function ModelsPage({
           </div>
           <button
             onClick={onGoDetect}
-            className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
+            <ArrowRight className="h-3.5 w-3.5" />
             前往模型检测
           </button>
         </div>
@@ -1766,8 +1773,9 @@ export function ModelsPage({
             {selectedIds.size > 0 && (
               <button
                 onClick={() => setBatchDeleteConfirm(true)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/40 text-red-400 hover:bg-red-500/20 transition-colors"
+                className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <Trash2 className="h-3.5 w-3.5" />
                 删除已选 ({selectedIds.size})
               </button>
             )}
@@ -1776,16 +1784,18 @@ export function ModelsPage({
                 onClick={() => {
                   cancelRef.current = true;
                 }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-400 hover:bg-amber-500/20 transition-colors"
+                className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <X className="h-3.5 w-3.5" />
                 停止检测
               </button>
             ) : (
               <button
                 onClick={handleBatchTest}
                 disabled={providers.length === 0}
-                className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <ScanSearch className="h-3.5 w-3.5" />
                 批量测试
               </button>
             )}
@@ -1799,16 +1809,18 @@ export function ModelsPage({
             <button
               onClick={handleImportClick}
               disabled={importing}
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200 disabled:opacity-40 transition-colors"
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
+              <Upload className="h-3.5 w-3.5" />
               {importing ? "导入中..." : "导入 JSON / CSV"}
             </button>
             <div className="relative">
               <button
                 onClick={() => setExportOpen((v) => !v)}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200 transition-colors flex items-center gap-1"
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
-                导出{" "}
+                <Download className="h-3.5 w-3.5" />
+                导出
                 <ChevronDown
                   className={`w-3 h-3 text-gray-500 transition-transform ${exportOpen ? "rotate-180" : ""}`}
                 />

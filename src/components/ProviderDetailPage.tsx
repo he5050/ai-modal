@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ExternalLink, TerminalSquare, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  FilePenLine,
+  ScanSearch,
+  TerminalSquare,
+  Trash2,
+} from "lucide-react";
 import { animate, spring } from "animejs";
 import { listModelsByProvider, testSingleModelByProvider } from "../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../types";
@@ -95,9 +102,8 @@ export function ProviderDetailPage({
   const [singleTestingModel, setSingleTestingModel] = useState<string | null>(
     null,
   );
-  const [detailDialogResult, setDetailDialogResult] = useState<ModelResult | null>(
-    null,
-  );
+  const [detailDialogResult, setDetailDialogResult] =
+    useState<ModelResult | null>(null);
   const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -297,7 +303,10 @@ export function ProviderDetailPage({
   }
 
   function handleTest() {
-    if (currentProvider.lastResult?.results && currentProvider.lastResult.results.length > 0) {
+    if (
+      currentProvider.lastResult?.results &&
+      currentProvider.lastResult.results.length > 0
+    ) {
       setRetestScopeDialogOpen(true);
       return;
     }
@@ -434,6 +443,7 @@ export function ProviderDetailPage({
               onClick={() => onEdit(currentProvider)}
               className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
+              <FilePenLine className="h-3.5 w-3.5" />
               编辑
             </button>
             <button
@@ -448,6 +458,7 @@ export function ProviderDetailPage({
               disabled={testing}
               className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
+              <ScanSearch className="h-3.5 w-3.5" />
               {testing ? "检测中..." : "一键测试"}
             </button>
             <button
@@ -551,16 +562,16 @@ export function ProviderDetailPage({
                   <th className="w-[30%] px-5 py-2 text-left text-xs text-gray-500">
                     模型
                   </th>
-                  <th className="w-[12%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[10%] px-5 py-2 text-left text-xs text-gray-500">
                     状态
                   </th>
-                  <th className="w-[16%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[11%] px-5 py-2 text-left text-xs text-gray-500">
                     测试
                   </th>
-                  <th className="w-[12%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[9%] px-5 py-2 text-left text-xs text-gray-500">
                     延迟
                   </th>
-                  <th className="w-[30%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[40%] px-5 py-2 text-left text-xs text-gray-500">
                     返回结果
                   </th>
                 </tr>
@@ -652,9 +663,7 @@ export function ProviderDetailPage({
                                 >
                                   <span>{protocol}</span>
                                   <span>
-                                    {state === "supported"
-                                      ? "支持"
-                                      : "不支持"}
+                                    {state === "supported" ? "支持" : "不支持"}
                                   </span>
                                 </span>
                               );
@@ -738,6 +747,7 @@ export function ProviderDetailPage({
                 onClick={() => setDeleteConfirmOpen(false)}
                 className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <X className="h-3.5 w-3.5" />
                 取消
               </button>
               <button
@@ -770,15 +780,15 @@ export function ProviderDetailPage({
             void runModelDetection();
           }}
           onAvailableOnly={() => {
-            const models = currentProvider.lastResult!.results
-              .filter((item) => item.available)
+            const models = currentProvider
+              .lastResult!.results.filter((item) => item.available)
               .map((item) => item.model);
             setRetestScopeDialogOpen(false);
             void runModelDetection(models);
           }}
           onUnavailableOnly={() => {
-            const models = currentProvider.lastResult!.results
-              .filter((item) => !item.available)
+            const models = currentProvider
+              .lastResult!.results.filter((item) => !item.available)
               .map((item) => item.model);
             setRetestScopeDialogOpen(false);
             void runModelDetection(models);

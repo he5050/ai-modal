@@ -18,7 +18,17 @@ import { toast } from "../lib/toast";
 import { openExternalUrl } from "../lib/openExternalUrl";
 import { animate, spring } from "animejs";
 import { getConcurrency } from "./SettingsPage";
-import { X, Eye, EyeOff, Loader2, ExternalLink } from "lucide-react";
+import {
+  ArrowRight,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Loader2,
+  RotateCcw,
+  Save,
+  Search,
+  X,
+} from "lucide-react";
 import {
   MODEL_TEST_PROTOCOLS,
   ModelProtocolDialog,
@@ -207,9 +217,8 @@ export function DetectPage({
   const [singleTestingModel, setSingleTestingModel] = useState<string | null>(
     null,
   );
-  const [detailDialogResult, setDetailDialogResult] = useState<ModelResult | null>(
-    null,
-  );
+  const [detailDialogResult, setDetailDialogResult] =
+    useState<ModelResult | null>(null);
   const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
 
   // editTarget 回填：从模型列表页点击编辑时触发
@@ -248,18 +257,17 @@ export function DetectPage({
   const visibleResultTimestamp = hasCurrentResults ? resultTimestamp : null;
   const editingProvider =
     editingId != null
-      ? providers.find((provider) => provider.id === editingId) ?? null
+      ? (providers.find((provider) => provider.id === editingId) ?? null)
       : null;
   const manualModelOptions =
     visibleResults.length > 0
       ? getUniqueModelOptions(visibleResults)
       : getUniqueModelOptions(editingProvider?.lastResult?.results ?? []);
-  const recentProviders = [...providers]
-    .sort(
-      (a, b) =>
-        (b.lastResult?.timestamp ?? b.createdAt) -
-        (a.lastResult?.timestamp ?? a.createdAt),
-    );
+  const recentProviders = [...providers].sort(
+    (a, b) =>
+      (b.lastResult?.timestamp ?? b.createdAt) -
+      (a.lastResult?.timestamp ?? a.createdAt),
+  );
   const recentTotalPages = Math.max(
     1,
     Math.ceil(recentProviders.length / RECENT_PAGE_SIZE),
@@ -748,6 +756,7 @@ export function DetectPage({
               onClick={onOpenModels}
               className={`flex-shrink-0 ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
+              <ArrowRight className="h-3.5 w-3.5" />
               前往模型列表
             </button>
           </div>
@@ -912,30 +921,30 @@ export function DetectPage({
                 <div className="relative flex-1">
                   <input
                     value={manualModel}
-                  onChange={(e) => setManualModel(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      !isLoading &&
-                      baseUrl.trim() &&
-                      manualModel.trim()
-                    ) {
-                      handleTestSingleModel();
-                    }
-                  }}
-                  placeholder="如：gpt-4.1-mini / claude-3-7-sonnet / gemini-2.5-flash"
-                  className={`${FIELD_INPUT_CLASS} pr-8 font-mono text-xs`}
-                />
-                {manualModel && (
-                  <button
-                    onClick={() => setManualModel("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300"
-                    tabIndex={-1}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
+                    onChange={(e) => setManualModel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        !isLoading &&
+                        baseUrl.trim() &&
+                        manualModel.trim()
+                      ) {
+                        handleTestSingleModel();
+                      }
+                    }}
+                    placeholder="如：gpt-4.1-mini / claude-3-7-sonnet / gemini-2.5-flash"
+                    className={`${FIELD_INPUT_CLASS} pr-8 font-mono text-xs`}
+                  />
+                  {manualModel && (
+                    <button
+                      onClick={() => setManualModel("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300"
+                      tabIndex={-1}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={handleTestSingleModel}
                   disabled={
@@ -946,6 +955,7 @@ export function DetectPage({
                   }
                   className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
+                  <Search className="h-3.5 w-3.5" />
                   测试指定模型
                 </button>
               </div>
@@ -975,6 +985,7 @@ export function DetectPage({
                 onClick={handleReset}
                 className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <RotateCcw className="h-3.5 w-3.5" />
                 {editingId ? "新建接口" : "重置"}
               </button>
               <button
@@ -992,6 +1003,7 @@ export function DetectPage({
                 disabled={isLoading || !baseUrl.trim() || !!urlError}
                 className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <Search className="h-3.5 w-3.5" />
                 {isLoading ? "检测中..." : "检测全部模型"}
               </button>
               {(isDone || editingId) && (
@@ -1021,6 +1033,7 @@ export function DetectPage({
                     disabled={!name.trim() || !baseUrl.trim() || saving}
                     className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
+                    <Save className="h-3.5 w-3.5" />
                     {saving ? "保存中..." : "保存"}
                   </button>
                 </Tooltip>
@@ -1042,6 +1055,7 @@ export function DetectPage({
                     disabled={!name.trim() || !baseUrl.trim() || saving}
                     className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                   >
+                    <Save className="h-3.5 w-3.5" />
                     {saving ? "保存中..." : "另存为新接口"}
                   </button>
                 </Tooltip>
@@ -1161,22 +1175,22 @@ export function DetectPage({
                   </p>
                 </div>
               </div>
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[30%] text-left px-5 py-2.5 text-xs text-gray-400">
                       模型
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[10%] text-left px-5 py-2.5 text-xs text-gray-400">
                       状态
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[11%] text-left px-5 py-2.5 text-xs text-gray-400">
                       测试
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[9%] text-left px-5 py-2.5 text-xs text-gray-400">
                       延迟
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[40%] text-left px-5 py-2.5 text-xs text-gray-400">
                       返回结果
                     </th>
                   </tr>
@@ -1344,6 +1358,7 @@ export function DetectPage({
                   onClick={onOpenModels}
                   className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
+                  <ArrowRight className="h-3.5 w-3.5" />
                   查看全部接口管理
                 </button>
               </div>
@@ -1453,7 +1468,8 @@ export function DetectPage({
             {recentProviders.length > RECENT_PAGE_SIZE && (
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-xs text-gray-500">
-                  第 {recentPage} / {recentTotalPages} 页，每页 {RECENT_PAGE_SIZE} 条
+                  第 {recentPage} / {recentTotalPages} 页，每页{" "}
+                  {RECENT_PAGE_SIZE} 条
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -1528,15 +1544,15 @@ export function DetectPage({
             void runModelDetection();
           }}
           onAvailableOnly={() => {
-            const models = editingProvider.lastResult!.results
-              .filter((item) => item.available)
+            const models = editingProvider
+              .lastResult!.results.filter((item) => item.available)
               .map((item) => item.model);
             setRetestScopeDialogOpen(false);
             void runModelDetection(models);
           }}
           onUnavailableOnly={() => {
-            const models = editingProvider.lastResult!.results
-              .filter((item) => !item.available)
+            const models = editingProvider
+              .lastResult!.results.filter((item) => !item.available)
               .map((item) => item.model);
             setRetestScopeDialogOpen(false);
             void runModelDetection(models);

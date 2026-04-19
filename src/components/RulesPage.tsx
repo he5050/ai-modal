@@ -25,10 +25,12 @@ import {
   ExternalLink,
   FilePenLine,
   FolderOpen,
+  Link2,
   Plus,
   Save,
   Trash2,
   WandSparkles,
+  X,
 } from "lucide-react";
 import {
   FIELD_INPUT_CLASS,
@@ -37,6 +39,7 @@ import {
 } from "../lib/formStyles";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_DANGER_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_GHOST_CLASS,
   BUTTON_PRIMARY_CLASS,
@@ -282,6 +285,30 @@ function buildDefaultPath(homePath: string, relativePath: string) {
   return `${homePath.replace(/\/$/, "")}/${relativePath}`;
 }
 
+function renderConfirmActionLabel(label: string) {
+  const Icon =
+    label.includes("删除") || label.includes("移除")
+      ? Trash2
+      : label.includes("取消")
+        ? X
+        : label.includes("保存")
+          ? Save
+          : label.includes("编辑")
+            ? FilePenLine
+            : label.includes("同步")
+              ? Link2
+              : label.includes("切换")
+                ? ExternalLink
+                : null;
+
+  return (
+    <>
+      {Icon ? <Icon className="h-4 w-4" /> : null}
+      {label}
+    </>
+  );
+}
+
 function ConfirmModal({
   title,
   description,
@@ -318,7 +345,7 @@ function ConfirmModal({
             disabled={busy}
             className={`flex w-full ${danger ? BUTTON_DANGER_CLASS : BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
           >
-            {primaryLabel}
+            {renderConfirmActionLabel(primaryLabel)}
           </button>
           {secondaryLabel && onSecondary && (
             <button
@@ -326,7 +353,7 @@ function ConfirmModal({
               disabled={busy}
               className={`flex w-full ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
             >
-              {secondaryLabel}
+              {renderConfirmActionLabel(secondaryLabel)}
             </button>
           )}
         </div>
@@ -336,7 +363,7 @@ function ConfirmModal({
               onClick={onTertiary}
               className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
             >
-              {tertiaryLabel}
+              {renderConfirmActionLabel(tertiaryLabel)}
             </button>
           </div>
         )}
@@ -796,6 +823,7 @@ export function RulesPage({
                     onClick={handlePickCurrentPath}
                     className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                   >
+                    <FolderOpen className="h-4 w-4" />
                     {selectedTool.kind === "directory"
                       ? "选择目录"
                       : "选择文件"}
@@ -875,7 +903,7 @@ export function RulesPage({
                             : "border-gray-700 bg-black/10 text-gray-200 hover:border-indigo-300/55 hover:bg-indigo-400/12 hover:text-white"
                         }`}
                       >
-                        <Save className="h-4 w-4" />
+                        <Link2 className="h-4 w-4" />
                         {syncTargetIds.length > 0
                           ? `同步(${syncTargetIds.length}个)`
                           : "同步"}
@@ -894,6 +922,7 @@ export function RulesPage({
                           }}
                           className={`${BUTTON_GHOST_CLASS} h-8 px-2 text-sm text-gray-500 hover:text-gray-300`}
                         >
+                          <X className="h-4 w-4" />
                           取消
                         </button>
                       </div>
@@ -922,12 +951,14 @@ export function RulesPage({
                           onClick={handlePickCustomPath}
                           className={`${BUTTON_SECONDARY_CLASS} h-10 px-3 text-sm`}
                         >
+                          <FolderOpen className="h-4 w-4" />
                           选择文件
                         </button>
                         <button
                           onClick={handleAddCustomPath}
                           className={`${BUTTON_ACCENT_OUTLINE_CLASS} h-10 px-3 text-sm`}
                         >
+                          <Save className="h-4 w-4" />
                           保存
                         </button>
                       </div>

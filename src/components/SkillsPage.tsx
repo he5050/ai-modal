@@ -56,6 +56,7 @@ import {
   Search,
   Trash2,
   Upload,
+  X,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -1345,6 +1346,7 @@ export function SkillsPage({
                       onClick={() => void handlePickTargetPath()}
                       className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                     >
+                      <FolderOpen className="h-4 w-4" />
                       选择目录
                     </button>
                     <button
@@ -1398,6 +1400,7 @@ export function SkillsPage({
                       }}
                       className={`${BUTTON_SECONDARY_CLASS} h-8 px-3 text-sm`}
                     >
+                      <X className="h-3.5 w-3.5" />
                       取消
                     </button>
                   )}
@@ -1432,8 +1435,9 @@ export function SkillsPage({
                     </button>
                     <button
                       onClick={() => void handleAddCustomTarget()}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 text-sm text-indigo-200 transition-colors hover:border-indigo-400/50 hover:text-indigo-100"
+                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                     >
+                      <FilePenLine className="h-4 w-4" />
                       保存
                     </button>
                   </div>
@@ -1815,14 +1819,16 @@ export function SkillsPage({
             <div className="mt-5 flex gap-3">
               <button
                 onClick={() => setPendingRemoveSkill(null)}
-                className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                className={`flex-1 ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <X className="h-4 w-4" />
                 取消
               </button>
               <button
                 onClick={() => void executeRemoveSkill(pendingRemoveSkill)}
-                className="flex-1 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200 transition-colors hover:border-red-400/50 hover:text-white"
+                className={`flex-1 ${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <Trash2 className="h-4 w-4" />
                 确认移除
               </button>
             </div>
