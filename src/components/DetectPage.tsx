@@ -10,6 +10,7 @@ import { FIELD_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import {
   BUTTON_ICON_MD_CLASS,
   BUTTON_ICON_GHOST_MD_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
@@ -27,6 +28,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -120,14 +122,16 @@ function DeleteDialog({
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
+            <X className="h-3.5 w-3.5" />
             取消
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
+            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
+            <Trash2 className="h-3.5 w-3.5" />
             删除
           </button>
         </div>
@@ -1454,8 +1458,9 @@ export function DetectPage({
                               e.stopPropagation();
                               setDeleteConfirmId(p.id);
                             }}
-                            className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                           >
+                            <Trash2 className="h-3.5 w-3.5" />
                             删除
                           </button>
                         </td>

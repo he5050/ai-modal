@@ -25,7 +25,6 @@ import {
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
-  BUTTON_ICON_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
 } from "../lib/buttonStyles";
@@ -224,6 +223,22 @@ function describeSkillsCommand(request: SkillsCommandRequest) {
       : "移除技能";
   }
   return "更新全部技能";
+}
+
+function extractNpmConfigWarnings(stderr: string) {
+  const lines = stderr
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const warningLines = lines.filter((line) =>
+    /^npm warn Unknown (env|user) config\b/i.test(line),
+  );
+  return {
+    warningLines,
+    remainingLines: lines.filter(
+      (line) => !/^npm warn Unknown (env|user) config\b/i.test(line),
+    ),
+  };
 }
 
 export function SkillsPage({
@@ -925,6 +940,11 @@ export function SkillsPage({
       );
       const result = await runSkillsCommand(request);
       setCommandResult(result);
+      const actualCommand = result.command.join(" ");
+      logger.debug(`[技能] 实际命令: ${actualCommand}`);
+      const { warningLines, remainingLines } = extractNpmConfigWarnings(
+        result.stderr,
+      );
       if (result.success) {
         logger.success(
           `[技能] ${request.action} 执行成功：${describeSkillsCommand(request)}`,
@@ -932,8 +952,12 @@ export function SkillsPage({
         if (result.stdout.trim()) {
           logger.debug(`[技能] stdout: ${result.stdout.trim()}`);
         }
-        if (result.stderr.trim()) {
-          logger.warn(`[技能] stderr: ${result.stderr.trim()}`);
+        if (remainingLines.length > 0) {
+          logger.warn(`[技能] stderr: ${remainingLines.join("\n")}`);
+        } else if (warningLines.length > 0) {
+          logger.info(
+            `[技能] stderr 含 ${warningLines.length} 条 npm 配置告警，已折叠显示；原文可在“最近命令结果”查看`,
+          );
         }
       } else {
         logger.error(
@@ -1149,20 +1173,22 @@ export function SkillsPage({
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => void openPath(skill.path)}
-                            className={BUTTON_ICON_SM_CLASS}
+                            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                             title="打开技能目录"
                             aria-label={`打开 ${skill.name} 目录`}
                           >
                             <FolderOpen className="h-3.5 w-3.5" />
+                            打开
                           </button>
                           <button
                             onClick={() => confirmRemoveSkill(skill.name)}
                             disabled={commandRunning}
-                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${BUTTON_DANGER_OUTLINE_CLASS}`}
+                            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                             title="移除技能"
                             aria-label={`移除 ${skill.name}`}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
+                            删除
                           </button>
                         </div>
                       </div>

@@ -6,6 +6,7 @@ import {
   ScanSearch,
   TerminalSquare,
   Trash2,
+  X,
 } from "lucide-react";
 import { animate, spring } from "animejs";
 import { listModelsByProvider, testSingleModelByProvider } from "../api";
@@ -758,6 +759,7 @@ export function ProviderDetailPage({
                 }}
                 className={`${BUTTON_DANGER_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
+                <Trash2 className="h-3.5 w-3.5" />
                 删除
               </button>
             </div>
