@@ -1,15 +1,30 @@
 import { useState, useEffect, useRef } from "react";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { listModelsByProvider, testSingleModelByProvider } from "../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../types";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import { logger } from "../lib/devlog";
-import { FIELD_INPUT_CLASS } from "../lib/formStyles";
+import { FIELD_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import { toast } from "../lib/toast";
 import { animate, spring } from "animejs";
 import { getConcurrency } from "./SettingsPage";
-import { X, Eye, EyeOff, Loader2 } from "lucide-react";
+import { X, Eye, EyeOff, Loader2, ExternalLink } from "lucide-react";
+import {
+  MODEL_TEST_PROTOCOLS,
+  ModelProtocolDialog,
+  ProtocolResultDetailDialog,
+  RetestScopeDialog,
+  type ModelTestProtocol,
+  formatProtocolSupportSummary,
+  getModelProtocolBadgeClass,
+  getModelProtocolLabel,
+  getProtocolResultDetails,
+  getProtocolSupportChipClass,
+  getProtocolSupportState,
+  normalizeSupportedProtocolTag,
+} from "./ProtocolTestUI";
 
 type Phase = "idle" | "fetching" | "testing" | "done";
 type RowStatus = "pending" | "done";
@@ -29,6 +44,12 @@ function maskPreviewText(value: string) {
 
 function buildTestSignature(baseUrl: string, apiKey: string) {
   return `${baseUrl.trim()}::${apiKey.trim()}`;
+}
+
+function getUniqueModelOptions(results: ModelResult[]) {
+  return Array.from(
+    new Set(results.map((result) => result.model).filter(Boolean)),
+  );
 }
 
 function DeleteDialog({
@@ -139,8 +160,7 @@ export function DetectPage({
   onDirtyChange,
   onOpenModels,
 }: Props) {
-  const RECENT_PAGE_SIZE = 10;
-  const RECENT_MAX_ITEMS = 500;
+  const RECENT_PAGE_SIZE = 20;
   const [name, setName] = useState("");
   const [origName, setOrigName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -170,6 +190,19 @@ export function DetectPage({
   );
   const [saving, setSaving] = useState(false);
   const [recentPage, setRecentPage] = useState(1);
+  const [protocolDialogModel, setProtocolDialogModel] = useState<string | null>(
+    null,
+  );
+  const [selectedProtocols, setSelectedProtocols] = useState<
+    ModelTestProtocol[]
+  >([...MODEL_TEST_PROTOCOLS]);
+  const [singleTestingModel, setSingleTestingModel] = useState<string | null>(
+    null,
+  );
+  const [detailDialogResult, setDetailDialogResult] = useState<ModelResult | null>(
+    null,
+  );
+  const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
 
   // editTarget 回填：从模型列表页点击编辑时触发
   useEffect(() => {
@@ -182,16 +215,20 @@ export function DetectPage({
     setEditingId(editTarget.id);
     setOrigBaseUrl(editTarget.baseUrl);
     setOrigApiKey(editTarget.apiKey);
-    setPhase("idle");
-    setResults([]);
+    setPhase(editTarget.lastResult?.results?.length ? "done" : "idle");
+    setResults(editTarget.lastResult?.results ?? []);
     setLiveResults([]);
     setError(null);
     setProgress("");
-    setResultTimestamp(null);
+    setResultTimestamp(editTarget.lastResult?.timestamp ?? null);
     setUrlError(null);
     setTestCount({ done: 0, total: 0 });
-    setLastTestMode("none");
-    setLastTestSignature(null);
+    setLastTestMode(editTarget.lastResult?.results?.length ? "all" : "none");
+    setLastTestSignature(
+      editTarget.lastResult?.results?.length
+        ? buildTestSignature(editTarget.baseUrl, editTarget.apiKey)
+        : null,
+    );
     onClearEditTarget();
   }, [editTarget?.id]);
 
@@ -201,13 +238,20 @@ export function DetectPage({
   const hasCurrentResults = lastTestSignature === currentFormSignature;
   const visibleResults = hasCurrentResults ? results : [];
   const visibleResultTimestamp = hasCurrentResults ? resultTimestamp : null;
+  const editingProvider =
+    editingId != null
+      ? providers.find((provider) => provider.id === editingId) ?? null
+      : null;
+  const manualModelOptions =
+    visibleResults.length > 0
+      ? getUniqueModelOptions(visibleResults)
+      : getUniqueModelOptions(editingProvider?.lastResult?.results ?? []);
   const recentProviders = [...providers]
     .sort(
       (a, b) =>
         (b.lastResult?.timestamp ?? b.createdAt) -
         (a.lastResult?.timestamp ?? a.createdAt),
-    )
-    .slice(0, RECENT_MAX_ITEMS);
+    );
   const recentTotalPages = Math.max(
     1,
     Math.ceil(recentProviders.length / RECENT_PAGE_SIZE),
@@ -216,6 +260,10 @@ export function DetectPage({
     (recentPage - 1) * RECENT_PAGE_SIZE,
     recentPage * RECENT_PAGE_SIZE,
   );
+
+  useEffect(() => {
+    setRecentPage((page) => Math.min(page, recentTotalPages));
+  }, [recentTotalPages]);
 
   // 编辑中且表单有改动（名称/URL/Key 任一变化）时为 dirty
   const isDirty =
@@ -279,14 +327,18 @@ export function DetectPage({
     setOrigBaseUrl(p.baseUrl);
     setOrigApiKey(p.apiKey);
     setEditingId(p.id);
-    setPhase("idle");
-    setResults([]);
+    setPhase(p.lastResult?.results?.length ? "done" : "idle");
+    setResults(p.lastResult?.results ?? []);
     setLiveResults([]);
     setError(null);
     setProgress("");
-    setResultTimestamp(null);
-    setLastTestMode("none");
-    setLastTestSignature(null);
+    setResultTimestamp(p.lastResult?.timestamp ?? null);
+    setLastTestMode(p.lastResult?.results?.length ? "all" : "none");
+    setLastTestSignature(
+      p.lastResult?.results?.length
+        ? buildTestSignature(p.baseUrl, p.apiKey)
+        : null,
+    );
   }
 
   function friendlyError(e: unknown): string {
@@ -312,27 +364,33 @@ export function DetectPage({
     return msg;
   }
 
-  async function handleTest() {
+  async function runModelDetection(targetModels?: string[]) {
     if (!baseUrl.trim()) return;
     setError(null);
     setResults([]);
     setLiveResults([]);
-    setPhase("fetching");
-    setProgress("正在获取模型列表...");
+    setPhase(targetModels ? "testing" : "fetching");
+    setProgress(targetModels ? "正在准备重测模型..." : "正在获取模型列表...");
     setLastTestMode("all");
-    logger.info(`[${name || baseUrl}] 开始检测，baseUrl: ${baseUrl}`);
+    logger.info(
+      `[${name || baseUrl}] 开始检测，baseUrl: ${baseUrl}${targetModels ? `，指定模型=${targetModels.join(", ")}` : ""}`,
+    );
     let models: string[];
-    try {
-      models = await listModelsByProvider(baseUrl.trim(), apiKey.trim());
-      logger.success(
-        `获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
-      );
-    } catch (e) {
-      const msg = friendlyError(e);
-      logger.error(`获取模型列表失败：${msg}`);
-      setError(msg);
-      setPhase("idle");
-      return;
+    if (targetModels && targetModels.length > 0) {
+      models = targetModels;
+    } else {
+      try {
+        models = await listModelsByProvider(baseUrl.trim(), apiKey.trim());
+        logger.success(
+          `获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
+        );
+      } catch (e) {
+        const msg = friendlyError(e);
+        logger.error(`获取模型列表失败：${msg}`);
+        setError(msg);
+        setPhase("idle");
+        return;
+      }
     }
 
     // 立即渲染所有行为「检测中」
@@ -343,6 +401,7 @@ export function DetectPage({
       error: null,
       response_text: null,
       supported_protocols: [],
+      protocol_results: [],
       status: "pending",
     }));
     setLiveResults(initial);
@@ -382,6 +441,7 @@ export function DetectPage({
           error: String(e),
           response_text: String(e),
           supported_protocols: [],
+          protocol_results: [],
           status: "done",
         };
         logger.error(`✗ ${model} 请求失败：${String(e)}`);
@@ -414,6 +474,18 @@ export function DetectPage({
     );
   }
 
+  function handleTest() {
+    if (
+      editingId &&
+      editingProvider?.lastResult?.results &&
+      editingProvider.lastResult.results.length > 0
+    ) {
+      setRetestScopeDialogOpen(true);
+      return;
+    }
+    void runModelDetection();
+  }
+
   function mergeSingleResult(existing: ModelResult[], next: ModelResult) {
     const merged = [...existing];
     const index = merged.findIndex((item) => item.model === next.model);
@@ -428,6 +500,82 @@ export function DetectPage({
     });
   }
 
+  function handleOpenProtocolDialog(result: LiveResult) {
+    const nextProtocols =
+      result.supported_protocols
+        ?.map(normalizeSupportedProtocolTag)
+        .filter(
+          (protocol): protocol is ModelTestProtocol =>
+            protocol === "openApi" ||
+            protocol === "claude" ||
+            protocol === "gemini",
+        ) ?? [];
+    setSelectedProtocols(
+      nextProtocols.length > 0 ? nextProtocols : [...MODEL_TEST_PROTOCOLS],
+    );
+    setProtocolDialogModel(result.model);
+  }
+
+  function toggleProtocolSelection(protocol: ModelTestProtocol) {
+    setSelectedProtocols((prev) => {
+      if (prev.includes(protocol)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((item) => item !== protocol);
+      }
+      return [...prev, protocol];
+    });
+  }
+
+  async function handleProtocolTestConfirm() {
+    if (!protocolDialogModel || !baseUrl.trim()) return;
+
+    const model = protocolDialogModel;
+    const currentSignature = buildTestSignature(baseUrl, apiKey);
+    setProtocolDialogModel(null);
+    setSingleTestingModel(model);
+    setError(null);
+    setProgress(`正在测试 ${model}...`);
+    setPhase("testing");
+    setLastTestMode("single");
+    logger.info(
+      `[${name || baseUrl}] 当前 Provider 单模型测试：${model}，协议=${selectedProtocols.join(",")}`,
+    );
+
+    try {
+      const result = await testSingleModelByProvider(
+        baseUrl.trim(),
+        apiKey.trim(),
+        model,
+        selectedProtocols,
+      );
+      const nextResults =
+        lastTestSignature === currentSignature
+          ? mergeSingleResult(results, result)
+          : [result];
+      setResults(nextResults);
+      setResultTimestamp(Date.now());
+      setLastTestSignature(currentSignature);
+      setLiveResults([]);
+      setPhase("done");
+      setProgress("");
+      setTestCount({ done: 1, total: 1 });
+      toast(
+        `${model} 测试完成：${formatProtocolSupportSummary(result)}`,
+        result.available ? "success" : "warning",
+      );
+    } catch (e) {
+      const msg = friendlyError(e);
+      logger.error(`当前 Provider 单模型测试失败：${msg}`);
+      setError(msg);
+      setLiveResults([]);
+      setPhase("idle");
+      setProgress("");
+      setTestCount({ done: 0, total: 0 });
+    } finally {
+      setSingleTestingModel(null);
+    }
+  }
+
   async function handleTestSingleModel() {
     if (!baseUrl.trim() || !manualModel.trim()) return;
     const currentSignature = buildTestSignature(baseUrl, apiKey);
@@ -440,6 +588,7 @@ export function DetectPage({
         error: null,
         response_text: null,
         supported_protocols: [],
+        protocol_results: [],
         status: "pending",
       },
     ]);
@@ -666,6 +815,16 @@ export function DetectPage({
                   )}
                 </div>
                 {baseUrl && <CopyButton text={baseUrl} />}
+                {baseUrl && (
+                  <button
+                    onClick={() => void openPath(baseUrl.trim())}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+                    title="浏览器打开 Base URL"
+                    aria-label="浏览器打开 Base URL"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </button>
+                )}
               </div>
               {urlError && (
                 <p className="text-xs text-red-400 mt-1">{urlError}</p>
@@ -714,12 +873,37 @@ export function DetectPage({
               <label className="block text-xs text-gray-400">
                 指定模型名测试
               </label>
-              <HintTooltip content="不依赖先拉取模型列表；可直接输入模型名做单模型验证。" />
+              <HintTooltip content="可直接手动输入模型名，也可以从当前接口已拉取的模型列表里直接选。" />
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  value={manualModel}
+            <div className="space-y-2">
+              {manualModelOptions.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-[220px] flex-shrink-0">
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        setManualModel(e.target.value);
+                      }}
+                      className={FIELD_SELECT_CLASS}
+                    >
+                      <option value="">从已拉取模型中选择</option>
+                      {manualModelOptions.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    当前共 {manualModelOptions.length} 个候选模型
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    value={manualModel}
                   onChange={(e) => setManualModel(e.target.value)}
                   onKeyDown={(e) => {
                     if (
@@ -744,18 +928,19 @@ export function DetectPage({
                   </button>
                 )}
               </div>
-              <button
-                onClick={handleTestSingleModel}
-                disabled={
+                <button
+                  onClick={handleTestSingleModel}
+                  disabled={
                   isLoading ||
                   !baseUrl.trim() ||
                   !!urlError ||
                   !manualModel.trim()
                 }
                 className="rounded-lg border border-gray-700 px-4 py-1.5 text-sm text-gray-200 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-600"
-              >
-                测试指定模型
-              </button>
+                >
+                  测试指定模型
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex items-center justify-between pt-1">
@@ -908,7 +1093,10 @@ export function DetectPage({
               ? liveResults
               : visibleResults.map((r) => ({
                   ...r,
-                  status: "done" as RowStatus,
+                  status:
+                    singleTestingModel === r.model
+                      ? ("pending" as RowStatus)
+                      : ("done" as RowStatus),
                 }));
           const totalCount = displayResults.length;
           const availableCount = displayResults.filter(
@@ -975,6 +1163,9 @@ export function DetectPage({
                       状态
                     </th>
                     <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                      测试
+                    </th>
+                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
                       延迟
                     </th>
                     <th className="text-left px-5 py-2.5 text-xs text-gray-400">
@@ -1000,6 +1191,22 @@ export function DetectPage({
                             {r.model}
                           </span>
                           {r.status === "done" && <CopyButton text={r.model} />}
+                          {r.status === "done" &&
+                            r.supported_protocols &&
+                            r.supported_protocols.length > 0 && (
+                              <span className="inline-flex items-center gap-1">
+                                {r.supported_protocols.map((proto) => (
+                                  <span
+                                    key={proto}
+                                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getModelProtocolBadgeClass(
+                                      proto,
+                                    )}`}
+                                  >
+                                    {getModelProtocolLabel(proto)}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
                         </div>
                       </td>
                       <td className="px-5 py-2.5">
@@ -1012,6 +1219,15 @@ export function DetectPage({
                           <StatusBadge available={r.available} />
                         )}
                       </td>
+                      <td className="px-5 py-2.5">
+                        <button
+                          onClick={() => handleOpenProtocolDialog(r)}
+                          disabled={isLoading || !!singleTestingModel}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          测试
+                        </button>
+                      </td>
                       <td className="px-5 py-2.5 text-gray-300 text-xs">
                         {r.latency_ms != null ? `${r.latency_ms} ms` : "—"}
                       </td>
@@ -1019,20 +1235,68 @@ export function DetectPage({
                         {r.status === "pending" ? (
                           ""
                         ) : (
-                          <div className="flex items-start gap-1.5">
-                            <Tooltip
-                              content={getResultDetails(r)}
-                              placement="top"
-                            >
-                              <span className="max-w-[360px] truncate leading-5 text-gray-500 cursor-default">
-                                {getResultDetails(r)}
-                              </span>
-                            </Tooltip>
-                            {getResultDetails(r) !== "—" && (
-                              <CopyButton
-                                text={getResultDetails(r)}
-                                message="已复制返回结果"
-                              />
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {MODEL_TEST_PROTOCOLS.map((protocol) => {
+                                const state = getProtocolSupportState(
+                                  r,
+                                  protocol,
+                                );
+                                return (
+                                  <span
+                                    key={protocol}
+                                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${getProtocolSupportChipClass(
+                                      protocol,
+                                      state,
+                                    )}`}
+                                  >
+                                    <span>{protocol}</span>
+                                    <span>
+                                      {state === "supported"
+                                        ? "支持"
+                                        : "不支持"}
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {(r.protocol_results ?? []).length > 0 ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setDetailDialogResult(r)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white"
+                                >
+                                  查看详情
+                                </button>
+                                <CopyButton
+                                  text={(r.protocol_results ?? [])
+                                    .map(
+                                      (item) =>
+                                        `${getModelProtocolLabel(item.protocol)}: ${getProtocolResultDetails(
+                                          item,
+                                        )}`,
+                                    )
+                                    .join("\n\n")}
+                                  message="已复制协议返回结果"
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex items-start gap-1.5">
+                                <Tooltip
+                                  content={getResultDetails(r)}
+                                  placement="top"
+                                >
+                                  <span className="max-w-[360px] truncate leading-5 text-gray-500 cursor-default">
+                                    {getResultDetails(r)}
+                                  </span>
+                                </Tooltip>
+                                {getResultDetails(r) !== "—" && (
+                                  <CopyButton
+                                    text={getResultDetails(r)}
+                                    message="已复制返回结果"
+                                  />
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -1062,19 +1326,27 @@ export function DetectPage({
                 <h3 className="text-xs font-medium uppercase tracking-widest text-gray-500">
                   最近使用接口
                 </h3>
-                <HintTooltip content="保留最近 500 条记录，超过 10 条自动分页。" />
+                <HintTooltip content="展示全部记录，按最近时间倒序；本地分页为每页 20 条。" />
               </div>
-              <button
-                onClick={onOpenModels}
-                className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-              >
-                查看全部接口管理
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">
+                  共 {recentProviders.length} 条
+                </span>
+                <button
+                  onClick={onOpenModels}
+                  className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                >
+                  查看全部接口管理
+                </button>
+              </div>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
+                    <th className="text-left px-5 py-2.5 text-xs text-gray-400 w-12">
+                      #
+                    </th>
                     <th className="text-left px-5 py-2.5 text-xs text-gray-400">
                       状态
                     </th>
@@ -1103,6 +1375,9 @@ export function DetectPage({
                         className={`hover:bg-gray-800/30 transition-colors cursor-pointer ${i < pagedRecentProviders.length - 1 ? "border-b border-gray-800/50" : ""}`}
                         onClick={() => handleLoadHistory(p)}
                       >
+                        <td className="px-5 py-2.5 text-xs text-gray-500">
+                          {(recentPage - 1) * RECENT_PAGE_SIZE + i + 1}
+                        </td>
                         <td className="px-5 py-2.5">
                           {!hasTested ? (
                             <Tooltip content="未检测" placement="top">
@@ -1167,27 +1442,46 @@ export function DetectPage({
                 </tbody>
               </table>
             </div>
-            {recentTotalPages > 1 && (
-              <div className="mt-3 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
-                  disabled={recentPage === 1}
-                  className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
-                >
-                  上一页
-                </button>
+            {recentProviders.length > RECENT_PAGE_SIZE && (
+              <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-xs text-gray-500">
-                  {recentPage} / {recentTotalPages}
+                  第 {recentPage} / {recentTotalPages} 页，每页 {RECENT_PAGE_SIZE} 条
                 </span>
-                <button
-                  onClick={() =>
-                    setRecentPage((p) => Math.min(recentTotalPages, p + 1))
-                  }
-                  disabled={recentPage === recentTotalPages}
-                  className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
-                >
-                  下一页
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setRecentPage(1)}
+                    disabled={recentPage === 1}
+                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                  >
+                    首页
+                  </button>
+                  <button
+                    onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
+                    disabled={recentPage === 1}
+                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                  >
+                    上一页
+                  </button>
+                  <span className="text-xs text-gray-500">
+                    {recentPage} / {recentTotalPages}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setRecentPage((p) => Math.min(recentTotalPages, p + 1))
+                    }
+                    disabled={recentPage === recentTotalPages}
+                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                  >
+                    下一页
+                  </button>
+                  <button
+                    onClick={() => setRecentPage(recentTotalPages)}
+                    disabled={recentPage === recentTotalPages}
+                    className="rounded-lg border border-gray-700 px-3 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                  >
+                    末页
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1210,6 +1504,55 @@ export function DetectPage({
           />
         ) : null;
       })()}
+      {retestScopeDialogOpen && editingProvider?.lastResult?.results && (
+        <RetestScopeDialog
+          totalCount={editingProvider.lastResult.results.length}
+          availableCount={
+            editingProvider.lastResult.results.filter((item) => item.available)
+              .length
+          }
+          unavailableCount={
+            editingProvider.lastResult.results.filter((item) => !item.available)
+              .length
+          }
+          onAll={() => {
+            setRetestScopeDialogOpen(false);
+            void runModelDetection();
+          }}
+          onAvailableOnly={() => {
+            const models = editingProvider.lastResult!.results
+              .filter((item) => item.available)
+              .map((item) => item.model);
+            setRetestScopeDialogOpen(false);
+            void runModelDetection(models);
+          }}
+          onUnavailableOnly={() => {
+            const models = editingProvider.lastResult!.results
+              .filter((item) => !item.available)
+              .map((item) => item.model);
+            setRetestScopeDialogOpen(false);
+            void runModelDetection(models);
+          }}
+          onCancel={() => setRetestScopeDialogOpen(false)}
+        />
+      )}
+      {protocolDialogModel && (
+        <ModelProtocolDialog
+          model={protocolDialogModel}
+          selectedProtocols={selectedProtocols}
+          testing={!!singleTestingModel}
+          onToggle={toggleProtocolSelection}
+          onConfirm={() => void handleProtocolTestConfirm()}
+          onClose={() => setProtocolDialogModel(null)}
+        />
+      )}
+      {detailDialogResult && (
+        <ProtocolResultDetailDialog
+          model={detailDialogResult.model}
+          results={detailDialogResult.protocol_results ?? []}
+          onClose={() => setDetailDialogResult(null)}
+        />
+      )}
     </div>
   );
 }

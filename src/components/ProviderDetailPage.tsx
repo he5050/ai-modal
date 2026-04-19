@@ -11,6 +11,20 @@ import {
   getResultDetails,
   summarizeFailedResultDetails,
 } from "./ModelsPage";
+import {
+  MODEL_TEST_PROTOCOLS,
+  ModelProtocolDialog,
+  ProtocolResultDetailDialog,
+  RetestScopeDialog,
+  type ModelTestProtocol,
+  formatProtocolSupportSummary,
+  getModelProtocolBadgeClass,
+  getModelProtocolLabel,
+  getProtocolResultDetails,
+  getProtocolSupportChipClass,
+  getProtocolSupportState,
+  normalizeSupportedProtocolTag,
+} from "./ProtocolTestUI";
 import { toast } from "../lib/toast";
 import { logger } from "../lib/devlog";
 import { getConcurrency } from "./SettingsPage";
@@ -61,6 +75,19 @@ export function ProviderDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [liveResults, setLiveResults] = useState<LiveResult[]>([]);
   const [quickTestTarget, setQuickTestTarget] = useState<Provider | null>(null);
+  const [protocolDialogModel, setProtocolDialogModel] = useState<string | null>(
+    null,
+  );
+  const [selectedProtocols, setSelectedProtocols] = useState<
+    ModelTestProtocol[]
+  >([...MODEL_TEST_PROTOCOLS]);
+  const [singleTestingModel, setSingleTestingModel] = useState<string | null>(
+    null,
+  );
+  const [detailDialogResult, setDetailDialogResult] = useState<ModelResult | null>(
+    null,
+  );
+  const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,6 +107,7 @@ export function ProviderDetailPage({
     setError(null);
     setLiveResults([]);
     setQuickTestTarget(null);
+    setDetailDialogResult(null);
   }, [provider?.id]);
 
   if (!provider) {
@@ -115,7 +143,10 @@ export function ProviderDetailPage({
       ? liveResults
       : (currentProvider.lastResult?.results ?? []).map((result) => ({
           ...result,
-          status: "done" as RowStatus,
+          status:
+            singleTestingModel === result.model
+              ? ("pending" as RowStatus)
+              : ("done" as RowStatus),
         }));
   const totalCount = displayResults.length;
   const availableCount = displayResults.filter(
@@ -125,33 +156,39 @@ export function ProviderDetailPage({
     (result) => result.status === "done" && !result.available,
   ).length;
 
-  async function handleTest() {
+  async function runModelDetection(targetModels?: string[]) {
     setError(null);
     setLiveResults([]);
     setTesting(true);
-    setProgress("正在获取模型列表...");
+    setProgress(targetModels ? "正在准备重测模型..." : "正在获取模型列表...");
     onSaveResult(currentProvider.id, {
       timestamp: Date.now(),
       results: [],
     });
     logger.info(
-      `[${currentProvider.name}] 开始测试，baseUrl: ${currentProvider.baseUrl}`,
+      `[${currentProvider.name}] 开始测试，baseUrl: ${currentProvider.baseUrl}${
+        targetModels ? `，指定模型=${targetModels.join(", ")}` : ""
+      }`,
     );
     let models: string[];
-    try {
-      models = await listModelsByProvider(
-        currentProvider.baseUrl,
-        currentProvider.apiKey,
-      );
-      logger.success(
-        `[${currentProvider.name}] 获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
-      );
-    } catch (err) {
-      const message = String(err);
-      logger.error(`[${currentProvider.name}] 获取模型列表失败：${message}`);
-      setError(message);
-      setTesting(false);
-      return;
+    if (targetModels && targetModels.length > 0) {
+      models = targetModels;
+    } else {
+      try {
+        models = await listModelsByProvider(
+          currentProvider.baseUrl,
+          currentProvider.apiKey,
+        );
+        logger.success(
+          `[${currentProvider.name}] 获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
+        );
+      } catch (err) {
+        const message = String(err);
+        logger.error(`[${currentProvider.name}] 获取模型列表失败：${message}`);
+        setError(message);
+        setTesting(false);
+        return;
+      }
     }
 
     const initial: LiveResult[] = models.map((model) => ({
@@ -161,6 +198,7 @@ export function ProviderDetailPage({
       error: null,
       response_text: null,
       supported_protocols: [],
+      protocol_results: [],
       status: "pending",
     }));
     setLiveResults(initial);
@@ -206,6 +244,7 @@ export function ProviderDetailPage({
           error: String(err),
           response_text: String(err),
           supported_protocols: [],
+          protocol_results: [],
           status: "done",
         };
         logger.error(
@@ -242,6 +281,114 @@ export function ProviderDetailPage({
     setTesting(false);
     setProgress("");
     toast("模型测试完成", available > 0 ? "success" : "warning");
+  }
+
+  function handleTest() {
+    if (currentProvider.lastResult?.results && currentProvider.lastResult.results.length > 0) {
+      setRetestScopeDialogOpen(true);
+      return;
+    }
+    void runModelDetection();
+  }
+
+  function handleOpenProtocolDialog(result: LiveResult) {
+    const nextProtocols =
+      result.supported_protocols
+        ?.map(normalizeSupportedProtocolTag)
+        .filter(
+          (protocol): protocol is ModelTestProtocol =>
+            protocol === "openApi" ||
+            protocol === "claude" ||
+            protocol === "gemini",
+        ) ?? [];
+
+    setSelectedProtocols(
+      nextProtocols.length > 0 ? nextProtocols : [...MODEL_TEST_PROTOCOLS],
+    );
+    setProtocolDialogModel(result.model);
+  }
+
+  function toggleProtocolSelection(protocol: ModelTestProtocol) {
+    setSelectedProtocols((prev) => {
+      if (prev.includes(protocol)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((item) => item !== protocol);
+      }
+      return [...prev, protocol];
+    });
+  }
+
+  async function handleProtocolTestConfirm() {
+    if (!protocolDialogModel) return;
+
+    const model = protocolDialogModel;
+    setProtocolDialogModel(null);
+    setSingleTestingModel(model);
+    setError(null);
+    setProgress(`正在测试 ${model}...`);
+    logger.info(
+      `[${currentProvider.name}] 详情页单模型测试：${model}，协议=${selectedProtocols.join(",")}`,
+    );
+
+    try {
+      const result = await testSingleModelByProvider(
+        currentProvider.baseUrl,
+        currentProvider.apiKey,
+        model,
+        selectedProtocols,
+      );
+      const existing = currentProvider.lastResult?.results ?? [];
+      const nextResults = existing.some((item) => item.model === model)
+        ? existing.map((item) => (item.model === model ? result : item))
+        : [...existing, result];
+
+      onSaveResult(currentProvider.id, {
+        timestamp: Date.now(),
+        results: nextResults,
+      });
+      for (const protocolResult of result.protocol_results ?? []) {
+        logger.info(
+          `[${currentProvider.name}] ${model} / ${protocolResult.protocol} => ${
+            protocolResult.available ? "支持" : "不支持"
+          }${protocolResult.latency_ms != null ? ` / ${protocolResult.latency_ms}ms` : ""}`,
+        );
+        logger.debug(
+          `[${currentProvider.name}] ${model} / ${protocolResult.protocol} 返回：${getProtocolResultDetails(
+            protocolResult,
+          )}`,
+        );
+      }
+      toast(
+        result.available
+          ? `${model} 测试完成：${formatProtocolSupportSummary(result)}`
+          : `${model} 测试完成：${formatProtocolSupportSummary(result)}`,
+        result.available ? "success" : "warning",
+      );
+    } catch (err) {
+      const message = String(err);
+      const nextResult: ModelResult = {
+        model,
+        available: false,
+        latency_ms: null,
+        error: message,
+        response_text: message,
+        supported_protocols: [],
+        protocol_results: [],
+      };
+      const existing = currentProvider.lastResult?.results ?? [];
+      const nextResults = existing.some((item) => item.model === model)
+        ? existing.map((item) => (item.model === model ? nextResult : item))
+        : [...existing, nextResult];
+      onSaveResult(currentProvider.id, {
+        timestamp: Date.now(),
+        results: nextResults,
+      });
+      setError(message);
+      toast(`测试失败：${message}`, "error");
+    } finally {
+      setSingleTestingModel(null);
+      setProgress("");
+    }
   }
 
   return (
@@ -357,7 +504,7 @@ export function ProviderDetailPage({
             <div className="flex items-center gap-4 text-xs text-gray-400">
               <span>{availableCount} 可用</span>
               <span>{unavailableCount} 不可用</span>
-              {testing && (
+              {(testing || singleTestingModel) && (
                 <span className="text-indigo-400">
                   {progress || "检测中..."}
                 </span>
@@ -373,16 +520,19 @@ export function ProviderDetailPage({
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-gray-800/60">
-                  <th className="w-[34%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[30%] px-5 py-2 text-left text-xs text-gray-500">
                     模型
                   </th>
-                  <th className="w-[14%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[12%] px-5 py-2 text-left text-xs text-gray-500">
                     状态
                   </th>
-                  <th className="w-[14%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[16%] px-5 py-2 text-left text-xs text-gray-500">
+                    测试
+                  </th>
+                  <th className="w-[12%] px-5 py-2 text-left text-xs text-gray-500">
                     延迟
                   </th>
-                  <th className="w-[38%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[30%] px-5 py-2 text-left text-xs text-gray-500">
                     返回结果
                   </th>
                 </tr>
@@ -405,6 +555,22 @@ export function ProviderDetailPage({
                         {result.status === "done" && (
                           <CopyButton text={result.model} />
                         )}
+                        {result.status === "done" &&
+                          result.supported_protocols &&
+                          result.supported_protocols.length > 0 && (
+                            <span className="inline-flex items-center gap-1">
+                              {result.supported_protocols.map((proto) => (
+                                <span
+                                  key={proto}
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getModelProtocolBadgeClass(
+                                    proto,
+                                  )}`}
+                                >
+                                  {getModelProtocolLabel(proto)}
+                                </span>
+                              ))}
+                            </span>
+                          )}
                       </div>
                     </td>
                     <td className="px-5 py-2">
@@ -425,6 +591,15 @@ export function ProviderDetailPage({
                         </span>
                       )}
                     </td>
+                    <td className="px-5 py-2">
+                      <button
+                        onClick={() => handleOpenProtocolDialog(result)}
+                        disabled={testing || !!singleTestingModel}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        测试
+                      </button>
+                    </td>
                     <td className="px-5 py-2 text-xs text-gray-400">
                       {result.latency_ms != null
                         ? `${result.latency_ms} ms`
@@ -432,20 +607,68 @@ export function ProviderDetailPage({
                     </td>
                     <td className="px-5 py-2 text-xs text-gray-600">
                       {result.status === "pending" ? null : (
-                        <div className="flex items-start gap-1.5">
-                          <Tooltip
-                            content={getResultDetails(result)}
-                            placement="top"
-                          >
-                            <span className="max-w-[260px] cursor-default truncate leading-5 text-gray-600">
-                              {getResultDetails(result)}
-                            </span>
-                          </Tooltip>
-                          {getResultDetails(result) !== "—" && (
-                            <CopyButton
-                              text={getResultDetails(result)}
-                              message="已复制返回结果"
-                            />
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {MODEL_TEST_PROTOCOLS.map((protocol) => {
+                              const state = getProtocolSupportState(
+                                result,
+                                protocol,
+                              );
+                              return (
+                                <span
+                                  key={protocol}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${getProtocolSupportChipClass(
+                                    protocol,
+                                    state,
+                                  )}`}
+                                >
+                                  <span>{protocol}</span>
+                                  <span>
+                                    {state === "supported"
+                                      ? "支持"
+                                      : "不支持"}
+                                  </span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {(result.protocol_results ?? []).length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setDetailDialogResult(result)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white"
+                              >
+                                查看详情
+                              </button>
+                              <CopyButton
+                                text={(result.protocol_results ?? [])
+                                  .map(
+                                    (item) =>
+                                      `${getModelProtocolLabel(item.protocol)}: ${getProtocolResultDetails(
+                                        item,
+                                      )}`,
+                                  )
+                                  .join("\n\n")}
+                                message="已复制协议返回结果"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-start gap-1.5">
+                              <Tooltip
+                                content={getResultDetails(result)}
+                                placement="top"
+                              >
+                                <span className="max-w-[260px] cursor-default truncate leading-5 text-gray-600">
+                                  {getResultDetails(result)}
+                                </span>
+                              </Tooltip>
+                              {getResultDetails(result) !== "—" && (
+                                <CopyButton
+                                  text={getResultDetails(result)}
+                                  message="已复制返回结果"
+                                />
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
@@ -469,6 +692,55 @@ export function ProviderDetailPage({
         <QuickTestDialog
           provider={quickTestTarget}
           onClose={() => setQuickTestTarget(null)}
+        />
+      )}
+      {retestScopeDialogOpen && currentProvider.lastResult?.results && (
+        <RetestScopeDialog
+          totalCount={currentProvider.lastResult.results.length}
+          availableCount={
+            currentProvider.lastResult.results.filter((item) => item.available)
+              .length
+          }
+          unavailableCount={
+            currentProvider.lastResult.results.filter((item) => !item.available)
+              .length
+          }
+          onAll={() => {
+            setRetestScopeDialogOpen(false);
+            void runModelDetection();
+          }}
+          onAvailableOnly={() => {
+            const models = currentProvider.lastResult!.results
+              .filter((item) => item.available)
+              .map((item) => item.model);
+            setRetestScopeDialogOpen(false);
+            void runModelDetection(models);
+          }}
+          onUnavailableOnly={() => {
+            const models = currentProvider.lastResult!.results
+              .filter((item) => !item.available)
+              .map((item) => item.model);
+            setRetestScopeDialogOpen(false);
+            void runModelDetection(models);
+          }}
+          onCancel={() => setRetestScopeDialogOpen(false)}
+        />
+      )}
+      {protocolDialogModel && (
+        <ModelProtocolDialog
+          model={protocolDialogModel}
+          selectedProtocols={selectedProtocols}
+          testing={!!singleTestingModel}
+          onToggle={toggleProtocolSelection}
+          onConfirm={() => void handleProtocolTestConfirm()}
+          onClose={() => setProtocolDialogModel(null)}
+        />
+      )}
+      {detailDialogResult && (
+        <ProtocolResultDetailDialog
+          model={detailDialogResult.model}
+          results={detailDialogResult.protocol_results ?? []}
+          onClose={() => setDetailDialogResult(null)}
         />
       )}
     </div>

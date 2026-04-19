@@ -7,5 +7,5 @@ pub async fn test_model_config(
     api_key: String,
     model: String,
 ) -> Result<ModelResult, String> {
-    router::test_single_model(&base_url, &api_key, &model).await
+    router::test_single_model(&base_url, &api_key, &model, None).await
 }

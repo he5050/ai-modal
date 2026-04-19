@@ -36,6 +36,7 @@ pub async fn test_single_model_by_provider(
     base_url: String,
     api_key: String,
     model: String,
+    protocols: Option<Vec<String>>,
 ) -> Result<ModelResult, String> {
-    router::test_single_model(&base_url, &api_key, &model).await
+    router::test_single_model(&base_url, &api_key, &model, protocols.as_deref()).await
 }

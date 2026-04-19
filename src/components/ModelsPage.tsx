@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Copy,
+  ExternalLink,
   TerminalSquare,
   X,
 } from "lucide-react";
@@ -539,8 +540,14 @@ function getSelectableModels(provider: Provider) {
 }
 
 type QuickTestProtocol = "openai" | "claude" | "gemini";
+type ModelTestProtocol = "openApi" | "claude" | "gemini";
 const QUICK_TEST_PROMPT =
   "现在的梵蒂冈的教皇是谁，你现在模型名称是什么，版本号是多少。";
+const MODEL_TEST_PROTOCOLS: ModelTestProtocol[] = [
+  "openApi",
+  "claude",
+  "gemini",
+];
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.trim().replace(/\/+$/, "");
@@ -567,6 +574,41 @@ function getQuickTestProtocolLabel(protocol: QuickTestProtocol) {
   if (protocol === "claude") return "Claude";
   if (protocol === "gemini") return "Gemini";
   return "OpenAI";
+}
+
+function normalizeSupportedProtocolTag(protocol: string) {
+  const normalized = protocol.trim().toLowerCase();
+  if (normalized === "openapi" || normalized === "openai") return "openApi";
+  if (normalized === "claude") return "claude";
+  if (normalized === "gemini") return "gemini";
+  if (normalized === "openrouter") return "openrouter";
+  return normalized;
+}
+
+function getModelProtocolLabel(protocol: string) {
+  const normalized = normalizeSupportedProtocolTag(protocol);
+  if (normalized === "openApi") return "openApi";
+  if (normalized === "claude") return "claude";
+  if (normalized === "gemini") return "gemini";
+  if (normalized === "openrouter") return "openrouter";
+  return protocol;
+}
+
+function getModelProtocolBadgeClass(protocol: string) {
+  const normalized = normalizeSupportedProtocolTag(protocol);
+  if (normalized === "openApi") {
+    return "bg-blue-500/15 text-blue-400";
+  }
+  if (normalized === "claude") {
+    return "bg-purple-500/15 text-purple-400";
+  }
+  if (normalized === "gemini") {
+    return "bg-amber-500/15 text-amber-400";
+  }
+  if (normalized === "openrouter") {
+    return "bg-emerald-500/15 text-emerald-400";
+  }
+  return "bg-gray-700 text-gray-400";
 }
 
 function getQuickTestProtocolBadgeClass(protocol: QuickTestProtocol) {
@@ -806,6 +848,97 @@ function SelectionCheckbox({
   );
 }
 
+function ModelProtocolDialog({
+  model,
+  selectedProtocols,
+  testing,
+  onToggle,
+  onConfirm,
+  onClose,
+}: {
+  model: string;
+  selectedProtocols: ModelTestProtocol[];
+  testing: boolean;
+  onToggle: (protocol: ModelTestProtocol) => void;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-base font-semibold text-white">选择测试协议</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              为模型 <span className="font-mono text-gray-200">{model}</span>{" "}
+              选择本次要验证的协议格式，可单选也可多选。
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            aria-label="关闭"
+            title="关闭"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-2.5">
+          {MODEL_TEST_PROTOCOLS.map((protocol) => {
+            const checked = selectedProtocols.includes(protocol);
+            return (
+              <button
+                key={protocol}
+                type="button"
+                onClick={() => onToggle(protocol)}
+                className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+                  checked
+                    ? "border-indigo-500/40 bg-indigo-500/10"
+                    : "border-gray-700 bg-gray-950/70 hover:border-gray-600 hover:bg-gray-950"
+                }`}
+              >
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    {getModelProtocolLabel(protocol)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {protocol === "openApi"
+                      ? "走 OpenAI-compatible 请求格式"
+                      : protocol === "claude"
+                        ? "走 Claude messages 请求格式"
+                        : "走 Gemini generateContent 请求格式"}
+                  </p>
+                </div>
+                <SelectionCheckbox
+                  checked={checked}
+                  onToggle={() => onToggle(protocol)}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={testing || selectedProtocols.length === 0}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
+          >
+            {testing ? "测试中..." : "开始测试"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DetailRow({
   provider,
   onSaveResult,
@@ -819,6 +952,15 @@ export function DetailRow({
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [liveResults, setLiveResults] = useState<LiveResult[]>([]);
+  const [protocolDialogModel, setProtocolDialogModel] = useState<string | null>(
+    null,
+  );
+  const [selectedProtocols, setSelectedProtocols] = useState<
+    ModelTestProtocol[]
+  >(["openApi"]);
+  const [singleTestingModel, setSingleTestingModel] = useState<string | null>(
+    null,
+  );
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -837,7 +979,10 @@ export function DetailRow({
       ? liveResults
       : (provider.lastResult?.results ?? []).map((r) => ({
           ...r,
-          status: "done" as RowStatus,
+          status:
+            singleTestingModel === r.model
+              ? ("pending" as RowStatus)
+              : ("done" as RowStatus),
         }));
   const totalCount = displayResults.length;
   const availableCount = displayResults.filter(
@@ -947,6 +1092,99 @@ export function DetailRow({
     setProgress("");
   }
 
+  function handleOpenProtocolDialog(result: LiveResult) {
+    const nextProtocols =
+      result.supported_protocols
+        ?.map(normalizeSupportedProtocolTag)
+        .filter(
+          (protocol): protocol is ModelTestProtocol =>
+            protocol === "openApi" ||
+            protocol === "claude" ||
+            protocol === "gemini",
+        ) ?? [];
+
+    setSelectedProtocols(
+      nextProtocols.length > 0 ? nextProtocols : ["openApi"],
+    );
+    setProtocolDialogModel(result.model);
+  }
+
+  function toggleProtocolSelection(protocol: ModelTestProtocol) {
+    setSelectedProtocols((prev) => {
+      if (prev.includes(protocol)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((item) => item !== protocol);
+      }
+      return [...prev, protocol];
+    });
+  }
+
+  async function handleProtocolTestConfirm() {
+    if (!protocolDialogModel) return;
+
+    const model = protocolDialogModel;
+    setProtocolDialogModel(null);
+    setSingleTestingModel(model);
+    setError(null);
+    setProgress(`正在测试 ${model}...`);
+    logger.info(
+      `[${provider.name}] 开始单模型测试：${model}，协议=${selectedProtocols.join(",")}`,
+    );
+
+    try {
+      const result = await testSingleModelByProvider(
+        provider.baseUrl,
+        provider.apiKey,
+        model,
+        selectedProtocols,
+      );
+      const existing = provider.lastResult?.results ?? [];
+      const nextResults = existing.some((item) => item.model === model)
+        ? existing.map((item) => (item.model === model ? result : item))
+        : [...existing, result];
+
+      onSaveResult(provider.id, {
+        timestamp: Date.now(),
+        results: nextResults,
+      });
+      logger.success(
+        `[${provider.name}] 单模型测试完成：${model} -> ${
+          result.supported_protocols?.join(",") || "none"
+        }`,
+      );
+      toast(
+        result.available
+          ? `${model} 测试完成`
+          : `${model} 测试失败，请看返回结果`,
+        result.available ? "success" : "warning",
+      );
+    } catch (e) {
+      const message = String(e);
+      const nextResult: ModelResult = {
+        model,
+        available: false,
+        latency_ms: null,
+        error: message,
+        response_text: message,
+        supported_protocols: [],
+      };
+      const existing = provider.lastResult?.results ?? [];
+      const nextResults = existing.some((item) => item.model === model)
+        ? existing.map((item) => (item.model === model ? nextResult : item))
+        : [...existing, nextResult];
+      onSaveResult(provider.id, {
+        timestamp: Date.now(),
+        results: nextResults,
+      });
+      logger.error(`[${provider.name}] 单模型测试失败：${model} -> ${message}`);
+      setError(message);
+      toast(`测试失败：${message}`, "error");
+    } finally {
+      setSingleTestingModel(null);
+      setProgress("");
+    }
+  }
+
   return (
     <tr>
       <td colSpan={7} className="px-0 pb-0">
@@ -966,7 +1204,7 @@ export function DetailRow({
                 {availableCount}/{totalCount} 可用
               </span>
               {!!totalCount && <span>{unavailableCount} 不可用</span>}
-              {testing && (
+              {(testing || singleTestingModel) && (
                 <span className="text-indigo-400">
                   {progress || "检测中..."}
                 </span>
@@ -974,7 +1212,7 @@ export function DetailRow({
             </div>
             <button
               onClick={handleTest}
-              disabled={testing}
+              disabled={testing || !!singleTestingModel}
               className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1.5 rounded-lg transition-colors"
             >
               {testing ? "检测中..." : "一键测试"}
@@ -995,16 +1233,19 @@ export function DetailRow({
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-gray-800/60">
-                  <th className="w-[34%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[30%] text-left px-6 py-2 text-xs text-gray-500">
                     模型
                   </th>
-                  <th className="w-[14%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[12%] text-left px-6 py-2 text-xs text-gray-500">
                     状态
                   </th>
-                  <th className="w-[14%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[16%] text-left px-6 py-2 text-xs text-gray-500">
+                    测试
+                  </th>
+                  <th className="w-[12%] text-left px-6 py-2 text-xs text-gray-500">
                     延迟
                   </th>
-                  <th className="w-[38%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[30%] text-left px-6 py-2 text-xs text-gray-500">
                     返回结果
                   </th>
                 </tr>
@@ -1028,19 +1269,11 @@ export function DetailRow({
                               {r.supported_protocols.map((proto) => (
                                 <span
                                   key={proto}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                    proto === "openai"
-                                      ? "bg-blue-500/15 text-blue-400"
-                                      : proto === "claude"
-                                        ? "bg-purple-500/15 text-purple-400"
-                                        : proto === "gemini"
-                                          ? "bg-amber-500/15 text-amber-400"
-                                          : proto === "openrouter"
-                                            ? "bg-emerald-500/15 text-emerald-400"
-                                            : "bg-gray-700 text-gray-400"
-                                  }`}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getModelProtocolBadgeClass(
+                                    proto,
+                                  )}`}
                                 >
-                                  {proto.toUpperCase()}
+                                  {getModelProtocolLabel(proto)}
                                 </span>
                               ))}
                             </span>
@@ -1064,6 +1297,15 @@ export function DetailRow({
                           不可用
                         </span>
                       )}
+                    </td>
+                    <td className="px-6 py-2">
+                      <button
+                        onClick={() => handleOpenProtocolDialog(r)}
+                        disabled={testing || !!singleTestingModel}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        测试
+                      </button>
                     </td>
                     <td className="px-6 py-2 text-xs text-gray-400">
                       {r.latency_ms != null ? `${r.latency_ms} ms` : "—"}
@@ -1099,6 +1341,16 @@ export function DetailRow({
             <div className="px-6 py-4 text-xs text-gray-600">
               点击一键测试获取该 provider 的 model 列表
             </div>
+          )}
+          {protocolDialogModel && (
+            <ModelProtocolDialog
+              model={protocolDialogModel}
+              selectedProtocols={selectedProtocols}
+              testing={!!singleTestingModel}
+              onToggle={toggleProtocolSelection}
+              onConfirm={() => void handleProtocolTestConfirm()}
+              onClose={() => setProtocolDialogModel(null)}
+            />
           )}
         </div>
       </td>
@@ -1809,6 +2061,14 @@ export function ModelsPage({
                               text={p.baseUrl}
                               message="已复制 Base URL"
                             />
+                            <button
+                              onClick={() => void openPath(p.baseUrl)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+                              title="浏览器打开 Base URL"
+                              aria-label="浏览器打开 Base URL"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </td>
                         <td className="px-5 py-2.5">

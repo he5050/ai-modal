@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 
-use crate::commands::model::ModelResult;
+use crate::commands::model::{ModelResult, ProtocolTestResult};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const OPENROUTER_TITLE: &str = "AIModal";
@@ -55,7 +55,7 @@ pub async fn test_models(
         let key = api_key.clone();
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
-            test_single_model_with_client(&client, &base, &key, &model_id).await
+            test_single_model_with_client(&client, &base, &key, &model_id, None).await
         }));
     }
 
@@ -70,6 +70,7 @@ pub async fn test_models(
                 error: Some(format!("任务异常：{}", e)),
                 response_text: Some(format!("任务异常：{}", e)),
                 supported_protocols: Vec::new(),
+                protocol_results: Vec::new(),
             }),
         }
     }
@@ -81,9 +82,18 @@ pub async fn test_single_model(
     base_url: &str,
     api_key: &str,
     model: &str,
+    protocols: Option<&[String]>,
 ) -> Result<ModelResult, String> {
     let client = client()?;
-    Ok(test_single_model_with_client(&client, base_url, api_key, model).await)
+    let requested_protocols = protocols.map(parse_requested_protocols);
+    Ok(test_single_model_with_client(
+        &client,
+        base_url,
+        api_key,
+        model,
+        requested_protocols.as_deref(),
+    )
+    .await)
 }
 
 pub fn infer_protocol_from_model(model: &str) -> ModelProtocol {
@@ -138,9 +148,14 @@ async fn test_single_model_with_client(
     base_url: &str,
     api_key: &str,
     model: &str,
+    requested_protocols: Option<&[ModelProtocol]>,
 ) -> ModelResult {
-    let protocols = determine_test_protocols(base_url, model);
+    let protocols = requested_protocols
+        .filter(|protocols| !protocols.is_empty())
+        .map(|protocols| protocols.to_vec())
+        .unwrap_or_else(|| determine_test_protocols(base_url, model));
     let mut supported_protocols = Vec::new();
+    let mut protocol_results = Vec::new();
     let mut last_error = None;
     let mut last_response_text = None;
     let mut total_latency_ms = 0u64;
@@ -161,6 +176,13 @@ async fn test_single_model_with_client(
                 let err_msg = classify_error(None, &e.to_string());
                 last_error = Some(err_msg.clone());
                 last_response_text = Some(e.to_string());
+                protocol_results.push(ProtocolTestResult {
+                    protocol: protocol_to_string(protocol),
+                    available: false,
+                    latency_ms: None,
+                    error: Some(err_msg),
+                    response_text: Some(e.to_string()),
+                });
                 continue;
             }
         };
@@ -168,7 +190,7 @@ async fn test_single_model_with_client(
         let latency_ms = start.elapsed().as_millis() as u64;
         total_latency_ms += latency_ms;
         let status = resp.status().as_u16();
-        
+
         // 尝试读取响应文本，如果失败则使用空字符串
         let response_text = match resp.text().await {
             Ok(text) => text,
@@ -176,13 +198,29 @@ async fn test_single_model_with_client(
         };
 
         if (200..300).contains(&status) {
-            supported_protocols.push(protocol_to_string(protocol));
+            let protocol_name = protocol_to_string(protocol);
+            supported_protocols.push(protocol_name.clone());
             any_success = true;
+            protocol_results.push(ProtocolTestResult {
+                protocol: protocol_name,
+                available: true,
+                latency_ms: Some(latency_ms),
+                error: None,
+                response_text: Some(response_text),
+            });
             // 继续测试下一个协议，不提前返回
         } else {
             let err_msg = classify_error(Some(status), &response_text);
-            last_error = Some(err_msg);
+            let protocol_name = protocol_to_string(protocol);
+            last_error = Some(err_msg.clone());
             last_response_text = Some(response_text);
+            protocol_results.push(ProtocolTestResult {
+                protocol: protocol_name,
+                available: false,
+                latency_ms: Some(latency_ms),
+                error: Some(err_msg),
+                response_text: last_response_text.clone(),
+            });
             // 对于 401/403/429 等认证或限流错误，通常不是协议不匹配，停止测试
             if status == 401 || status == 403 || status == 429 {
                 break;
@@ -193,20 +231,52 @@ async fn test_single_model_with_client(
     ModelResult {
         model: model.to_string(),
         available: any_success,
-        latency_ms: if total_latency_ms > 0 { Some(total_latency_ms) } else { None },
+        latency_ms: if total_latency_ms > 0 {
+            Some(total_latency_ms)
+        } else {
+            None
+        },
         error: if any_success { None } else { last_error },
-        response_text: if any_success { None } else { last_response_text },
+        response_text: if any_success {
+            None
+        } else {
+            last_response_text
+        },
         supported_protocols,
+        protocol_results,
     }
 }
 
 fn protocol_to_string(protocol: ModelProtocol) -> String {
     match protocol {
-        ModelProtocol::OpenAi => "openai".to_string(),
+        ModelProtocol::OpenAi => "openApi".to_string(),
         ModelProtocol::OpenRouter => "openrouter".to_string(),
         ModelProtocol::Claude => "claude".to_string(),
         ModelProtocol::Gemini => "gemini".to_string(),
     }
+}
+
+fn parse_requested_protocols(protocols: &[String]) -> Vec<ModelProtocol> {
+    let mut parsed = Vec::new();
+
+    for protocol in protocols {
+        let normalized = protocol.trim().to_ascii_lowercase();
+        let next = match normalized.as_str() {
+            "openapi" | "openai" => Some(ModelProtocol::OpenAi),
+            "claude" => Some(ModelProtocol::Claude),
+            "gemini" => Some(ModelProtocol::Gemini),
+            "openrouter" => Some(ModelProtocol::OpenRouter),
+            _ => None,
+        };
+
+        if let Some(protocol) = next {
+            if !parsed.contains(&protocol) {
+                parsed.push(protocol);
+            }
+        }
+    }
+
+    parsed
 }
 
 fn determine_test_protocols(base_url: &str, model: &str) -> Vec<ModelProtocol> {
@@ -221,14 +291,22 @@ fn determine_test_protocols(base_url: &str, model: &str) -> Vec<ModelProtocol> {
             if model_protocol == ModelProtocol::Claude {
                 vec![ModelProtocol::Claude, ModelProtocol::OpenAi]
             } else {
-                vec![ModelProtocol::Claude, ModelProtocol::OpenAi, ModelProtocol::Gemini]
+                vec![
+                    ModelProtocol::Claude,
+                    ModelProtocol::OpenAi,
+                    ModelProtocol::Gemini,
+                ]
             }
         }
         ModelProtocol::Gemini => {
             if model_protocol == ModelProtocol::Gemini {
                 vec![ModelProtocol::Gemini, ModelProtocol::OpenAi]
             } else {
-                vec![ModelProtocol::Gemini, ModelProtocol::OpenAi, ModelProtocol::Claude]
+                vec![
+                    ModelProtocol::Gemini,
+                    ModelProtocol::OpenAi,
+                    ModelProtocol::Claude,
+                ]
             }
         }
         // 通用 OpenAI 兼容地址：按模型名推断优先，然后 fallback 其他协议

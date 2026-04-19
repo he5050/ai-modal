@@ -20,7 +20,6 @@ import { SkillsPage } from "./components/SkillsPage";
 import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
 import type {
   AppPage,
-  ConfigFormat,
   ConfigPath,
   Provider,
   ProviderLastResult,
@@ -443,40 +442,11 @@ export default function App() {
     setRulePaths((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function handleConfigPathChange(id: string, path: string) {
+  function handleUpsertConfigPath(next: ConfigPath) {
     setConfigPaths((prev) => {
-      const current = prev.find((item) => item.id === id);
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        ...next,
-        {
-          id,
-          label: current?.label ?? id,
-          path,
-          isBuiltin: current?.isBuiltin ?? true,
-          kind: "file",
-          format: current?.format ?? "json",
-        },
-      ];
+      const rest = prev.filter((item) => item.id !== next.id);
+      return [...rest, next];
     });
-  }
-
-  function handleAddConfigPath(input: {
-    label: string;
-    path: string;
-    format?: ConfigFormat;
-  }) {
-    setConfigPaths((prev) => [
-      ...prev,
-      {
-        id: `custom-config-${Date.now()}`,
-        label: input.label.trim(),
-        path: input.path.trim(),
-        isBuiltin: false,
-        kind: "file",
-        format: input.format ?? "json",
-      },
-    ]);
   }
 
   function handleDeleteConfigPath(id: string) {
@@ -550,8 +520,7 @@ export default function App() {
           <ConfigPage
             providers={providers}
             storedPaths={configPaths}
-            onPathChange={handleConfigPathChange}
-            onAddPath={handleAddConfigPath}
+            onUpsertPath={handleUpsertConfigPath}
             onDeletePath={handleDeleteConfigPath}
             onDirtyChange={setEditingDirty}
           />

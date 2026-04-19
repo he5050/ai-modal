@@ -9,6 +9,8 @@ export type AppPage =
 
 export type ConfigFormat = "json" | "toml" | "yaml" | "xml";
 
+export type ConfigGroupId = "claude" | "codex" | "gemini" | "opencode" | "qwen";
+
 export interface RulePath {
   id: string;
   label: string; // 显示名称，如 "Claude Code"
@@ -27,6 +29,25 @@ export interface ConfigPath {
   format?: ConfigFormat;
 }
 
+export interface ConfigGroupFileView {
+  id: string;
+  groupId: ConfigGroupId;
+  label: string;
+  fileName: string;
+  relativePath: string;
+  absolutePath: string;
+  format: ConfigFormat;
+  isBuiltin: boolean;
+}
+
+export interface ConfigGroupView {
+  id: ConfigGroupId;
+  label: string;
+  rootDir: string;
+  accentClass: string;
+  files: ConfigGroupFileView[];
+}
+
 export interface ModelResult {
   model: string;
   available: boolean;
@@ -35,6 +56,16 @@ export interface ModelResult {
   response_text?: string | null;
   /** 该模型支持的协议列表，如 ["openai", "claude", "gemini"] */
   supported_protocols?: string[];
+  /** 每个协议各自的测试结果 */
+  protocol_results?: ProtocolTestResult[];
+}
+
+export interface ProtocolTestResult {
+  protocol: string;
+  available: boolean;
+  latency_ms: number | null;
+  error: string | null;
+  response_text?: string | null;
 }
 
 export interface ProviderLastResult {

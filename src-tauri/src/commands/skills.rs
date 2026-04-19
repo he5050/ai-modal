@@ -250,13 +250,21 @@ fn source_needs_wildcard(source: &str, home: &Path) -> bool {
 
 fn parse_frontmatter(path: &Path) -> (String, String, Option<String>, Vec<String>, bool) {
     let text = fs::read_to_string(path).unwrap_or_default();
-    
+
     // Find YAML frontmatter between --- markers
     let mut lines = text.lines();
     if lines.next().map(str::trim) != Some("---") {
-        return (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), String::new(), None, Vec::new(), false);
+        return (
+            path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            String::new(),
+            None,
+            Vec::new(),
+            false,
+        );
     }
-    
+
     let mut frontmatter_lines = Vec::new();
     for line in lines {
         let trimmed = line.trim();
@@ -265,66 +273,95 @@ fn parse_frontmatter(path: &Path) -> (String, String, Option<String>, Vec<String
         }
         frontmatter_lines.push(line.to_string());
     }
-    
+
     if frontmatter_lines.is_empty() {
-        return (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), String::new(), None, Vec::new(), false);
+        return (
+            path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            String::new(),
+            None,
+            Vec::new(),
+            false,
+        );
     }
-    
+
     let yaml_content = frontmatter_lines.join("\n");
-    
+
     // Parse YAML using serde_yaml
     match serde_yaml::from_str::<serde_yaml::Value>(&yaml_content) {
         Ok(value) => {
-            let name = value.get("name")
+            let name = value
+                .get("name")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
-            
-            let description = value.get("description")
+                .unwrap_or_else(|| {
+                    path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default()
+                });
+
+            let description = value
+                .get("description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default();
-            
-            let version = value.get("version")
+
+            let version = value
+                .get("version")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .filter(|s| !s.is_empty());
-            
+
             let mut categories = Vec::new();
-            
+
             // Parse category/tags
             if let Some(cat) = value.get("category") {
                 if let Some(s) = cat.as_str() {
-                    categories.extend(s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()));
+                    categories.extend(
+                        s.split(',')
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty()),
+                    );
                 } else if let Some(arr) = cat.as_sequence() {
                     categories.extend(arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())));
                 }
             }
-            
+
             if let Some(tags) = value.get("tags") {
                 if let Some(arr) = tags.as_sequence() {
                     categories.extend(arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())));
                 }
             }
-            
+
             // Check for internal flag
-            let internal = value.get("metadata")
+            let internal = value
+                .get("metadata")
                 .and_then(|v| v.as_str())
                 .map(|s| s.contains("internal"))
                 .unwrap_or(false)
-                || value.get("user-invokable")
+                || value
+                    .get("user-invokable")
                     .and_then(|v| v.as_bool())
                     .map(|b| !b)
                     .unwrap_or(false);
-            
+
             categories.sort();
             categories.dedup();
-            
+
             (name, description, version, categories, internal)
         }
         Err(_) => {
             // Fallback: use directory name if YAML parsing fails
-            (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), String::new(), None, Vec::new(), false)
+            (
+                path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                String::new(),
+                None,
+                Vec::new(),
+                false,
+            )
         }
     }
 }
@@ -727,12 +764,12 @@ pub async fn sync_skill_targets(
             for entry in entries.flatten() {
                 let entry_path = entry.path();
                 let entry_name = entry.file_name().to_string_lossy().to_string();
-                
+
                 // Skip hidden files and backup directory
                 if entry_name.starts_with('.') {
                     continue;
                 }
-                
+
                 // Check if this is a symlink to a skill that no longer exists in source
                 if let Ok(metadata) = fs::symlink_metadata(&entry_path) {
                     if metadata.file_type().is_symlink() {
@@ -791,7 +828,8 @@ pub async fn run_skills_command(
 
             let names = request.skill_names.unwrap_or_default();
             if names.is_empty() {
-                if source_needs_wildcard(&source, &home) && !source_is_single_skill(&source, &home) {
+                if source_needs_wildcard(&source, &home) && !source_is_single_skill(&source, &home)
+                {
                     command.push("--skill".to_string());
                     command.push("*".to_string());
                 }
@@ -890,7 +928,11 @@ pub async fn search_online_skills(
             limit
         );
         if let Some(ref src) = source {
-            format!("{}&source={}", base, utf8_percent_encode(src, NON_ALPHANUMERIC))
+            format!(
+                "{}&source={}",
+                base,
+                utf8_percent_encode(src, NON_ALPHANUMERIC)
+            )
         } else {
             base
         }
@@ -917,7 +959,11 @@ pub async fn search_online_skills(
         .map_err(|e| format!("解析 API 响应失败：{e}"))?;
 
     Ok(SearchOnlineResult {
-        skills: api_resp.skills.into_iter().map(ApiSkill::into_online_skill).collect(),
+        skills: api_resp
+            .skills
+            .into_iter()
+            .map(ApiSkill::into_online_skill)
+            .collect(),
         count: api_resp.count,
         duration_ms: api_resp.duration_ms,
     })

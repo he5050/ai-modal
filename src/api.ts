@@ -44,8 +44,14 @@ export async function testSingleModelByProvider(
   baseUrl: string,
   apiKey: string,
   model: string,
+  protocols?: string[],
 ): Promise<ModelResult> {
-  return invoke("test_single_model_by_provider", { baseUrl, apiKey, model });
+  return invoke("test_single_model_by_provider", {
+    baseUrl,
+    apiKey,
+    model,
+    protocols: protocols ?? null,
+  });
 }
 
 export async function testModelConfig(

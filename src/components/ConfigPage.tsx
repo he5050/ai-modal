@@ -7,9 +7,6 @@ import { StreamLanguage, foldService } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
-import prettier from "prettier/standalone";
-import babelPlugin from "prettier/plugins/babel";
-import estreePlugin from "prettier/plugins/estree";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import {
   exists,
@@ -17,52 +14,51 @@ import {
   readTextFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { testModelConfig } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronUp,
   Copy,
   ExternalLink,
-  FilePenLine,
   FolderOpen,
   Plus,
   Save,
   Trash2,
   WandSparkles,
 } from "lucide-react";
+import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import {
-  FIELD_INPUT_CLASS,
-  FIELD_MONO_INPUT_CLASS,
-  FIELD_SELECT_CLASS,
-} from "../lib/formStyles";
+  formatConfigContent,
+  getSupportedConfigFormatsLabel,
+  isSupportedConfigFormat,
+} from "../lib/configFormatter";
+import {
+  buildConfigGroups,
+  inferConfigFormatFromPath,
+  normalizeGroupRelativePath,
+  resolveGroupAbsolutePath,
+} from "../lib/configGroups";
 import { toast } from "../lib/toast";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
-import type { ConfigFormat, ConfigPath, ModelResult, Provider } from "../types";
+import type {
+  ConfigFormat,
+  ConfigGroupFileView,
+  ConfigGroupId,
+  ConfigPath,
+  ModelResult,
+  Provider,
+} from "../types";
 
 interface Props {
   providers: Provider[];
   storedPaths: ConfigPath[];
-  onPathChange: (id: string, path: string) => void;
-  onAddPath: (input: {
-    label: string;
-    path: string;
-    format?: ConfigFormat;
-  }) => void;
+  onUpsertPath: (path: ConfigPath) => void;
   onDeletePath: (id: string) => void;
   onDirtyChange: (dirty: boolean) => void;
-}
-
-interface BuiltinConfig {
-  id: string;
-  label: string;
-  fileName: string;
-  relativePath: string;
-  accentClass: string;
-  format: ConfigFormat;
 }
 
 interface ModelConfigRecord {
@@ -91,52 +87,13 @@ interface ConfirmModalProps {
   description: string;
   primaryLabel: string;
   secondaryLabel?: string;
+  tertiaryLabel?: string;
+  emphasisText?: string;
+  primaryTone?: "danger" | "default";
   onPrimary: () => void;
   onSecondary?: () => void;
+  onTertiary?: () => void;
 }
-
-const BUILTIN_CONFIGS: BuiltinConfig[] = [
-  {
-    id: "claude",
-    label: "Claude",
-    fileName: "settings.json",
-    relativePath: ".claude/settings.json",
-    accentClass: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200",
-    format: "json",
-  },
-  {
-    id: "codex",
-    label: "Codex",
-    fileName: "config.toml",
-    relativePath: ".codex/config.toml",
-    accentClass: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
-    format: "toml",
-  },
-  {
-    id: "gemini",
-    label: "Gemini",
-    fileName: "settings.json",
-    relativePath: ".gemini/settings.json",
-    accentClass: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200",
-    format: "json",
-  },
-  {
-    id: "opencode",
-    label: "OpenCode",
-    fileName: "opencode.json",
-    relativePath: ".config/opencode/opencode.json",
-    accentClass: "border-amber-500/30 bg-amber-500/10 text-amber-100",
-    format: "json",
-  },
-  {
-    id: "qwen",
-    label: "Qwen",
-    fileName: "settings.json",
-    relativePath: ".qwen/settings.json",
-    accentClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    format: "json",
-  },
-];
 
 const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
 const MODEL_CONFIGS_DB_KEY = "model_configs";
@@ -266,14 +223,6 @@ function toDisplayPath(value: string, homePath: string) {
     : value;
 }
 
-function toAbsolutePath(value: string, homePath: string) {
-  return value.startsWith("~/") ? `${homePath}${value.slice(1)}` : value;
-}
-
-function buildDefaultPath(homePath: string, relativePath: string) {
-  return `${homePath.replace(/\/$/, "")}/${relativePath}`;
-}
-
 function createEmptyModelConfig(): ModelConfigRecord {
   return {
     id: `model-config-${Date.now()}`,
@@ -309,58 +258,106 @@ function ConfirmModal({
   description,
   primaryLabel,
   secondaryLabel,
+  tertiaryLabel,
+  emphasisText,
+  primaryTone = "default",
   onPrimary,
   onSecondary,
+  onTertiary,
 }: ConfirmModalProps) {
+  const primaryButtonClass =
+    primaryTone === "danger"
+      ? "border border-red-500/35 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-white"
+      : "bg-indigo-600 text-white hover:bg-indigo-500";
+
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        <p className="mt-3 text-sm leading-6 text-gray-400">{description}</p>
-        <div className="mt-6 space-y-2">
-          <button
-            onClick={onPrimary}
-            className="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-          >
-            {primaryLabel}
-          </button>
-          {secondaryLabel && onSecondary && (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10 text-amber-300">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              {title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">{description}</p>
+          </div>
+        </div>
+
+        {emphasisText && (
+          <div className="mt-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/8 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-indigo-200/80">
+              建议操作
+            </p>
+            <p className="mt-1 text-sm leading-6 text-indigo-100">
+              {emphasisText}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-5 space-y-2">
+          {tertiaryLabel && onTertiary && (
             <button
-              onClick={onSecondary}
-              className="flex w-full items-center justify-center rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+              onClick={onTertiary}
+              className="flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
             >
-              {secondaryLabel}
+              {tertiaryLabel}
             </button>
           )}
+          <div className="grid grid-cols-2 gap-2">
+            {secondaryLabel && onSecondary && (
+              <button
+                onClick={onSecondary}
+                className="flex w-full items-center justify-center rounded-xl border border-gray-700 bg-gray-900/80 px-4 py-2.5 text-sm font-medium text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-900 hover:text-white"
+              >
+                {secondaryLabel}
+              </button>
+            )}
+            <button
+              onClick={onPrimary}
+              className={`flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${primaryButtonClass}`}
+            >
+              {primaryLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+interface FileDraftState {
+  contentDraft: string;
+  savedContent: string;
+  fileExists: boolean;
+  loading: boolean;
+  loadedPath: string;
+}
+
+interface PendingSwitchTarget {
+  groupId: ConfigGroupId;
+  fileId: string;
+}
+
 export function ConfigPage({
   providers,
   storedPaths,
-  onPathChange,
-  onAddPath,
+  onUpsertPath,
   onDeletePath,
   onDirtyChange,
 }: Props) {
-  const [selectedId, setSelectedId] = useState<string>("claude");
-  const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(
-    null,
-  );
-  const [pathDraft, setPathDraft] = useState("");
-  const [contentDraft, setContentDraft] = useState("");
-  const [savedContent, setSavedContent] = useState("");
-  const [fileExists, setFileExists] = useState(false);
-  const [loadingContent, setLoadingContent] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] =
+    useState<ConfigGroupId>("claude");
+  const [selectedFileId, setSelectedFileId] = useState<string>("claude");
+  const [pendingSwitchTarget, setPendingSwitchTarget] =
+    useState<PendingSwitchTarget | null>(null);
+  const [draftsByFileId, setDraftsByFileId] = useState<
+    Record<string, FileDraftState>
+  >({});
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [customLabel, setCustomLabel] = useState("");
-  const [customPath, setCustomPath] = useState("");
-  const [customFormat, setCustomFormat] = useState<ConfigFormat>("json");
-  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [showAddFileForm, setShowAddFileForm] = useState(false);
+  const [newRelativePath, setNewRelativePath] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [homePath, setHomePath] = useState("");
   const [selectedAvailableProviderId, setSelectedAvailableProviderId] =
@@ -396,70 +393,39 @@ export function ConfigPage({
     };
   }, []);
 
-  const tools = useMemo(() => {
-    const builtin = BUILTIN_CONFIGS.map((tool) => {
-      const stored = storedPaths.find((item) => item.id === tool.id);
-      return {
-        ...tool,
-        path:
-          stored?.path && stored.path.startsWith("/")
-            ? stored.path
-            : homePath
-              ? buildDefaultPath(homePath, tool.relativePath)
-              : "",
-        isBuiltin: true,
-      };
-    });
-    const custom = storedPaths
-      .filter((item) => !item.isBuiltin)
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        fileName:
-          item.format === "toml"
-            ? "config.toml"
-            : item.format === "yaml"
-              ? "config.yaml"
-              : item.format === "xml"
-                ? "config.xml"
-                : "config.json",
-        relativePath: item.path,
-        accentClass: "border-gray-500/30 bg-gray-500/10 text-gray-200",
-        format: item.format ?? "json",
-        path: item.path,
-        isBuiltin: false,
-      }));
-    return [...builtin, ...custom];
-  }, [homePath, storedPaths]);
-  const selectedTool =
-    tools.find((tool) => tool.id === selectedId) ?? tools[0] ?? null;
+  const groups = useMemo(
+    () => (homePath ? buildConfigGroups(storedPaths, homePath) : []),
+    [homePath, storedPaths],
+  );
+  const selectedGroup =
+    groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
+  const selectedFile =
+    selectedGroup?.files.find((file) => file.id === selectedFileId) ??
+    selectedGroup?.files[0] ??
+    null;
   const editorExtensions = useMemo(
     () => [
-      ...getConfigLanguageExtensions(selectedTool?.format ?? "json"),
+      ...getConfigLanguageExtensions(selectedFile?.format ?? "json"),
       configEditorTheme,
     ],
-    [selectedTool?.format],
+    [selectedFile?.format],
   );
-  const normalizedLabels = useMemo(
-    () => new Set(tools.map((tool) => normalizeText(tool.label).toLowerCase())),
-    [tools],
-  );
-  const normalizedPaths = useMemo(
-    () =>
-      new Set(tools.map((tool) => normalizeText(tool.path)).filter(Boolean)),
-    [tools],
-  );
+  const activeDraft = selectedFile ? draftsByFileId[selectedFile.id] : null;
+  const activeContentDraft = activeDraft?.contentDraft ?? "";
+  const activeFileExists = activeDraft?.fileExists ?? false;
+  const activeLoading = activeDraft?.loading ?? false;
+
+  function getFileDirty(fileId: string) {
+    const draft = draftsByFileId[fileId];
+    if (!draft) return false;
+    return draft.contentDraft !== draft.savedContent;
+  }
+
   const modelConfigDirty =
     JSON.stringify(modelConfigs) !== JSON.stringify(savedModelConfigs);
   const dirty =
     modelConfigDirty ||
-    contentDraft !== savedContent ||
-    normalizeText(pathDraft) !==
-      normalizeText(
-        selectedTool && homePath
-          ? toDisplayPath(selectedTool.path, homePath)
-          : (selectedTool?.path ?? ""),
-      );
+    Object.keys(draftsByFileId).some((fileId) => getFileDirty(fileId));
   const availableProviderOptions = useMemo(() => {
     return providers
       .map((provider) => {
@@ -515,10 +481,38 @@ export function ConfigPage({
     modelConfigs[0] ??
     null;
 
+  function updateDraftState(fileId: string, patch: Partial<FileDraftState>) {
+    setDraftsByFileId((prev) => ({
+      ...prev,
+      [fileId]: {
+        contentDraft: "",
+        savedContent: "",
+        fileExists: false,
+        loading: false,
+        loadedPath: "",
+        ...prev[fileId],
+        ...patch,
+      },
+    }));
+  }
+
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (groups.length === 0) return;
+    if (!selectedGroup) {
+      setSelectedGroupId(groups[0].id);
+      setSelectedFileId(groups[0].files[0]?.id ?? "");
+      return;
+    }
+
+    if (!selectedFile && selectedGroup.files[0]) {
+      setSelectedFileId(selectedGroup.files[0].id);
+    }
+  }, [groups, selectedFile, selectedGroup]);
 
   useEffect(() => {
     let active = true;
@@ -616,75 +610,115 @@ export function ConfigPage({
     }
   }, [modelConfigs, selectedModelConfigId]);
 
-  async function refreshCurrent(tool = selectedTool, targetPath?: string) {
-    if (!tool || !homePath) return;
-    const path = normalizeText(
-      toAbsolutePath(targetPath ?? tool.path, homePath),
-    );
-    if (!path) {
-      setFileExists(false);
-      setSavedContent("");
-      setContentDraft("");
-      return;
-    }
+  async function refreshCurrent(file = selectedFile) {
+    if (!file) return;
 
-    setRefreshing(true);
-    setLoadingContent(true);
+    updateDraftState(file.id, {
+      loading: true,
+      loadedPath: file.absolutePath,
+    });
     try {
-      const present = await detectExists(path);
-      setFileExists(present);
+      const present = await detectExists(file.absolutePath);
       if (!present) {
-        setSavedContent("");
-        setContentDraft("");
+        updateDraftState(file.id, {
+          contentDraft: "",
+          savedContent: "",
+          fileExists: false,
+          loading: false,
+          loadedPath: file.absolutePath,
+        });
         return;
       }
 
-      const content = await readTextFile(path);
-      setSavedContent(content);
-      setContentDraft(content);
+      const content = await readTextFile(file.absolutePath);
+      updateDraftState(file.id, {
+        contentDraft: content,
+        savedContent: content,
+        fileExists: true,
+        loading: false,
+        loadedPath: file.absolutePath,
+      });
     } catch (error) {
       console.error("Failed to read config file", error);
       toast("读取配置文件失败", "error");
-    } finally {
-      setLoadingContent(false);
-      setRefreshing(false);
+      updateDraftState(file.id, {
+        loading: false,
+        loadedPath: file.absolutePath,
+      });
     }
   }
 
   useEffect(() => {
-    if (!selectedTool || !homePath) return;
-    setPathDraft(toDisplayPath(selectedTool.path, homePath));
-    void refreshCurrent(selectedTool, selectedTool.path);
-  }, [homePath, selectedTool?.id, selectedTool?.path]);
-
-  useEffect(() => {
-    if (!selectedTool && tools.length > 0) {
-      setSelectedId(tools[0].id);
-    }
-  }, [selectedTool, tools]);
-
-  async function handleFormat() {
-    if (!contentDraft || !selectedTool) return;
-    if (selectedTool.format !== "json") {
-      toast("当前仅对 JSON 配置提供标准格式化", "warning");
+    if (!selectedFile) return;
+    if (
+      draftsByFileId[selectedFile.id]?.loadedPath === selectedFile.absolutePath
+    ) {
       return;
     }
+    void refreshCurrent(selectedFile);
+  }, [draftsByFileId, selectedFile]);
+
+  function applySwitch(target: PendingSwitchTarget) {
+    setSelectedGroupId(target.groupId);
+    setSelectedFileId(target.fileId);
+  }
+
+  function requestSwitch(target: PendingSwitchTarget) {
+    if (!selectedFile || !getFileDirty(selectedFile.id)) {
+      applySwitch(target);
+      return;
+    }
+    setPendingSwitchTarget(target);
+  }
+
+  function handleRequestGroupSwitch(groupId: ConfigGroupId) {
+    const nextGroup = groups.find((group) => group.id === groupId);
+    const nextFileId = nextGroup?.files[0]?.id;
+    if (!nextGroup || !nextFileId) return;
+    requestSwitch({ groupId, fileId: nextFileId });
+  }
+
+  function handleRequestFileSwitch(fileId: string) {
+    if (!selectedGroup) return;
+    requestSwitch({ groupId: selectedGroup.id, fileId });
+  }
+
+  async function handleFormat() {
+    if (!activeContentDraft || !selectedFile) return;
     try {
-      const formatted = await prettier.format(contentDraft, {
-        parser: "json",
-        plugins: [babelPlugin, estreePlugin],
-      });
-      setContentDraft(formatted);
-      toast("已格式化 JSON 配置", "success");
+      if (!isSupportedConfigFormat(selectedFile.format)) {
+        toast(
+          `当前仅对 ${getSupportedConfigFormatsLabel()} 配置提供标准格式化`,
+          "warning",
+        );
+        return;
+      }
+
+      const result = await formatConfigContent(
+        activeContentDraft,
+        selectedFile.format,
+      );
+      updateDraftState(selectedFile.id, { contentDraft: result.formatted });
+      toast(
+        result.normalizedPunctuation
+          ? `已格式化 ${selectedFile.format.toUpperCase()} 配置，并自动将中文语法符号转换为英文符号`
+          : `已格式化 ${selectedFile.format.toUpperCase()} 配置`,
+        "success",
+      );
     } catch (error) {
       console.error("Failed to format config", error);
-      toast("配置格式化失败", "error");
+      toast(
+        error instanceof Error
+          ? `配置格式化失败：${error.message}`
+          : "配置格式化失败",
+        "error",
+      );
     }
   }
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(contentDraft);
+      await navigator.clipboard.writeText(activeContentDraft);
       toast("已复制当前配置内容", "success");
     } catch (error) {
       console.error("Failed to copy config", error);
@@ -693,9 +727,9 @@ export function ConfigPage({
   }
 
   async function handleOpenFile() {
-    if (!selectedTool || !homePath) return;
+    if (!selectedFile) return;
     try {
-      await openPath(toAbsolutePath(pathDraft, homePath));
+      await openPath(selectedFile.absolutePath);
     } catch (error) {
       console.error("Failed to open config file", error);
       toast("打开文件失败", "error");
@@ -703,9 +737,9 @@ export function ConfigPage({
   }
 
   async function handleOpenDirectory() {
-    if (!selectedTool || !homePath) return;
+    if (!selectedFile) return;
     try {
-      const folder = await dirname(toAbsolutePath(pathDraft, homePath));
+      const folder = await dirname(selectedFile.absolutePath);
       await openPath(folder);
     } catch (error) {
       console.error("Failed to open config directory", error);
@@ -713,132 +747,97 @@ export function ConfigPage({
     }
   }
 
-  async function handleSavePath() {
-    if (!selectedTool || !homePath) return;
-    const nextPath = normalizeText(toAbsolutePath(pathDraft, homePath));
-    if (!nextPath) {
-      toast("路径不能为空", "warning");
-      return;
-    }
-    onPathChange(selectedTool.id, nextPath);
-    toast("路径已更新", "success");
-  }
-
-  async function handlePickCurrentPath() {
-    if (!selectedTool || !homePath) return;
-    try {
-      const picked = await pickPath({
-        directory: false,
-        multiple: false,
-        filters:
-          selectedTool.format === "toml"
-            ? [{ name: "TOML", extensions: ["toml"] }]
-            : selectedTool.format === "yaml"
-              ? [{ name: "YAML", extensions: ["yaml", "yml"] }]
-              : selectedTool.format === "xml"
-                ? [{ name: "XML", extensions: ["xml"] }]
-                : [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (typeof picked === "string") {
-        setPathDraft(toDisplayPath(picked, homePath));
-      }
-    } catch (error) {
-      console.error("Failed to pick config path", error);
-      toast("选择路径失败", "error");
-    }
-  }
-
   async function handleSaveContent() {
-    if (!selectedTool || !homePath) return;
-    const nextPath = normalizeText(toAbsolutePath(pathDraft, homePath));
-    if (!nextPath) {
-      toast("请先填写配置文件路径", "warning");
-      return;
-    }
+    if (!selectedFile) return false;
 
     setSaving(true);
     try {
-      const folder = await dirname(nextPath);
+      const folder = await dirname(selectedFile.absolutePath);
       await mkdir(folder, { recursive: true });
-      await writeTextFile(nextPath, contentDraft);
-      onPathChange(selectedTool.id, nextPath);
-      setSavedContent(contentDraft);
-      setFileExists(true);
+      await writeTextFile(selectedFile.absolutePath, activeContentDraft);
+      onUpsertPath({
+        id: selectedFile.id,
+        label: selectedFile.label,
+        path: selectedFile.absolutePath,
+        isBuiltin: selectedFile.isBuiltin,
+        kind: "file",
+        format: selectedFile.format,
+      });
+      updateDraftState(selectedFile.id, {
+        savedContent: activeContentDraft,
+        fileExists: true,
+      });
       toast("配置文件已保存", "success");
+      return true;
     } catch (error) {
       console.error("Failed to save config file", error);
       toast("保存失败，请检查路径与权限范围", "error");
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  function inferFormatFromPath(path: string): ConfigFormat {
-    const normalized = path.toLowerCase();
-    if (normalized.endsWith(".toml")) return "toml";
-    if (normalized.endsWith(".yaml") || normalized.endsWith(".yml"))
-      return "yaml";
-    if (normalized.endsWith(".xml")) return "xml";
-    return "json";
-  }
+  function handleAddGroupFile() {
+    if (!selectedGroup || !homePath) return;
 
-  function handleAddCustomPath() {
-    if (!homePath) return;
-    const label = normalizeText(customLabel);
-    const path = normalizeText(toAbsolutePath(customPath, homePath));
-    if (!label || !path) {
-      toast("请填写自定义名称与路径", "warning");
+    const relativePath = normalizeGroupRelativePath(newRelativePath);
+    if (!relativePath) {
+      toast("只允许当前目录下的相对路径，且不能包含 ../", "warning");
       return;
     }
-    if (normalizedLabels.has(label.toLowerCase())) {
-      toast("名称已存在，请更换一个名称", "warning");
+
+    const nextId = `${selectedGroup.id}::${relativePath}`;
+    const absolutePath = resolveGroupAbsolutePath(
+      homePath,
+      selectedGroup.rootDir,
+      relativePath,
+    );
+    if (selectedGroup.files.some((file) => file.id === nextId)) {
+      toast("该文件已在当前分组中存在", "warning");
       return;
     }
-    if (normalizedPaths.has(path)) {
-      toast("路径已存在，请不要重复添加同一个文件", "warning");
-      return;
-    }
-    onAddPath({
-      label,
-      path,
-      format: customFormat || inferFormatFromPath(path),
+
+    onUpsertPath({
+      id: nextId,
+      label: relativePath.split("/").pop() ?? relativePath,
+      path: absolutePath,
+      isBuiltin: false,
+      kind: "file",
+      format: inferConfigFormatFromPath(absolutePath),
     });
-    setCustomLabel("");
-    setCustomPath("");
-    setCustomFormat("json");
-    setShowCustomForm(false);
-    toast("已新增自定义配置项", "success");
-  }
-
-  async function handlePickCustomPath() {
-    if (!homePath) return;
-    try {
-      const picked = await pickPath({
-        directory: false,
-        multiple: false,
-        filters: [
-          {
-            name: "Config",
-            extensions: ["json", "toml", "yaml", "yml", "xml"],
-          },
-        ],
-      });
-      if (typeof picked === "string") {
-        setCustomPath(toDisplayPath(picked, homePath));
-        setCustomFormat(inferFormatFromPath(picked));
-      }
-    } catch (error) {
-      console.error("Failed to pick custom config path", error);
-      toast("选择文件失败", "error");
-    }
+    setShowAddFileForm(false);
+    setNewRelativePath("");
+    setSelectedFileId(nextId);
+    toast("已新增组内配置文件", "success");
   }
 
   function handleDeleteCurrentCustomPath() {
-    if (!selectedTool || selectedTool.isBuiltin) return;
+    if (!selectedFile || selectedFile.isBuiltin) return;
     setShowDeleteConfirm(false);
-    onDeletePath(selectedTool.id);
-    setSelectedId(BUILTIN_CONFIGS[0].id);
-    toast("已删除自定义配置项", "success");
+    onDeletePath(selectedFile.id);
+    const fallbackFile =
+      selectedGroup?.files.find((file) => file.id !== selectedFile.id) ?? null;
+    if (fallbackFile) {
+      setSelectedFileId(fallbackFile.id);
+    }
+    toast("已删除当前自定义配置文件入口", "success");
+  }
+
+  async function handleSaveAndSwitch() {
+    const saved = await handleSaveContent();
+    if (!saved || !pendingSwitchTarget) return;
+    applySwitch(pendingSwitchTarget);
+    setPendingSwitchTarget(null);
+  }
+
+  function handleDiscardAndSwitch() {
+    if (!selectedFile || !pendingSwitchTarget) return;
+    updateDraftState(selectedFile.id, {
+      contentDraft: activeDraft?.savedContent ?? "",
+    });
+    applySwitch(pendingSwitchTarget);
+    setPendingSwitchTarget(null);
   }
 
   function updateSelectedModelConfig(
@@ -953,27 +952,23 @@ export function ConfigPage({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         <section className="min-w-0 rounded-2xl border border-gray-800 bg-gray-900/80">
-          {selectedTool && (
+          {selectedGroup && selectedFile && (
             <div className="space-y-5 px-5 py-5">
               <div className="grid grid-cols-[210px_minmax(0,1fr)_auto] items-center gap-3">
                 <div className="min-w-0">
                   <select
-                    value={selectedId}
-                    onChange={(event) => {
-                      const nextId = event.target.value;
-                      if (nextId === selectedId) return;
-                      if (dirty) {
-                        setPendingSelectedId(nextId);
-                        return;
-                      }
-                      setSelectedId(nextId);
-                    }}
+                    value={selectedGroup.id}
+                    onChange={(event) =>
+                      handleRequestGroupSwitch(
+                        event.target.value as ConfigGroupId,
+                      )
+                    }
                     aria-label="选择工具"
                     className={FIELD_SELECT_CLASS}
                   >
-                    {tools.map((tool) => (
-                      <option key={tool.id} value={tool.id}>
-                        {tool.label}
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.label}
                       </option>
                     ))}
                   </select>
@@ -981,28 +976,15 @@ export function ConfigPage({
 
                 <div className="min-w-0">
                   <input
-                    value={pathDraft}
-                    onChange={(event) => setPathDraft(event.target.value)}
-                    placeholder={`/Users/you/.../${selectedTool.fileName}`}
+                    value={toDisplayPath(selectedFile.absolutePath, homePath)}
+                    readOnly
+                    placeholder={`/Users/you/.../${selectedFile.fileName}`}
                     aria-label="配置文件路径"
-                    className={FIELD_MONO_INPUT_CLASS}
+                    className={`${FIELD_MONO_INPUT_CLASS} cursor-default opacity-80`}
                   />
                 </div>
 
                 <div className="flex flex-nowrap items-center gap-2">
-                  <button
-                    onClick={handlePickCurrentPath}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                  >
-                    选择文件
-                  </button>
-                  <button
-                    onClick={handleSavePath}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                  >
-                    <FilePenLine className="h-4 w-4" />
-                    保存
-                  </button>
                   <button
                     onClick={handleOpenDirectory}
                     className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
@@ -1012,13 +994,13 @@ export function ConfigPage({
                   </button>
                   <button
                     onClick={handleOpenFile}
-                    disabled={!fileExists}
+                    disabled={!activeFileExists}
                     className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <ExternalLink className="h-4 w-4" />
                     文件
                   </button>
-                  {!selectedTool.isBuiltin && (
+                  {!selectedFile.isBuiltin && (
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
                       className="inline-flex h-11 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-sm text-red-200 transition-colors hover:border-red-400/40 hover:text-white"
@@ -1036,31 +1018,55 @@ export function ConfigPage({
                     <div>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium text-gray-200">
-                          自定义配置项
+                          组内文件
                         </p>
-                        <HintTooltip content="为额外配置文件添加独立入口，方便切换和维护。" />
+                        <HintTooltip content="左侧按工具分组，当前组内的所有配置文件都在这里以 Tab 切换。" />
                       </div>
                     </div>
-                    {!showCustomForm && (
+                    {!showAddFileForm && (
                       <button
-                        onClick={() => setShowCustomForm(true)}
+                        onClick={() => setShowAddFileForm(true)}
                         className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 text-sm text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-400/18 hover:text-white"
                       >
                         <Plus className="h-4 w-4" />
-                        新增
+                        添加文件
                       </button>
                     )}
                   </div>
 
-                  {showCustomForm && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {selectedGroup.files.map((file) => {
+                      const fileDirty = getFileDirty(file.id);
+                      const isActive = file.id === selectedFile.id;
+                      return (
+                        <button
+                          key={file.id}
+                          type="button"
+                          onClick={() => handleRequestFileSwitch(file.id)}
+                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                            isActive
+                              ? "border-indigo-500/40 bg-indigo-500/15 text-white"
+                              : "border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white"
+                          }`}
+                        >
+                          <span>{file.fileName}</span>
+                          {fileDirty && (
+                            <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] text-indigo-100">
+                              未保存
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {showAddFileForm && (
                     <div className="mt-3 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
                       <div className="mb-2 flex items-center justify-end gap-3">
                         <button
                           onClick={() => {
-                            setShowCustomForm(false);
-                            setCustomLabel("");
-                            setCustomPath("");
-                            setCustomFormat("json");
+                            setShowAddFileForm(false);
+                            setNewRelativePath("");
                           }}
                           className="inline-flex h-8 items-center justify-center rounded-lg border border-transparent px-2 text-sm text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
                         >
@@ -1068,61 +1074,36 @@ export function ConfigPage({
                         </button>
                       </div>
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <div className="w-[170px] flex-shrink-0">
-                          <input
-                            value={customLabel}
-                            onChange={(event) =>
-                              setCustomLabel(event.target.value)
-                            }
-                            placeholder="自定义名称"
-                            className={FIELD_INPUT_CLASS}
-                          />
-                        </div>
                         <div className="min-w-[280px] flex-1">
                           <input
-                            value={customPath}
-                            onChange={(event) => {
-                              const nextPath = event.target.value;
-                              setCustomPath(nextPath);
-                              setCustomFormat(
-                                inferFormatFromPath(
-                                  toAbsolutePath(nextPath, homePath),
-                                ),
-                              );
-                            }}
-                            placeholder="/Users/you/custom/config.json"
+                            value={newRelativePath}
+                            onChange={(event) =>
+                              setNewRelativePath(event.target.value)
+                            }
+                            placeholder="hooks/custom.json"
                             className={FIELD_MONO_INPUT_CLASS}
                           />
                         </div>
-                        <div className="w-[120px] flex-shrink-0">
-                          <select
-                            value={customFormat}
-                            onChange={(event) =>
-                              setCustomFormat(
-                                event.target.value as ConfigFormat,
-                              )
-                            }
-                            className={FIELD_SELECT_CLASS}
-                          >
-                            <option value="json">JSON</option>
-                            <option value="toml">TOML</option>
-                            <option value="yaml">YAML</option>
-                            <option value="xml">XML</option>
-                          </select>
-                        </div>
                         <button
-                          onClick={handlePickCustomPath}
-                          className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                        >
-                          选择文件
-                        </button>
-                        <button
-                          onClick={handleAddCustomPath}
+                          onClick={handleAddGroupFile}
                           className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
                         >
                           保存
                         </button>
                       </div>
+                      <p className="mt-2 text-xs leading-5 text-gray-500">
+                        请输入当前组根目录下的相对路径，系统会自动解析到{" "}
+                        <span className="font-mono text-gray-400">
+                          {toDisplayPath(
+                            resolveGroupAbsolutePath(
+                              homePath,
+                              selectedGroup.rootDir,
+                            ),
+                            homePath,
+                          )}
+                        </span>
+                        。
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1475,28 +1456,28 @@ export function ConfigPage({
                       内容
                     </label>
                     <span
-                      className={`rounded-full border px-2.5 py-1 text-xs ${selectedTool.accentClass}`}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${selectedGroup.accentClass}`}
                     >
-                      {selectedTool.fileName}
+                      {selectedFile.fileName}
                     </span>
                     <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                      {selectedTool.format.toUpperCase()}
+                      {selectedFile.format.toUpperCase()}
                     </span>
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs ${
-                        fileExists
+                        activeFileExists
                           ? "bg-emerald-500/15 text-emerald-300"
                           : "bg-amber-500/15 text-amber-200"
                       }`}
                     >
-                      {fileExists ? "文件存在" : "文件不存在"}
+                      {activeFileExists ? "文件存在" : "文件不存在"}
                     </span>
-                    {dirty && (
+                    {selectedFile && getFileDirty(selectedFile.id) && (
                       <span className="rounded-full bg-indigo-500/15 px-2.5 py-1 text-xs text-indigo-200">
                         有未保存改动
                       </span>
                     )}
-                    {refreshing && (
+                    {activeLoading && (
                       <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-400">
                         正在刷新
                       </span>
@@ -1505,7 +1486,7 @@ export function ConfigPage({
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={handleFormat}
-                      disabled={!contentDraft}
+                      disabled={!activeContentDraft}
                       className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                       title="格式化配置"
                     >
@@ -1514,7 +1495,7 @@ export function ConfigPage({
                     </button>
                     <button
                       onClick={handleCopy}
-                      disabled={!contentDraft}
+                      disabled={!activeContentDraft}
                       className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Copy className="h-4 w-4" />
@@ -1532,8 +1513,11 @@ export function ConfigPage({
                 </div>
 
                 <CodeMirror
-                  value={contentDraft}
-                  onChange={(value) => setContentDraft(value)}
+                  value={activeContentDraft}
+                  onChange={(value) =>
+                    selectedFile &&
+                    updateDraftState(selectedFile.id, { contentDraft: value })
+                  }
                   extensions={editorExtensions}
                   theme={oneDark}
                   editable
@@ -1545,7 +1529,7 @@ export function ConfigPage({
                     highlightActiveLineGutter: false,
                   }}
                   placeholder={
-                    loadingContent
+                    activeLoading
                       ? "正在读取配置文件..."
                       : "当前路径下还没有配置内容，你可以直接输入并保存。"
                   }
@@ -1557,24 +1541,25 @@ export function ConfigPage({
         </section>
       </div>
 
-      {pendingSelectedId && (
+      {pendingSwitchTarget && selectedFile && (
         <ConfirmModal
-          title="切换当前配置项？"
-          description="当前配置项有未保存内容，切换后这些改动会丢失。确认继续吗？"
+          title="切换当前文件？"
+          description="当前文件有未保存内容，切换前请选择处理方式。"
           primaryLabel="放弃并切换"
           secondaryLabel="继续编辑"
-          onPrimary={() => {
-            setSelectedId(pendingSelectedId);
-            setPendingSelectedId(null);
-          }}
-          onSecondary={() => setPendingSelectedId(null)}
+          tertiaryLabel="先保存再切换"
+          emphasisText="优先保存后再切换，避免当前修改直接丢失。"
+          primaryTone="danger"
+          onPrimary={handleDiscardAndSwitch}
+          onSecondary={() => setPendingSwitchTarget(null)}
+          onTertiary={() => void handleSaveAndSwitch()}
         />
       )}
 
-      {showDeleteConfirm && selectedTool && !selectedTool.isBuiltin && (
+      {showDeleteConfirm && selectedFile && !selectedFile.isBuiltin && (
         <ConfirmModal
-          title="删除自定义项？"
-          description={`将移除当前自定义配置项“${selectedTool.label}”的入口配置，不会删除磁盘上的实际文件。`}
+          title="删除当前组内文件？"
+          description={`将移除当前文件“${selectedFile.label}”的入口配置，不会删除磁盘上的实际文件。`}
           primaryLabel="确认删除"
           secondaryLabel="取消"
           onPrimary={handleDeleteCurrentCustomPath}
