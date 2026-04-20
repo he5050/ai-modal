@@ -127,7 +127,6 @@ struct ApiSkill {
 
 #[derive(Debug, Clone, Deserialize)]
 struct ApiResponse {
-    query: String,
     skills: Vec<ApiSkill>,
     count: i64,
     #[serde(rename = "duration_ms")]
@@ -246,6 +245,59 @@ fn source_needs_wildcard(source: &str, home: &Path) -> bool {
         }
     }
     false
+}
+
+fn build_skills_command(request: &SkillsCommandRequest, home: &Path) -> Result<Vec<String>, String> {
+    let mut command = vec!["npx".to_string(), "-y".to_string(), "skills".to_string()];
+
+    match request.action {
+        SkillsCommandAction::Add => {
+            let source = request
+                .source
+                .as_ref()
+                .map(|value| normalize_source_input(value, home))
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "缺少安装来源".to_string())?;
+            command.push("add".to_string());
+            command.push(source.clone());
+            command.push("--agent".to_string());
+            command.push("*".to_string());
+            command.push("-g".to_string());
+
+            let names = request.skill_names.clone().unwrap_or_default();
+            if names.is_empty() {
+                if source_needs_wildcard(&source, home) && !source_is_single_skill(&source, home) {
+                    command.push("--skill".to_string());
+                    command.push("*".to_string());
+                }
+            } else {
+                for name in names {
+                    command.push("--skill".to_string());
+                    command.push(name);
+                }
+            }
+            command.push("-y".to_string());
+        }
+        SkillsCommandAction::Update => {
+            command.push("update".to_string());
+            command.push("-g".to_string());
+            command.push("-y".to_string());
+        }
+        SkillsCommandAction::Remove => {
+            let names = request.skill_names.clone().unwrap_or_default();
+            if names.is_empty() {
+                return Err("缺少要移除的技能名".to_string());
+            }
+            command.push("remove".to_string());
+            for name in names {
+                command.push(name);
+            }
+            command.push("-g".to_string());
+            command.push("-y".to_string());
+        }
+    }
+
+    Ok(command)
 }
 
 fn parse_frontmatter(path: &Path) -> (String, String, Option<String>, Vec<String>, bool) {
@@ -401,10 +453,9 @@ fn latest_modified_in_tree(path: &Path) -> Option<u64> {
 
 fn collect_local_skills() -> Result<SkillsCatalogSnapshot, String> {
     let source_dir = skills_source_dir()?;
-    let source_dir_string = source_dir.to_string_lossy().to_string();
     if !source_dir.exists() {
         return Ok(SkillsCatalogSnapshot {
-            source_dir: source_dir_string,
+            source_dir: source_dir.to_string_lossy().to_string(),
             scanned_at: Some(now_epoch_ms() as u64),
             total_skills: 0,
             skills: vec![],
@@ -459,7 +510,7 @@ fn collect_local_skills() -> Result<SkillsCatalogSnapshot, String> {
     skills.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     Ok(SkillsCatalogSnapshot {
-        source_dir: source_dir_string,
+        source_dir: source_dir.to_string_lossy().to_string(),
         scanned_at: Some(now_epoch_ms() as u64),
         total_skills: skills.len(),
         skills,
@@ -544,7 +595,6 @@ pub async fn inspect_skill_targets(
     targets: Vec<SkillTargetInput>,
 ) -> Result<Vec<SkillTargetStatus>, String> {
     let source_dir = skills_source_dir()?;
-    let source_dir_string = source_dir.to_string_lossy().to_string();
     let skills = collect_local_skills()?.skills;
 
     let statuses = targets
@@ -809,56 +859,7 @@ pub async fn run_skills_command(
 ) -> Result<SkillsCommandResult, String> {
     let home = home_dir()?;
     let cwd = home.to_string_lossy().to_string();
-
-    let mut command = vec!["npx".to_string(), "-y".to_string(), "skills".to_string()];
-
-    match request.action {
-        SkillsCommandAction::Add => {
-            let source = request
-                .source
-                .as_ref()
-                .map(|value| normalize_source_input(value, &home))
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| "缺少安装来源".to_string())?;
-            command.push("add".to_string());
-            command.push(source.clone());
-            command.push("--agent".to_string());
-            command.push("*".to_string());
-            command.push("-g".to_string());
-
-            let names = request.skill_names.unwrap_or_default();
-            if names.is_empty() {
-                if source_needs_wildcard(&source, &home) && !source_is_single_skill(&source, &home)
-                {
-                    command.push("--skill".to_string());
-                    command.push("*".to_string());
-                }
-            } else {
-                for name in names {
-                    command.push("--skill".to_string());
-                    command.push(name);
-                }
-            }
-            command.push("-y".to_string());
-        }
-        SkillsCommandAction::Update => {
-            command.push("update".to_string());
-            command.push("-y".to_string());
-        }
-        SkillsCommandAction::Remove => {
-            let names = request.skill_names.unwrap_or_default();
-            if names.is_empty() {
-                return Err("缺少要移除的技能名".to_string());
-            }
-            command.push("remove".to_string());
-            for name in names {
-                command.push(name);
-            }
-            command.push("--agent".to_string());
-            command.push("universal".to_string());
-            command.push("-y".to_string());
-        }
-    }
+    let command = build_skills_command(&request, &home)?;
 
     let output = timeout(
         Duration::from_secs(120),
@@ -907,6 +908,162 @@ pub async fn run_skills_command(
         stderr,
         catalog_refreshed,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn build_update_command_is_explicitly_global_and_non_interactive() {
+        let request = SkillsCommandRequest {
+            action: SkillsCommandAction::Update,
+            source: None,
+            skill_names: None,
+        };
+
+        let command = build_skills_command(&request, Path::new("/Users/test")).unwrap();
+
+        assert_eq!(
+            command,
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "skills".to_string(),
+                "update".to_string(),
+                "-g".to_string(),
+                "-y".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_add_command_for_single_skill_keeps_explicit_skill_name() {
+        let request = SkillsCommandRequest {
+            action: SkillsCommandAction::Add,
+            source: Some("https://github.com/example/repo".to_string()),
+            skill_names: Some(vec!["demo-skill".to_string()]),
+        };
+
+        let command = build_skills_command(&request, Path::new("/Users/test")).unwrap();
+
+        assert_eq!(
+            command,
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "skills".to_string(),
+                "add".to_string(),
+                "https://github.com/example/repo".to_string(),
+                "--agent".to_string(),
+                "*".to_string(),
+                "-g".to_string(),
+                "--skill".to_string(),
+                "demo-skill".to_string(),
+                "-y".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_remove_command_requires_skill_names() {
+        let request = SkillsCommandRequest {
+            action: SkillsCommandAction::Remove,
+            source: None,
+            skill_names: None,
+        };
+
+        let error = build_skills_command(&request, Path::new("/Users/test")).unwrap_err();
+
+        assert_eq!(error, "缺少要移除的技能名");
+    }
+
+    #[test]
+    fn build_remove_command_targets_global_scope() {
+        let request = SkillsCommandRequest {
+            action: SkillsCommandAction::Remove,
+            source: None,
+            skill_names: Some(vec!["demo-skill".to_string()]),
+        };
+
+        let command = build_skills_command(&request, Path::new("/Users/test")).unwrap();
+
+        assert_eq!(
+            command,
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "skills".to_string(),
+                "remove".to_string(),
+                "demo-skill".to_string(),
+                "-g".to_string(),
+                "-y".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_source_input_expands_tilde_paths() {
+        let home = Path::new("/Users/tester");
+
+        let normalized = normalize_source_input("~/skills/demo", home);
+
+        assert_eq!(normalized, "/Users/tester/skills/demo");
+    }
+
+    #[test]
+    fn source_needs_wildcard_for_multi_skill_local_directory() {
+        let temp = tempdir().unwrap();
+        let multi_dir = temp.path().join("bundle");
+        fs::create_dir_all(multi_dir.join("skill-a")).unwrap();
+        fs::create_dir_all(multi_dir.join("skill-b")).unwrap();
+        fs::write(multi_dir.join("skill-a").join("SKILL.md"), "---\nname: A\n---\n").unwrap();
+        fs::write(multi_dir.join("skill-b").join("SKILL.md"), "---\nname: B\n---\n").unwrap();
+
+        assert!(source_needs_wildcard(multi_dir.to_string_lossy().as_ref(), Path::new("/Users/test")));
+        assert!(!source_is_single_skill(
+            multi_dir.to_string_lossy().as_ref(),
+            Path::new("/Users/test")
+        ));
+    }
+
+    #[test]
+    fn source_does_not_need_wildcard_for_single_skill_local_directory() {
+        let temp = tempdir().unwrap();
+        let skill_dir = temp.path().join("single-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "---\nname: Single\n---\n").unwrap();
+
+        assert!(!source_needs_wildcard(
+            skill_dir.to_string_lossy().as_ref(),
+            Path::new("/Users/test")
+        ));
+        assert!(source_is_single_skill(
+            skill_dir.to_string_lossy().as_ref(),
+            Path::new("/Users/test")
+        ));
+    }
+
+    #[test]
+    fn parse_frontmatter_extracts_name_description_version_and_tags() {
+        let temp = tempdir().unwrap();
+        let skill_file = temp.path().join("SKILL.md");
+        fs::write(
+            &skill_file,
+            "---\nname: Demo Skill\ndescription: useful skill\nversion: 1.2.3\ntags:\n  - tools\n  - local\n---\ncontent\n",
+        )
+        .unwrap();
+
+        let parsed = parse_frontmatter(&skill_file);
+
+        assert_eq!(parsed.0, "Demo Skill");
+        assert_eq!(parsed.1, "useful skill");
+        assert_eq!(parsed.2, Some("1.2.3".to_string()));
+        assert_eq!(parsed.3, vec!["local".to_string(), "tools".to_string()]);
+        assert!(!parsed.4);
+    }
 }
 
 #[tauri::command]

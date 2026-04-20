@@ -1134,11 +1134,7 @@ export function ConfigPage({
                     </div>
                   </div>
                   <span className="flex items-center gap-2 rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                    {availableProviderOptions.reduce(
-                      (total, item) => total + item.availableCount,
-                      0,
-                    )}{" "}
-                    个可用模型
+                    {availableProviderOptions.length} 个可用 Provider
                     {shortcutExpanded ? (
                       <ChevronUp className="h-4 w-4" />
                     ) : (

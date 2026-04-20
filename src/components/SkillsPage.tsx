@@ -222,7 +222,7 @@ function describeSkillsCommand(request: SkillsCommandRequest) {
       ? `移除技能：${request.skillNames.join("、")}`
       : "移除技能";
   }
-  return "更新全部技能";
+  return "更新全部全局技能";
 }
 
 function extractNpmConfigWarnings(stderr: string) {
@@ -1718,11 +1718,11 @@ export function SkillsPage({
                   <div className="space-y-3">
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
                       <p className="text-sm text-amber-200">
-                        更新所有已安装的技能到最新版本
+                        更新所有全局已安装技能到最新版本
                       </p>
                       <p className="mt-1 text-xs text-amber-300/70">
-                        此操作将更新 ~/.agents/skills
-                        目录下的所有技能，并刷新技能目录。
+                        此操作将显式以全局模式执行 skills update，
+                        更新 ~/.agents/skills 中已安装的全局技能，并刷新技能目录。
                       </p>
                     </div>
                     <button

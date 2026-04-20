@@ -9,8 +9,6 @@ import {
   ViewPlugin,
   ViewUpdate,
 } from "@codemirror/view";
-import prettier from "prettier/standalone";
-import markdownPlugin from "prettier/plugins/markdown";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import {
   exists,
@@ -544,9 +542,13 @@ export function RulesPage({
   async function handleFormat() {
     if (!contentDraft) return;
     try {
+      const [{ default: prettier }, markdownPluginModule] = await Promise.all([
+        import("prettier/standalone"),
+        import("prettier/plugins/markdown"),
+      ]);
       const formatted = await prettier.format(contentDraft, {
         parser: "markdown",
-        plugins: [markdownPlugin],
+        plugins: [markdownPluginModule.default ?? markdownPluginModule],
       });
       setContentDraft(formatted);
       toast("已按标准 Markdown formatter 格式化", "success");

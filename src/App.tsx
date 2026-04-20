@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { animate, spring } from "animejs";
 import { AlertTriangle } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
@@ -13,14 +13,14 @@ import {
   DEBUG_KEY,
   SettingsPage,
 } from "./components/SettingsPage";
-import { RulesPage } from "./components/RulesPage";
-import { ConfigPage } from "./components/ConfigPage";
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
+import { PromptDetailPage } from "./components/PromptDetailPage";
 import { SkillsPage } from "./components/SkillsPage";
 import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
 import type {
   AppPage,
   ConfigPath,
+  PromptRecord,
   Provider,
   ProviderLastResult,
   RulePath,
@@ -29,15 +29,33 @@ import type {
 const PROVIDERS_KEY = "ai-modal-providers";
 const RULE_PATHS_KEY = "ai-modal-rule-paths";
 const CONFIG_PATHS_KEY = "ai-modal-config-paths";
+const PROMPTS_KEY = "ai-modal-prompts";
 const PROVIDERS_DB_KEY = "providers";
 const RULE_PATHS_DB_KEY = "rule_paths";
 const CONFIG_PATHS_DB_KEY = "config_paths";
+const PROMPTS_DB_KEY = "prompts";
 const SORT_KEY_DB_KEY = "models_sort_key";
 const SORT_DIR_DB_KEY = "models_sort_dir";
 const EXPORT_DIR_DB_KEY = "recent_export_dir";
 const SORT_KEY = "ai-modal-sort-key";
 const SORT_DIR_KEY = "ai-modal-sort-dir";
 const EXPORT_DIR_KEY = "ai-modal-model-export-dir";
+
+const RulesPage = lazy(() =>
+  import("./components/RulesPage").then((module) => ({
+    default: module.RulesPage,
+  })),
+);
+const ConfigPage = lazy(() =>
+  import("./components/ConfigPage").then((module) => ({
+    default: module.ConfigPage,
+  })),
+);
+const PromptsPage = lazy(() =>
+  import("./components/PromptsPage").then((module) => ({
+    default: module.PromptsPage,
+  })),
+);
 
 function parseProviders(raw: unknown): Provider[] {
   if (!Array.isArray(raw)) return [];
@@ -99,6 +117,27 @@ function parseConfigPaths(raw: unknown): ConfigPath[] {
               ? "xml"
               : "json",
     }));
+}
+
+function parsePrompts(raw: unknown): PromptRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (item): item is PromptRecord =>
+        typeof item?.id === "string" &&
+        typeof item?.title === "string" &&
+        typeof item?.content === "string" &&
+        typeof item?.category === "string" &&
+        Array.isArray(item?.tags) &&
+        typeof item?.note === "string" &&
+        typeof item?.createdAt === "number" &&
+        typeof item?.updatedAt === "number",
+    )
+    .map((item) => ({
+      ...item,
+      tags: item.tags.filter((tag): tag is string => typeof tag === "string"),
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 function LeaveConfirmDialog({
@@ -171,14 +210,32 @@ function LeaveConfirmDialog({
   );
 }
 
+function PageFallback() {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center px-6 pb-6">
+      <div className="rounded-2xl border border-gray-800 bg-gray-900/80 px-6 py-8 text-center">
+        <p className="text-sm font-medium text-gray-200">正在加载页面…</p>
+        <p className="mt-2 text-xs text-gray-500">
+          编辑器相关模块将按需加载，以减少首屏包体积。
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState<AppPage>("detect");
   const [providers, setProviders] = useState<Provider[]>([]);
   const [rulePaths, setRulePaths] = useState<RulePath[]>([]);
   const [configPaths, setConfigPaths] = useState<ConfigPath[]>([]);
+  const [prompts, setPrompts] = useState<PromptRecord[]>([]);
   const [storageReady, setStorageReady] = useState(false);
   const [editTarget, setEditTarget] = useState<Provider | null>(null);
   const [detailProviderId, setDetailProviderId] = useState<string | null>(null);
+  const [detailPromptId, setDetailPromptId] = useState<string | null>(null);
+  const [promptDetailMode, setPromptDetailMode] = useState<
+    "detail" | "edit" | "create"
+  >("detail");
   const [editingDirty, setEditingDirty] = useState(false);
   const [debugEnabled, setDebugEnabled] = useState(
     () => localStorage.getItem("ai-modal-debug") === "true",
@@ -203,7 +260,7 @@ export default function App() {
 
   function handlePageChange(p: AppPage) {
     if (p === page) return;
-    if (p !== "detect" && editingDirty) {
+    if (editingDirty) {
       setPendingPage(p);
       return;
     }
@@ -222,6 +279,7 @@ export default function App() {
           providersRaw,
           rulePathsRaw,
           configPathsRaw,
+          promptsRaw,
           debugValue,
           concurrencyValue,
           sortKeyValue,
@@ -235,6 +293,7 @@ export default function App() {
             CONFIG_PATHS_KEY,
             [],
           ),
+          loadPersistedJson<unknown[]>(PROMPTS_DB_KEY, PROMPTS_KEY, []),
           loadPersistedJson<boolean>(
             DEBUG_DB_KEY,
             DEBUG_KEY,
@@ -267,6 +326,7 @@ export default function App() {
         setProviders(parseProviders(providersRaw));
         setRulePaths(parseRulePaths(rulePathsRaw));
         setConfigPaths(parseConfigPaths(configPathsRaw));
+        setPrompts(parsePrompts(promptsRaw));
         localStorage.setItem(DEBUG_KEY, String(debugValue));
         setDebugEnabled(debugValue);
         localStorage.setItem(CONCURRENCY_KEY, String(concurrencyValue));
@@ -336,6 +396,14 @@ export default function App() {
       console.error("Failed to persist config paths", error);
     });
   }, [configPaths, storageReady]);
+  useEffect(() => {
+    if (!storageReady) return;
+    void savePersistedJson(PROMPTS_DB_KEY, prompts, PROMPTS_KEY).catch(
+      (error) => {
+        console.error("Failed to persist prompts", error);
+      },
+    );
+  }, [prompts, storageReady]);
 
   function handleAddProvider(
     data: Omit<Provider, "id" | "createdAt" | "lastResult">,
@@ -391,6 +459,37 @@ export default function App() {
   function handleOpenProviderDetail(provider: Provider) {
     setDetailProviderId(provider.id);
     setPage("provider-detail");
+  }
+
+  function handleOpenPromptDetail(
+    promptId: string | null,
+    mode: "detail" | "edit" | "create",
+  ) {
+    setDetailPromptId(promptId);
+    setPromptDetailMode(mode);
+    setPage("prompt-detail");
+  }
+
+  function handleSavePrompt(nextPrompt: PromptRecord) {
+    setPrompts((prev) => {
+      const exists = prev.some((item) => item.id === nextPrompt.id);
+      const next = exists
+        ? prev.map((item) => (item.id === nextPrompt.id ? nextPrompt : item))
+        : [nextPrompt, ...prev];
+      return [...next].sort((a, b) => b.updatedAt - a.updatedAt);
+    });
+    setDetailPromptId(nextPrompt.id);
+    setPromptDetailMode("detail");
+    setPage("prompt-detail");
+  }
+
+  function handleDeletePrompt(promptId: string) {
+    setPrompts((prev) => prev.filter((item) => item.id !== promptId));
+    if (detailPromptId === promptId) {
+      setDetailPromptId(null);
+      setPromptDetailMode("detail");
+      setPage("prompts");
+    }
   }
 
   function handleImportProviders(imported: Provider[]) {
@@ -502,6 +601,34 @@ export default function App() {
           />
         )}
         {page === "skills" && <SkillsPage onDirtyChange={setEditingDirty} />}
+        {page === "prompts" && (
+          <Suspense fallback={<PageFallback />}>
+            <PromptsPage
+              prompts={prompts}
+              onCreate={() => handleOpenPromptDetail(null, "create")}
+              onOpenDetail={handleOpenPromptDetail}
+              onDelete={handleDeletePrompt}
+              onImport={setPrompts}
+            />
+          </Suspense>
+        )}
+        {page === "prompt-detail" && (
+          <PromptDetailPage
+            prompt={
+              detailPromptId == null
+                ? null
+                : prompts.find((item) => item.id === detailPromptId) ?? null
+            }
+            mode={promptDetailMode}
+            availableCategories={Array.from(
+              new Set(prompts.flatMap((item) => item.category.split(/\s*\/\s*/))),
+            ).filter(Boolean)}
+            onBack={() => handlePageChange("prompts")}
+            onSave={handleSavePrompt}
+            onDelete={handleDeletePrompt}
+            onDirtyChange={setEditingDirty}
+          />
+        )}
         {page === "settings" && (
           <SettingsPage
             debugEnabled={debugEnabled}
@@ -509,22 +636,26 @@ export default function App() {
           />
         )}
         {page === "rules" && (
-          <RulesPage
-            storedPaths={rulePaths}
-            onPathChange={handleRulePathChange}
-            onAddPath={handleAddRulePath}
-            onDeletePath={handleDeleteRulePath}
-            onDirtyChange={setEditingDirty}
-          />
+          <Suspense fallback={<PageFallback />}>
+            <RulesPage
+              storedPaths={rulePaths}
+              onPathChange={handleRulePathChange}
+              onAddPath={handleAddRulePath}
+              onDeletePath={handleDeleteRulePath}
+              onDirtyChange={setEditingDirty}
+            />
+          </Suspense>
         )}
         {page === "configs" && (
-          <ConfigPage
-            providers={providers}
-            storedPaths={configPaths}
-            onUpsertPath={handleUpsertConfigPath}
-            onDeletePath={handleDeleteConfigPath}
-            onDirtyChange={setEditingDirty}
-          />
+          <Suspense fallback={<PageFallback />}>
+            <ConfigPage
+              providers={providers}
+              storedPaths={configPaths}
+              onUpsertPath={handleUpsertConfigPath}
+              onDeletePath={handleDeleteConfigPath}
+              onDirtyChange={setEditingDirty}
+            />
+          </Suspense>
         )}
       </main>
       {debugEnabled && <DevLog />}

@@ -127,14 +127,6 @@ pub fn infer_protocol_from_base_url(base_url: &str) -> ModelProtocol {
     }
 }
 
-fn infer_request_protocol(base_url: &str, model: &str) -> ModelProtocol {
-    let base_protocol = infer_protocol_from_base_url(base_url);
-    match base_protocol {
-        ModelProtocol::OpenRouter | ModelProtocol::Claude | ModelProtocol::Gemini => base_protocol,
-        ModelProtocol::OpenAi => infer_protocol_from_model(model),
-    }
-}
-
 fn client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(10))
@@ -514,8 +506,8 @@ fn classify_error(status: Option<u16>, msg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_openai_style_url, build_test_url, infer_protocol_from_base_url,
-        infer_protocol_from_model, infer_request_protocol, normalize_gemini_model_name,
+        build_openai_style_url, build_test_url, determine_test_protocols,
+        infer_protocol_from_base_url, infer_protocol_from_model, normalize_gemini_model_name,
         ModelProtocol,
     };
 
@@ -613,12 +605,12 @@ mod tests {
     #[test]
     fn openrouter_base_url_overrides_model_prefix_protocol_detection() {
         assert_eq!(
-            infer_request_protocol("https://openrouter.ai/api", "openai/gpt-5.2"),
-            ModelProtocol::OpenRouter
+            determine_test_protocols("https://openrouter.ai/api", "openai/gpt-5.2"),
+            vec![ModelProtocol::OpenRouter]
         );
         assert_eq!(
-            infer_request_protocol("https://openrouter.ai/api", "anthropic/claude-3.7-sonnet"),
-            ModelProtocol::OpenRouter
+            determine_test_protocols("https://openrouter.ai/api", "anthropic/claude-3.7-sonnet"),
+            vec![ModelProtocol::OpenRouter]
         );
     }
 }

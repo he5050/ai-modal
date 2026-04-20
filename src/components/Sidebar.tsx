@@ -1,16 +1,9 @@
 import { useRef } from "react";
-import {
-  BookOpen,
-  List,
-  ScanSearch,
-  Settings,
-  SlidersHorizontal,
-  Sparkles,
-  Zap,
-} from "lucide-react";
+import { Zap } from "lucide-react";
 import { animate, spring } from "animejs";
 import type { AppPage } from "../types";
 import { Tooltip } from "./Tooltip";
+import { APP_NAV_ITEMS } from "../lib/appNavigation";
 
 interface Props {
   page: AppPage;
@@ -18,15 +11,6 @@ interface Props {
   modelCount: number;
   availableCount: number;
 }
-
-const NAV_ITEMS = [
-  { key: "detect" as AppPage, label: "模型检测", Icon: ScanSearch },
-  { key: "models" as AppPage, label: "模型列表", Icon: List },
-  { key: "skills" as AppPage, label: "技能管理", Icon: Sparkles },
-  { key: "rules" as AppPage, label: "规则管理", Icon: BookOpen },
-  { key: "configs" as AppPage, label: "配置管理", Icon: SlidersHorizontal },
-  { key: "settings" as AppPage, label: "系统配置", Icon: Settings },
-];
 
 export function Sidebar({
   page,
@@ -37,7 +21,11 @@ export function Sidebar({
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   function isActive(key: AppPage) {
-    return page === key || (page === "provider-detail" && key === "models");
+    return (
+      page === key ||
+      (page === "provider-detail" && key === "models") ||
+      (page === "prompt-detail" && key === "prompts")
+    );
   }
 
   function handleNav(key: AppPage) {
@@ -69,7 +57,7 @@ export function Sidebar({
 
       {/* 导航 */}
       <nav className="px-3 pt-3 pb-2 space-y-0.5">
-        {NAV_ITEMS.map(({ key, label, Icon }) => (
+        {APP_NAV_ITEMS.map(({ key, label, Icon }) => (
           <button
             key={key}
             ref={(el) => {

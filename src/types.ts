@@ -2,6 +2,8 @@ export type AppPage =
   | "detect"
   | "models"
   | "skills"
+  | "prompts"
+  | "prompt-detail"
   | "provider-detail"
   | "rules"
   | "configs"
@@ -182,4 +184,33 @@ export interface PopularSkillRepo {
   label: string;
   accentClass: string;
   websiteUrl?: string;
+}
+
+export interface PromptRecord {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  tags: string[];
+  note: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PromptCategorySummary {
+  key: string;
+  label: string;
+  count: number;
+  updatedAt: number | null;
+}
+
+export interface PromptImportParseResult {
+  valid: PromptRecord[];
+  skipped: number;
+}
+
+export interface PromptImportSummary {
+  added: number;
+  overwritten: number;
+  skipped: number;
 }

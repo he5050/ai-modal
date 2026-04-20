@@ -1,8 +1,3 @@
-import prettier from "prettier/standalone";
-import babelPlugin from "prettier/plugins/babel";
-import estreePlugin from "prettier/plugins/estree";
-import yamlPlugin from "prettier/plugins/yaml";
-import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type { ConfigFormat } from "../types";
 
 const SUPPORTED_CONFIG_FORMATS: ConfigFormat[] = [
@@ -33,27 +28,47 @@ export async function formatConfigContent(
   const source = normalized.content;
 
   switch (format) {
-    case "json":
+    case "json": {
+      const [
+        { default: prettier },
+        babelPluginModule,
+        estreePluginModule,
+      ] = await Promise.all([
+        import("prettier/standalone"),
+        import("prettier/plugins/babel"),
+        import("prettier/plugins/estree"),
+      ]);
       return {
         formatted: await prettier.format(source, {
           parser: "json",
-          plugins: [babelPlugin, estreePlugin],
+          plugins: [
+            babelPluginModule.default ?? babelPluginModule,
+            estreePluginModule.default ?? estreePluginModule,
+          ],
         }),
         normalizedPunctuation: normalized.changed,
       };
-    case "toml":
+    }
+    case "toml": {
+      const tomlModule = await import("smol-toml");
       return {
-        formatted: stringifyToml(parseToml(source)),
+        formatted: tomlModule.stringify(tomlModule.parse(source)),
         normalizedPunctuation: normalized.changed,
       };
-    case "yaml":
+    }
+    case "yaml": {
+      const [{ default: prettier }, yamlPluginModule] = await Promise.all([
+        import("prettier/standalone"),
+        import("prettier/plugins/yaml"),
+      ]);
       return {
         formatted: await prettier.format(source, {
           parser: "yaml",
-          plugins: [yamlPlugin],
+          plugins: [yamlPluginModule.default ?? yamlPluginModule],
         }),
         normalizedPunctuation: normalized.changed,
       };
+    }
     case "xml":
       return {
         formatted: formatXmlContent(source),
