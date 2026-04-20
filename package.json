@@ -1,6 +1,6 @@
 {
 	"name": "ai-modal",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "AIModal - OpenAI 兼容接口检测与管理工具",
 	"type": "module",
 	"packageManager": "pnpm@10.32.1",
