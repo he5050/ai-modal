@@ -219,4 +219,139 @@ describe('ConfigPage', () => {
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-3-opus',
     })
   })
+
+  it('applies selected available provider into codex config.toml and auth.json drafts', async () => {
+    mockReadTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/.codex/config.toml')) {
+        return 'model = "old-model"\n'
+      }
+      if (path.endsWith('/.codex/auth.json')) {
+        return JSON.stringify({ EXISTING: 'keep-me' }, null, 2)
+      }
+      return '{}'
+    })
+
+    render(
+      <ConfigPage
+        providers={[createAvailableProvider()]}
+        storedPaths={storedPaths}
+        onUpsertPath={vi.fn()}
+        onDeletePath={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await screen.findByText('配置管理')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择工具' }),
+      'codex',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(await screen.findByText('应用到 Codex 配置')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '应用到草稿' }))
+
+    const saveButtons = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtons[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalledTimes(1)
+    })
+
+    const [configPath, configTomlContent] = mockWriteTextFile.mock.calls[0]
+    expect(configPath).toContain('/.codex/config.toml')
+    expect(configTomlContent).toContain('model = "claude-3-5-sonnet"')
+    expect(configTomlContent).toContain('model_provider = "codex"')
+    expect(configTomlContent).toContain('base_url = "https://claude.example.com/v1"')
+    expect(configTomlContent).toContain('name = "codex"')
+    expect(configTomlContent).toContain('wire_api = "responses"')
+
+    await userEvent.click(screen.getByRole('button', { name: /auth\.json/ }))
+    const saveButtonsAfterSwitch = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtonsAfterSwitch[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalledTimes(2)
+    })
+
+    const [authPath, authJsonContent] = mockWriteTextFile.mock.calls[1]
+    expect(authPath).toContain('/.codex/auth.json')
+    expect(JSON.parse(authJsonContent)).toMatchObject({
+      EXISTING: 'keep-me',
+      OPENAI_API_KEY: 'sk-claude-secret',
+    })
+  })
+
+  it('applies selected checked models into opencode provider config draft', async () => {
+    mockReadTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/.config/opencode/opencode.json')) {
+        return JSON.stringify(
+          {
+            provider: {
+              old: {
+                npm: '@ai-sdk/openai-compatible',
+                name: 'old',
+                options: { baseURL: 'https://old.example.com/v1', apiKey: 'old-key' },
+                models: { 'old-model': { name: 'old-model' } },
+              },
+            },
+          },
+          null,
+          2,
+        )
+      }
+      return '{}'
+    })
+
+    render(
+      <ConfigPage
+        providers={[createAvailableProvider()]}
+        storedPaths={storedPaths}
+        onUpsertPath={vi.fn()}
+        onDeletePath={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await screen.findByText('配置管理')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择工具' }),
+      'opencode',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(await screen.findByText('应用到 OpenCode 配置')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByLabelText('claude-3-5-sonnet'))
+    await userEvent.click(screen.getByLabelText('claude-3-opus'))
+    await userEvent.click(screen.getByLabelText('claude-3-5-haiku'))
+    await userEvent.click(screen.getByRole('button', { name: '应用到草稿' }))
+
+    const saveButtons = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtons[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalled()
+    })
+
+    const [path, content] = mockWriteTextFile.mock.calls.at(-1)
+    expect(path).toContain('/.config/opencode/opencode.json')
+    expect(JSON.parse(content)).toMatchObject({
+      provider: {
+        old: {
+          name: 'old',
+        },
+        'Claude Relay': {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Claude Relay',
+          options: {
+            baseURL: 'https://claude.example.com/v1',
+            apiKey: 'sk-claude-secret',
+          },
+          models: {
+            'claude-3-5-sonnet': { name: 'claude-3-5-sonnet' },
+            'claude-3-opus': { name: 'claude-3-opus' },
+          },
+        },
+      },
+    })
+  })
 })

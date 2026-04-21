@@ -19,6 +19,7 @@ import { testModelConfig } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import {
   AlertTriangle,
+  Check,
   Copy,
   ExternalLink,
   FolderOpen,
@@ -299,6 +300,32 @@ function buildClaudeModelGuessMap(
   };
 }
 
+function SelectionCheckbox({
+  checked,
+  onToggle,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+        checked
+          ? "border-indigo-500 bg-indigo-600 text-white"
+          : "border-gray-600 bg-gray-800 text-transparent hover:border-indigo-500/60"
+      }`}
+    >
+      <Check className="h-3 w-3" strokeWidth={3} />
+    </button>
+  );
+}
+
 function ConfirmModal({
   title,
   description,
@@ -332,7 +359,7 @@ function ConfirmModal({
         </div>
 
         {emphasisText && (
-          <div className="mt-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/8 px-4 py-3">
+          <div className="mt-4 rounded-2xl border border-indigo-500/20 bg-indigo-500/8 px-4 py-3">
             <p className="text-xs uppercase tracking-[0.18em] text-indigo-200/80">
               建议操作
             </p>
@@ -342,31 +369,29 @@ function ConfirmModal({
           </div>
         )}
 
-        <div className="mt-5 space-y-2">
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            onClick={onPrimary}
+            className={`flex min-w-[132px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            {primaryLabel}
+          </button>
           {tertiaryLabel && onTertiary && (
             <button
               onClick={onTertiary}
-              className={`flex w-full rounded-xl px-4 py-3 text-sm font-semibold ${BUTTON_PRIMARY_CLASS}`}
+              className={`flex min-w-[132px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium ${primaryButtonClass}`}
             >
               {tertiaryLabel}
             </button>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            {secondaryLabel && onSecondary && (
-              <button
-                onClick={onSecondary}
-                className={`flex w-full bg-gray-900/80 ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-              >
-                {secondaryLabel}
-              </button>
-            )}
+          {secondaryLabel && onSecondary && (
             <button
-              onClick={onPrimary}
-              className={`flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${primaryButtonClass}`}
+              onClick={onSecondary}
+              className={`flex min-w-[132px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
-              {primaryLabel}
+              {secondaryLabel}
             </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -458,6 +483,164 @@ function ClaudeApplyModal({
   );
 }
 
+function CodexApplyModal({
+  providerName,
+  availableModels,
+  selectedModel,
+  onChange,
+  onConfirm,
+  onCancel,
+}: {
+  providerName: string;
+  availableModels: string[];
+  selectedModel: string;
+  onChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+      <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="flex h-[min(720px,88vh)] w-full max-w-xl flex-col rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-cyan-500/25 bg-cyan-500/10 text-cyan-200">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              应用到 Codex 配置
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              选择当前 Provider 要写入 Codex 的模型。当前只更新草稿，不会直接保存到磁盘。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+            Provider
+          </p>
+          <p className="mt-2 truncate text-sm font-medium text-gray-200">
+            {providerName}
+          </p>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-4">
+          <div className="grid items-center gap-2 md:grid-cols-[80px_minmax(0,1fr)]">
+            <p className="text-sm font-medium text-gray-300">模型</p>
+            <select
+              value={selectedModel}
+              onChange={(event) => onChange(event.target.value)}
+              className={FIELD_SELECT_CLASS}
+              aria-label="选择 Codex 模型"
+            >
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            应用到草稿
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OpenCodeApplyModal({
+  providerName,
+  models,
+  selectedModels,
+  onToggle,
+  onConfirm,
+  onCancel,
+}: {
+  providerName: string;
+  models: string[];
+  selectedModels: string[];
+  onToggle: (model: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10 text-amber-200">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              应用到 OpenCode 配置
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              选择要接入当前 Provider 的模型。当前只更新草稿，不会直接保存到磁盘。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+            Provider
+          </p>
+          <p className="mt-2 truncate text-sm font-medium text-gray-200">
+            {providerName}
+          </p>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-4">
+          <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
+            {models.map((model) => {
+              const checked = selectedModels.includes(model);
+              return (
+                <label
+                  key={model}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-900/60"
+                >
+                  <SelectionCheckbox
+                    checked={checked}
+                    onToggle={() => onToggle(model)}
+                  />
+                  <span className="font-mono text-sm">{model}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            应用到草稿
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface FileDraftState {
   contentDraft: string;
   savedContent: string;
@@ -502,6 +685,13 @@ export function ConfigPage({
   const [testingModelConfig, setTestingModelConfig] = useState(false);
   const [modelConfigsReady, setModelConfigsReady] = useState(false);
   const [claudeApplyModalOpen, setClaudeApplyModalOpen] = useState(false);
+  const [codexApplyModalOpen, setCodexApplyModalOpen] = useState(false);
+  const [openCodeApplyModalOpen, setOpenCodeApplyModalOpen] = useState(false);
+  const [selectedCodexApplyModel, setSelectedCodexApplyModel] =
+    useState<string>("");
+  const [selectedOpenCodeModels, setSelectedOpenCodeModels] = useState<string[]>(
+    [],
+  );
   const [claudeEnvSelection, setClaudeEnvSelection] = useState<
     Record<ClaudeEnvModelField, string>
   >({
@@ -614,6 +804,8 @@ export function ConfigPage({
     null;
   const isClaudeSettingsShortcutTarget =
     selectedGroup?.id === "claude" && selectedFile?.id === "claude";
+  const isCodexShortcutTarget = selectedGroup?.id === "codex";
+  const isOpenCodeShortcutTarget = selectedGroup?.id === "opencode";
 
   function updateDraftState(fileId: string, patch: Partial<FileDraftState>) {
     setDraftsByFileId((prev) => ({
@@ -953,15 +1145,6 @@ export function ConfigPage({
     setPendingSwitchTarget(null);
   }
 
-  function handleDiscardAndSwitch() {
-    if (!selectedFile || !pendingSwitchTarget) return;
-    updateDraftState(selectedFile.id, {
-      contentDraft: activeDraft?.savedContent ?? "",
-    });
-    applySwitch(pendingSwitchTarget);
-    setPendingSwitchTarget(null);
-  }
-
   function updateSelectedModelConfig(
     patch: Partial<ModelConfigRecord>,
     targetId = selectedModelConfig?.id,
@@ -1047,6 +1230,27 @@ export function ConfigPage({
     }));
   }
 
+  async function ensureFileDraftState(file: typeof selectedFile) {
+    if (!file) return null;
+
+    const existingDraft = draftsByFileId[file.id];
+    if (existingDraft?.loadedPath === file.absolutePath) {
+      return existingDraft;
+    }
+
+    const present = await detectExists(file.absolutePath);
+    const content = present ? await readTextFile(file.absolutePath) : "";
+    const nextState: FileDraftState = {
+      contentDraft: content,
+      savedContent: content,
+      fileExists: present,
+      loading: false,
+      loadedPath: file.absolutePath,
+    };
+    updateDraftState(file.id, nextState);
+    return nextState;
+  }
+
   async function handleApplyClaudeShortcutToDraft() {
     if (
       !selectedFile ||
@@ -1096,6 +1300,189 @@ export function ConfigPage({
           : "应用失败，请先确保当前 settings.json 是合法 JSON",
         "error",
       );
+    }
+  }
+
+  async function handleApplyCodexShortcutToDraft() {
+    if (!selectedAvailableProvider || !selectedGroup) return;
+
+    const configTomlFile =
+      selectedGroup.files.find((file) => file.id === "codex") ?? null;
+    const authJsonFile =
+      selectedGroup.files.find((file) => file.id === "codex::auth.json") ?? null;
+
+    if (!configTomlFile || !authJsonFile) {
+      toast("未找到 Codex 配置文件入口", "error");
+      return;
+    }
+
+    try {
+      const [configDraft, authDraft] = await Promise.all([
+        ensureFileDraftState(configTomlFile),
+        ensureFileDraftState(authJsonFile),
+      ]);
+
+      const tomlModule = await import("smol-toml");
+      const parsedConfig =
+        configDraft?.contentDraft.trim()
+          ? tomlModule.parse(configDraft.contentDraft)
+          : {};
+      if (
+        parsedConfig == null ||
+        Array.isArray(parsedConfig) ||
+        typeof parsedConfig !== "object"
+      ) {
+        throw new Error("当前 config.toml 顶层不是对象");
+      }
+
+      const nextConfig = {
+        ...(parsedConfig as Record<string, unknown>),
+        model: selectedCodexApplyModel,
+        model_provider: "codex",
+        model_providers: {
+          ...(((parsedConfig as Record<string, unknown>).model_providers as
+            | Record<string, unknown>
+            | undefined) ?? {}),
+          codex: {
+            ...((((parsedConfig as Record<string, unknown>).model_providers as
+            | Record<string, unknown>
+            | undefined)?.codex as Record<string, unknown> | undefined) ?? {}),
+            base_url: selectedAvailableProvider.models[0]?.baseUrl ?? "",
+            name: "codex",
+            wire_api: "responses",
+          },
+        },
+      };
+
+      const formattedToml = await formatConfigContent(
+        tomlModule.stringify(nextConfig),
+        "toml",
+      );
+      updateDraftState(configTomlFile.id, {
+        contentDraft: formattedToml.formatted,
+      });
+
+      const parsedAuth =
+        authDraft?.contentDraft.trim() ? JSON.parse(authDraft.contentDraft) : {};
+      if (
+        parsedAuth == null ||
+        Array.isArray(parsedAuth) ||
+        typeof parsedAuth !== "object"
+      ) {
+        throw new Error("当前 auth.json 顶层不是对象");
+      }
+
+      const nextAuth = {
+        ...(parsedAuth as Record<string, unknown>),
+        OPENAI_API_KEY: selectedAvailableProvider.models[0]?.apiKey ?? "",
+      };
+      const formattedAuth = await formatConfigContent(
+        JSON.stringify(nextAuth),
+        "json",
+      );
+      updateDraftState(authJsonFile.id, {
+        contentDraft: formattedAuth.formatted,
+      });
+
+      setCodexApplyModalOpen(false);
+      toast("已将 Codex 配置应用到当前草稿", "success");
+    } catch (error) {
+      console.error("Failed to apply Codex shortcut config", error);
+      toast(
+        error instanceof Error
+          ? `应用失败：${error.message}`
+          : "应用失败，请检查当前配置文件内容",
+        "error",
+      );
+    }
+  }
+
+  function handleToggleOpenCodeModel(model: string) {
+    setSelectedOpenCodeModels((prev) =>
+      prev.includes(model)
+        ? prev.filter((item) => item !== model)
+        : [...prev, model],
+    );
+  }
+
+  async function handleApplyOpenCodeShortcutToDraft() {
+    if (!selectedAvailableProvider || !selectedGroup) return;
+
+    const opencodeFile =
+      selectedGroup.files.find((file) => file.id === "opencode") ?? null;
+    if (!opencodeFile) {
+      toast("未找到 OpenCode 配置文件入口", "error");
+      return;
+    }
+
+    try {
+      const draft = await ensureFileDraftState(opencodeFile);
+      const parsed =
+        draft?.contentDraft.trim() ? JSON.parse(draft.contentDraft) : {};
+      if (parsed == null || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("当前 opencode.json 顶层不是对象");
+      }
+
+      const root = { ...(parsed as Record<string, unknown>) };
+      const currentProviders =
+        root.provider &&
+        typeof root.provider === "object" &&
+        !Array.isArray(root.provider)
+          ? { ...(root.provider as Record<string, unknown>) }
+          : {};
+
+      currentProviders[selectedAvailableProvider.providerName] = {
+        npm: "@ai-sdk/openai-compatible",
+        name: selectedAvailableProvider.providerName,
+        options: {
+          baseURL: selectedAvailableProvider.models[0]?.baseUrl ?? "",
+          apiKey: selectedAvailableProvider.models[0]?.apiKey ?? "",
+        },
+        models: Object.fromEntries(
+          selectedOpenCodeModels.map((model) => [model, { name: model }]),
+        ),
+      };
+
+      root.provider = currentProviders;
+      const formatted = await formatConfigContent(
+        JSON.stringify(root),
+        "json",
+      );
+      updateDraftState(opencodeFile.id, {
+        contentDraft: formatted.formatted,
+      });
+      setOpenCodeApplyModalOpen(false);
+      toast("已将 OpenCode 配置应用到当前草稿", "success");
+    } catch (error) {
+      console.error("Failed to apply OpenCode shortcut config", error);
+      toast(
+        error instanceof Error
+          ? `应用失败：${error.message}`
+          : "应用失败，请检查当前配置文件内容",
+        "error",
+      );
+    }
+  }
+
+  function handleApplyShortcut() {
+    if (isClaudeSettingsShortcutTarget) {
+      handleOpenClaudeApplyModal();
+      return;
+    }
+
+    if (isCodexShortcutTarget) {
+      if (!selectedAvailableProvider) return;
+      setSelectedCodexApplyModel(
+        selectedAvailableProvider.models[0]?.model ?? "",
+      );
+      setCodexApplyModalOpen(true);
+      return;
+    }
+
+    if (isOpenCodeShortcutTarget) {
+      if (!selectedAvailableProvider) return;
+      setSelectedOpenCodeModels([]);
+      setOpenCodeApplyModalOpen(true);
     }
   }
 
@@ -1336,9 +1723,11 @@ export function ConfigPage({
                         ))}
                       </select>
                     </div>
-                    {isClaudeSettingsShortcutTarget && (
+                    {(isClaudeSettingsShortcutTarget ||
+                      isCodexShortcutTarget ||
+                      isOpenCodeShortcutTarget) && (
                       <button
-                        onClick={handleOpenClaudeApplyModal}
+                        onClick={handleApplyShortcut}
                         className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                       >
                         应用
@@ -1651,14 +2040,14 @@ export function ConfigPage({
       {pendingSwitchTarget && selectedFile && (
         <ConfirmModal
           title="切换当前文件？"
-          description="当前文件有未保存内容，切换前请选择处理方式。"
-          primaryLabel="放弃并切换"
-          secondaryLabel="继续编辑"
-          tertiaryLabel="先保存再切换"
-          emphasisText="优先保存后再切换，避免当前修改直接丢失。"
-          primaryTone="danger"
-          onPrimary={handleDiscardAndSwitch}
-          onSecondary={() => setPendingSwitchTarget(null)}
+          description="当前文件有未保存内容。请选择直接切换，或先保存后再切换。"
+          primaryLabel="切换"
+          tertiaryLabel="保存"
+          onPrimary={() => {
+            if (!pendingSwitchTarget) return;
+            applySwitch(pendingSwitchTarget);
+            setPendingSwitchTarget(null);
+          }}
           onTertiary={() => void handleSaveAndSwitch()}
         />
       )}
@@ -1688,6 +2077,30 @@ export function ConfigPage({
             onCancel={() => setClaudeApplyModalOpen(false)}
           />
         )}
+
+      {codexApplyModalOpen && selectedAvailableProvider && (
+        <CodexApplyModal
+          providerName={selectedAvailableProvider.providerName}
+          availableModels={selectedAvailableProvider.models.map(
+            (item) => item.model,
+          )}
+          selectedModel={selectedCodexApplyModel}
+          onChange={setSelectedCodexApplyModel}
+          onConfirm={() => void handleApplyCodexShortcutToDraft()}
+          onCancel={() => setCodexApplyModalOpen(false)}
+        />
+      )}
+
+      {openCodeApplyModalOpen && selectedAvailableProvider && (
+        <OpenCodeApplyModal
+          providerName={selectedAvailableProvider.providerName}
+          models={selectedAvailableProvider.models.map((item) => item.model)}
+          selectedModels={selectedOpenCodeModels}
+          onToggle={handleToggleOpenCodeModel}
+          onConfirm={() => void handleApplyOpenCodeShortcutToDraft()}
+          onCancel={() => setOpenCodeApplyModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
