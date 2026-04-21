@@ -560,7 +560,7 @@ function getSelectableModels(provider: Provider) {
 type QuickTestProtocol = "openai" | "claude" | "gemini";
 type ModelTestProtocol = "openApi" | "claude" | "gemini";
 const QUICK_TEST_PROMPT =
-  "现在的梵蒂冈的教皇是谁，你现在模型名称是什么，版本号是多少。";
+  "现在的梵蒂冈的教皇是谁,你能为我做什么,别都叫你啥?我打算去洗车,我这边有两家一家离我有50米,另外一家离我200米,我是否应该开车去";
 const MODEL_TEST_PROTOCOLS: ModelTestProtocol[] = [
   "openApi",
   "claude",
@@ -610,23 +610,6 @@ function getModelProtocolLabel(protocol: string) {
   if (normalized === "gemini") return "gemini";
   if (normalized === "openrouter") return "openrouter";
   return protocol;
-}
-
-function getModelProtocolBadgeClass(protocol: string) {
-  const normalized = normalizeSupportedProtocolTag(protocol);
-  if (normalized === "openApi") {
-    return "bg-blue-500/15 text-blue-400";
-  }
-  if (normalized === "claude") {
-    return "bg-purple-500/15 text-purple-400";
-  }
-  if (normalized === "gemini") {
-    return "bg-amber-500/15 text-amber-400";
-  }
-  if (normalized === "openrouter") {
-    return "bg-emerald-500/15 text-emerald-400";
-  }
-  return "bg-gray-700 text-gray-400";
 }
 
 function getQuickTestProtocolBadgeClass(protocol: QuickTestProtocol) {
@@ -780,7 +763,7 @@ function buildQuickTestCurlSnippet(
       "  -X POST \\",
       '  -d "{',
       `    \\"model\\": \\"${model || "your-model"}\\",`,
-      '    \\"max_tokens\\": 1000000,',
+      '    \\"max_tokens\\": 1,',
       '    \\"messages\\": [',
       "      {",
       '        \\"role\\": \\"user\\",',
@@ -808,7 +791,10 @@ function buildQuickTestCurlSnippet(
       "          }",
       "        ]",
       "      }",
-      "    ]",
+      "    ],",
+      '    \\"generationConfig\\": {',
+      '      \\"maxOutputTokens\\": 1',
+      "    }",
       '  }"',
     );
   } else {
@@ -832,6 +818,7 @@ function buildQuickTestCurlSnippet(
       `        \\"content\\": \\"${QUICK_TEST_PROMPT}\\"`,
       "      }",
       "    ],",
+      '    \\"max_completion_tokens\\": 1,',
       '    \\"stream\\": false',
       '  }"',
     );
@@ -1252,20 +1239,20 @@ export function DetailRow({
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-gray-800/60">
-                  <th className="w-[30%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[20%] text-left px-6 py-2 text-xs text-gray-500">
                     模型
                   </th>
-                  <th className="w-[12%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[120px] text-left px-6 py-2 text-xs text-gray-500">
                     状态
                   </th>
-                  <th className="w-[16%] text-left px-6 py-2 text-xs text-gray-500">
-                    测试
-                  </th>
-                  <th className="w-[12%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="w-[120px] text-left px-6 py-2 text-xs text-gray-500">
                     延迟
                   </th>
-                  <th className="w-[30%] text-left px-6 py-2 text-xs text-gray-500">
+                  <th className="text-left px-6 py-2 text-xs text-gray-500">
                     返回结果
+                  </th>
+                  <th className="w-[100px] text-left px-6 py-2 text-xs text-gray-500">
+                    测试
                   </th>
                 </tr>
               </thead>
@@ -1277,26 +1264,10 @@ export function DetailRow({
                   >
                     <td className="px-6 py-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs text-gray-300 truncate max-w-xs">
+                        <span className="font-mono text-xs text-gray-300 truncate max-w-[160px]">
                           {r.model}
                         </span>
                         {r.status === "done" && <CopyButton text={r.model} />}
-                        {r.status === "done" &&
-                          r.supported_protocols &&
-                          r.supported_protocols.length > 0 && (
-                            <span className="inline-flex items-center gap-1">
-                              {r.supported_protocols.map((proto) => (
-                                <span
-                                  key={proto}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getModelProtocolBadgeClass(
-                                    proto,
-                                  )}`}
-                                >
-                                  {getModelProtocolLabel(proto)}
-                                </span>
-                              ))}
-                            </span>
-                          )}
                       </div>
                     </td>
                     <td className="px-6 py-2">
@@ -1316,15 +1287,6 @@ export function DetailRow({
                           不可用
                         </span>
                       )}
-                    </td>
-                    <td className="px-6 py-2">
-                      <button
-                        onClick={() => handleOpenProtocolDialog(r)}
-                        disabled={testing || !!singleTestingModel}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        测试
-                      </button>
                     </td>
                     <td className="px-6 py-2 text-xs text-gray-400">
                       {r.latency_ms != null ? `${r.latency_ms} ms` : "—"}
@@ -1350,6 +1312,15 @@ export function DetailRow({
                           )}
                         </div>
                       )}
+                    </td>
+                    <td className="px-6 py-2">
+                      <button
+                        onClick={() => handleOpenProtocolDialog(r)}
+                        disabled={testing || !!singleTestingModel}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        测试
+                      </button>
                     </td>
                   </tr>
                 ))}

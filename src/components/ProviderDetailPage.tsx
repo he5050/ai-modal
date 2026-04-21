@@ -26,7 +26,6 @@ import {
   RetestScopeDialog,
   type ModelTestProtocol,
   formatProtocolSupportSummary,
-  getModelProtocolBadgeClass,
   getModelProtocolLabel,
   getProtocolResultDetails,
   getProtocolSupportChipClass,
@@ -560,20 +559,20 @@ export function ProviderDetailPage({
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-gray-800/60">
-                  <th className="w-[30%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[20%] px-5 py-2 text-left text-xs text-gray-500">
                     模型
                   </th>
-                  <th className="w-[10%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[120px] px-5 py-2 text-left text-xs text-gray-500">
                     状态
                   </th>
-                  <th className="w-[11%] px-5 py-2 text-left text-xs text-gray-500">
-                    测试
-                  </th>
-                  <th className="w-[9%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="w-[120px] px-5 py-2 text-left text-xs text-gray-500">
                     延迟
                   </th>
-                  <th className="w-[40%] px-5 py-2 text-left text-xs text-gray-500">
+                  <th className="px-5 py-2 text-left text-xs text-gray-500">
                     返回结果
+                  </th>
+                  <th className="w-[100px] px-5 py-2 text-left text-xs text-gray-500">
+                    测试
                   </th>
                 </tr>
               </thead>
@@ -589,28 +588,12 @@ export function ProviderDetailPage({
                   >
                     <td className="px-5 py-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="max-w-xs truncate font-mono text-xs text-gray-300">
+                        <span className="max-w-[160px] truncate font-mono text-xs text-gray-300">
                           {result.model}
                         </span>
                         {result.status === "done" && (
                           <CopyButton text={result.model} />
                         )}
-                        {result.status === "done" &&
-                          result.supported_protocols &&
-                          result.supported_protocols.length > 0 && (
-                            <span className="inline-flex items-center gap-1">
-                              {result.supported_protocols.map((proto) => (
-                                <span
-                                  key={proto}
-                                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getModelProtocolBadgeClass(
-                                    proto,
-                                  )}`}
-                                >
-                                  {getModelProtocolLabel(proto)}
-                                </span>
-                              ))}
-                            </span>
-                          )}
                       </div>
                     </td>
                     <td className="px-5 py-2">
@@ -630,15 +613,6 @@ export function ProviderDetailPage({
                           不可用
                         </span>
                       )}
-                    </td>
-                    <td className="px-5 py-2">
-                      <button
-                        onClick={() => handleOpenProtocolDialog(result)}
-                        disabled={testing || !!singleTestingModel}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        测试
-                      </button>
                     </td>
                     <td className="px-5 py-2 text-xs text-gray-400">
                       {result.latency_ms != null
@@ -708,8 +682,17 @@ export function ProviderDetailPage({
                               )}
                             </div>
                           )}
-                        </div>
-                      )}
+                          </div>
+                        )}
+                      </td>
+                    <td className="px-5 py-2">
+                      <button
+                        onClick={() => handleOpenProtocolDialog(result)}
+                        disabled={testing || !!singleTestingModel}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        测试
+                      </button>
                     </td>
                   </tr>
                 ))}

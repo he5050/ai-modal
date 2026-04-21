@@ -38,7 +38,6 @@ import {
   RetestScopeDialog,
   type ModelTestProtocol,
   formatProtocolSupportSummary,
-  getModelProtocolBadgeClass,
   getModelProtocolLabel,
   getProtocolResultDetails,
   getProtocolSupportChipClass,
@@ -1182,20 +1181,20 @@ export function DetectPage({
               <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="w-[30%] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[20%] text-left px-5 py-2.5 text-xs text-gray-400">
                       模型
                     </th>
-                    <th className="w-[10%] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[120px] text-left px-5 py-2.5 text-xs text-gray-400">
                       状态
                     </th>
-                    <th className="w-[11%] text-left px-5 py-2.5 text-xs text-gray-400">
-                      测试
-                    </th>
-                    <th className="w-[9%] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[120px] text-left px-5 py-2.5 text-xs text-gray-400">
                       延迟
                     </th>
-                    <th className="w-[40%] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
                       返回结果
+                    </th>
+                    <th className="w-[100px] text-left px-5 py-2.5 text-xs text-gray-400">
+                      测试
                     </th>
                   </tr>
                 </thead>
@@ -1213,26 +1212,10 @@ export function DetectPage({
                     >
                       <td className="px-5 py-2.5">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs text-gray-200 truncate max-w-xs">
+                          <span className="font-mono text-xs text-gray-200 truncate max-w-[160px]">
                             {r.model}
                           </span>
                           {r.status === "done" && <CopyButton text={r.model} />}
-                          {r.status === "done" &&
-                            r.supported_protocols &&
-                            r.supported_protocols.length > 0 && (
-                              <span className="inline-flex items-center gap-1">
-                                {r.supported_protocols.map((proto) => (
-                                  <span
-                                    key={proto}
-                                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getModelProtocolBadgeClass(
-                                      proto,
-                                    )}`}
-                                  >
-                                    {getModelProtocolLabel(proto)}
-                                  </span>
-                                ))}
-                              </span>
-                            )}
                         </div>
                       </td>
                       <td className="px-5 py-2.5">
@@ -1244,15 +1227,6 @@ export function DetectPage({
                         ) : (
                           <StatusBadge available={r.available} />
                         )}
-                      </td>
-                      <td className="px-5 py-2.5">
-                        <button
-                          onClick={() => handleOpenProtocolDialog(r)}
-                          disabled={isLoading || !!singleTestingModel}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          测试
-                        </button>
                       </td>
                       <td className="px-5 py-2.5 text-gray-300 text-xs">
                         {r.latency_ms != null ? `${r.latency_ms} ms` : "—"}
@@ -1326,6 +1300,15 @@ export function DetectPage({
                             )}
                           </div>
                         )}
+                      </td>
+                      <td className="px-5 py-2.5">
+                        <button
+                          onClick={() => handleOpenProtocolDialog(r)}
+                          disabled={isLoading || !!singleTestingModel}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          测试
+                        </button>
                       </td>
                     </tr>
                   ))}

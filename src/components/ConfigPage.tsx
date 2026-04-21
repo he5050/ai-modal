@@ -19,12 +19,11 @@ import { testModelConfig } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import {
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
   Copy,
   ExternalLink,
   FolderOpen,
   Plus,
+  RotateCcw,
   Save,
   Trash2,
   WandSparkles,
@@ -104,8 +103,26 @@ interface ConfirmModalProps {
   onTertiary?: () => void;
 }
 
+type ClaudeEnvModelField =
+  | "ANTHROPIC_MODEL"
+  | "ANTHROPIC_DEFAULT_HAIKU_MODEL"
+  | "ANTHROPIC_DEFAULT_SONNET_MODEL"
+  | "ANTHROPIC_DEFAULT_OPUS_MODEL";
+
 const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
 const MODEL_CONFIGS_DB_KEY = "model_configs";
+const CLAUDE_ENV_MODEL_FIELDS: ClaudeEnvModelField[] = [
+  "ANTHROPIC_MODEL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_OPUS_MODEL",
+];
+const CLAUDE_ENV_MODEL_FIELD_LABELS: Record<ClaudeEnvModelField, string> = {
+  ANTHROPIC_MODEL: "主模型",
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: "Haiku 默认模型",
+  ANTHROPIC_DEFAULT_SONNET_MODEL: "Sonnet 默认模型",
+  ANTHROPIC_DEFAULT_OPUS_MODEL: "Opus 默认模型",
+};
 
 const configEditorTheme = EditorView.theme(
   {
@@ -262,6 +279,26 @@ function getModelConfigResultText(result?: ModelResult | null) {
   return result.response_text?.trim() || result.error || "—";
 }
 
+function buildClaudeModelGuessMap(
+  availableModels: string[],
+  selectedModel: string,
+): Record<ClaudeEnvModelField, string> {
+  const normalized = availableModels.map((model) => ({
+    raw: model,
+    lowered: model.toLowerCase(),
+  }));
+  const fallback = selectedModel || availableModels[0] || "";
+  const findByKeyword = (keyword: string) =>
+    normalized.find((item) => item.lowered.includes(keyword))?.raw ?? fallback;
+
+  return {
+    ANTHROPIC_MODEL: fallback,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: findByKeyword("haiku"),
+    ANTHROPIC_DEFAULT_SONNET_MODEL: findByKeyword("sonnet"),
+    ANTHROPIC_DEFAULT_OPUS_MODEL: findByKeyword("opus"),
+  };
+}
+
 function ConfirmModal({
   title,
   description,
@@ -336,6 +373,91 @@ function ConfirmModal({
   );
 }
 
+function ClaudeApplyModal({
+  providerName,
+  availableModels,
+  selection,
+  onChange,
+  onConfirm,
+  onCancel,
+}: {
+  providerName: string;
+  availableModels: string[];
+  selection: Record<ClaudeEnvModelField, string>;
+  onChange: (field: ClaudeEnvModelField, value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-indigo-500/25 bg-indigo-500/10 text-indigo-200">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              应用到 Claude settings.json
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              为当前 Provider 选择 Claude 的模型映射。当前只更新草稿，不会直接保存到磁盘。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+            Provider
+          </p>
+          <p className="mt-2 truncate text-sm font-medium text-gray-200">
+            {providerName}
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-2 rounded-2xl border border-gray-800 bg-black/15 px-4 py-4">
+          {CLAUDE_ENV_MODEL_FIELDS.map((field) => (
+            <div
+              key={field}
+              className="grid items-center gap-2 md:grid-cols-[120px_minmax(0,1fr)]"
+            >
+              <p className="text-sm font-medium text-gray-300">
+                {CLAUDE_ENV_MODEL_FIELD_LABELS[field]}
+              </p>
+              <select
+                value={selection[field]}
+                onChange={(event) => onChange(field, event.target.value)}
+                className={FIELD_SELECT_CLASS}
+                aria-label={`选择 ${field}`}
+              >
+                {availableModels.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            应用到草稿
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface FileDraftState {
   contentDraft: string;
   savedContent: string;
@@ -371,8 +493,6 @@ export function ConfigPage({
   const [homePath, setHomePath] = useState("");
   const [selectedAvailableProviderId, setSelectedAvailableProviderId] =
     useState<string>("");
-  const [selectedAvailableModelId, setSelectedAvailableModelId] =
-    useState<string>("");
   const [modelConfigs, setModelConfigs] = useState<ModelConfigRecord[]>([]);
   const [savedModelConfigs, setSavedModelConfigs] = useState<
     ModelConfigRecord[]
@@ -381,7 +501,15 @@ export function ConfigPage({
     useState<string>("");
   const [testingModelConfig, setTestingModelConfig] = useState(false);
   const [modelConfigsReady, setModelConfigsReady] = useState(false);
-  const [shortcutExpanded, setShortcutExpanded] = useState(false);
+  const [claudeApplyModalOpen, setClaudeApplyModalOpen] = useState(false);
+  const [claudeEnvSelection, setClaudeEnvSelection] = useState<
+    Record<ClaudeEnvModelField, string>
+  >({
+    ANTHROPIC_MODEL: "",
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
+    ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+    ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+  });
 
   useEffect(() => {
     let active = true;
@@ -479,16 +607,13 @@ export function ConfigPage({
     ) ??
     availableProviderOptions[0] ??
     null;
-  const selectedAvailableModel =
-    selectedAvailableProvider?.models.find(
-      (item) => item.id === selectedAvailableModelId,
-    ) ??
-    selectedAvailableProvider?.models[0] ??
-    null;
+  const selectedAvailableModel = selectedAvailableProvider?.models[0] ?? null;
   const selectedModelConfig =
     modelConfigs.find((item) => item.id === selectedModelConfigId) ??
     modelConfigs[0] ??
     null;
+  const isClaudeSettingsShortcutTarget =
+    selectedGroup?.id === "claude" && selectedFile?.id === "claude";
 
   function updateDraftState(fileId: string, patch: Partial<FileDraftState>) {
     setDraftsByFileId((prev) => ({
@@ -575,7 +700,6 @@ export function ConfigPage({
   useEffect(() => {
     if (availableProviderOptions.length === 0) {
       setSelectedAvailableProviderId("");
-      setSelectedAvailableModelId("");
       return;
     }
 
@@ -584,27 +708,8 @@ export function ConfigPage({
     );
     if (!providerStillExists) {
       setSelectedAvailableProviderId(availableProviderOptions[0].id);
-      setSelectedAvailableModelId(
-        availableProviderOptions[0].models[0]?.id ?? "",
-      );
-      return;
     }
-
-    const currentProvider =
-      availableProviderOptions.find(
-        (item) => item.id === selectedAvailableProviderId,
-      ) ?? availableProviderOptions[0];
-    const modelStillExists = currentProvider.models.some(
-      (item) => item.id === selectedAvailableModelId,
-    );
-    if (!modelStillExists) {
-      setSelectedAvailableModelId(currentProvider.models[0]?.id ?? "");
-    }
-  }, [
-    availableProviderOptions,
-    selectedAvailableProviderId,
-    selectedAvailableModelId,
-  ]);
+  }, [availableProviderOptions, selectedAvailableProviderId]);
 
   useEffect(() => {
     if (modelConfigs.length === 0) {
@@ -787,6 +892,14 @@ export function ConfigPage({
     }
   }
 
+  function handleDiscardContentChanges() {
+    if (!selectedFile || !activeDraft) return;
+    updateDraftState(selectedFile.id, {
+      contentDraft: activeDraft.savedContent,
+    });
+    toast("已丢弃当前未保存更改", "info");
+  }
+
   function handleAddGroupFile() {
     if (!selectedGroup || !homePath) return;
 
@@ -904,6 +1017,86 @@ export function ConfigPage({
         : [...prev, patch],
     );
     setSelectedModelConfigId(next.id);
+  }
+
+  function handleOpenClaudeApplyModal() {
+    if (
+      !selectedAvailableModel ||
+      !selectedAvailableProvider ||
+      !isClaudeSettingsShortcutTarget
+    ) {
+      return;
+    }
+
+    setClaudeEnvSelection(
+      buildClaudeModelGuessMap(
+        selectedAvailableProvider.models.map((item) => item.model),
+        selectedAvailableModel.model,
+      ),
+    );
+    setClaudeApplyModalOpen(true);
+  }
+
+  function handleClaudeEnvFieldChange(
+    field: ClaudeEnvModelField,
+    value: string,
+  ) {
+    setClaudeEnvSelection((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  async function handleApplyClaudeShortcutToDraft() {
+    if (
+      !selectedFile ||
+      !selectedAvailableModel ||
+      !selectedAvailableProvider ||
+      !isClaudeSettingsShortcutTarget
+    ) {
+      return;
+    }
+
+    try {
+      const currentContent = activeContentDraft.trim();
+      const parsed =
+        currentContent.length > 0 ? JSON.parse(currentContent) : {};
+
+      if (parsed == null || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("当前 settings.json 顶层不是对象");
+      }
+
+      const root = { ...parsed } as Record<string, unknown>;
+      const currentEnv =
+        root.env && typeof root.env === "object" && !Array.isArray(root.env)
+          ? { ...(root.env as Record<string, unknown>) }
+          : {};
+
+      currentEnv.ANTHROPIC_BASE_URL = selectedAvailableModel.baseUrl;
+      currentEnv.ANTHROPIC_AUTH_TOKEN = selectedAvailableModel.apiKey;
+      for (const field of CLAUDE_ENV_MODEL_FIELDS) {
+        currentEnv[field] = claudeEnvSelection[field];
+      }
+
+      root.env = currentEnv;
+      const formatted = await formatConfigContent(
+        JSON.stringify(root),
+        "json",
+      );
+      updateDraftState(selectedFile.id, {
+        contentDraft: formatted.formatted,
+      });
+      setClaudeApplyModalOpen(false);
+      toast("已将 Claude 模型映射应用到当前草稿", "success");
+    } catch (error) {
+      console.error("Failed to apply Claude shortcut config", error);
+      toast(
+        error instanceof Error
+          ? `应用失败：${error.message}`
+          : "应用失败，请先确保当前 settings.json 是合法 JSON",
+        "error",
+      );
+    }
   }
 
   async function handleTestCurrentModelConfig() {
@@ -1119,143 +1312,44 @@ export function ConfigPage({
               </div>
 
               <div className="mb-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                <button
-                  type="button"
-                  onClick={() => setShortcutExpanded((prev) => !prev)}
-                  className="flex w-full items-start justify-between gap-3 text-left"
-                >
-                  <div>
+                {availableProviderOptions.length > 0 && selectedAvailableModel ? (
+                  <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium text-gray-200">
-                        可用模型快捷选择
+                        快捷模型
                       </p>
-                      <HintTooltip content="从已检测可用的模型里快速取用 URL、Key 和模型名。" />
+                      <HintTooltip content="这里只选 Provider；具体模型映射在弹窗里完成。" />
                     </div>
-                  </div>
-                  <span className="flex items-center gap-2 rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                    {availableProviderOptions.length} 个可用 Provider
-                    {shortcutExpanded ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
+                    <div className="w-[240px]">
+                      <select
+                        value={selectedAvailableProvider?.id ?? ""}
+                        onChange={(event) => {
+                          setSelectedAvailableProviderId(event.target.value);
+                        }}
+                        className={FIELD_SELECT_CLASS}
+                        aria-label="选择快捷模型 Provider"
+                      >
+                        {availableProviderOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.providerName} ({option.availableCount} 个可用)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {isClaudeSettingsShortcutTarget && (
+                      <button
+                        onClick={handleOpenClaudeApplyModal}
+                        className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                      >
+                        应用
+                      </button>
                     )}
-                  </span>
-                </button>
-
-                {shortcutExpanded &&
-                  (availableProviderOptions.length > 0 &&
-                  selectedAvailableModel ? (
-                    <>
-                      <div className="mt-3 grid gap-3 border-t border-gray-800 pt-3 md:grid-cols-2">
-                        <div>
-                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            Provider
-                          </p>
-                          <select
-                            value={selectedAvailableProvider?.id ?? ""}
-                            onChange={(event) => {
-                              const nextProvider =
-                                availableProviderOptions.find(
-                                  (item) => item.id === event.target.value,
-                                ) ?? null;
-                              setSelectedAvailableProviderId(
-                                event.target.value,
-                              );
-                              setSelectedAvailableModelId(
-                                nextProvider?.models[0]?.id ?? "",
-                              );
-                            }}
-                            className={FIELD_SELECT_CLASS}
-                            aria-label="选择可用模型 Provider"
-                          >
-                            {availableProviderOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.providerName} ({option.availableCount}{" "}
-                                个可用)
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            模型
-                          </p>
-                          <select
-                            value={selectedAvailableModel.id}
-                            onChange={(event) =>
-                              setSelectedAvailableModelId(event.target.value)
-                            }
-                            className={FIELD_SELECT_CLASS}
-                            aria-label="选择 Provider 下的可用模型"
-                          >
-                            {(selectedAvailableProvider?.models ?? []).map(
-                              (option) => (
-                                <option key={option.id} value={option.id}>
-                                  {option.model}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            模型名
-                          </p>
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <span className="truncate font-mono text-xs text-gray-200">
-                              {selectedAvailableModel.model}
-                            </span>
-                            <CopyButton
-                              text={selectedAvailableModel.model}
-                              message="已复制模型名"
-                            />
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            Base URL
-                          </p>
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <span className="truncate font-mono text-xs text-gray-200">
-                              {maskPreviewText(selectedAvailableModel.baseUrl)}
-                            </span>
-                            <CopyButton
-                              text={selectedAvailableModel.baseUrl}
-                              message="已复制 Base URL"
-                            />
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                            API Key
-                          </p>
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <span className="truncate font-mono text-xs text-gray-200">
-                              {maskKey(selectedAvailableModel.apiKey)}
-                            </span>
-                            <CopyButton
-                              text={selectedAvailableModel.apiKey}
-                              message="已复制 API Key"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                        <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
-                          {selectedAvailableProvider?.providerName}
-                        </span>
-                        <HintTooltip content="当前来自可用检测结果。" />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
-                      当前还没有可用模型。请先去模型列表或详情页完成检测。
-                    </div>
-                  ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    当前还没有可用模型。请先去模型列表或详情页完成检测。
+                  </div>
+                )}
               </div>
 
               {false && (
@@ -1490,6 +1584,14 @@ export function ConfigPage({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
+                      onClick={handleDiscardContentChanges}
+                      disabled={!selectedFile || !getFileDirty(selectedFile.id)}
+                      className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      丢弃更改
+                    </button>
+                    <button
                       onClick={handleFormat}
                       disabled={!activeContentDraft}
                       className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
@@ -1571,6 +1673,21 @@ export function ConfigPage({
           onSecondary={() => setShowDeleteConfirm(false)}
         />
       )}
+
+      {claudeApplyModalOpen &&
+        selectedAvailableModel &&
+        selectedAvailableProvider && (
+          <ClaudeApplyModal
+            providerName={selectedAvailableProvider.providerName}
+            availableModels={selectedAvailableProvider.models.map(
+              (item) => item.model,
+            )}
+            selection={claudeEnvSelection}
+            onChange={handleClaudeEnvFieldChange}
+            onConfirm={() => void handleApplyClaudeShortcutToDraft()}
+            onCancel={() => setClaudeApplyModalOpen(false)}
+          />
+        )}
     </div>
   );
 }

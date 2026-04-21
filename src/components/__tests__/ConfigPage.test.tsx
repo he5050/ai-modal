@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConfigPage } from '../ConfigPage'
@@ -58,6 +58,42 @@ vi.mock('../../lib/toast', () => ({
 }))
 
 const providers: Provider[] = []
+
+function createAvailableProvider(): Provider {
+  return {
+    id: 'provider-1',
+    name: 'Claude Relay',
+    baseUrl: 'https://claude.example.com/v1',
+    apiKey: 'sk-claude-secret',
+    createdAt: 1,
+    lastResult: {
+      timestamp: 1_700_000_000_000,
+      results: [
+        {
+          model: 'claude-3-5-sonnet',
+          available: true,
+          latency_ms: 123,
+          error: null,
+          response_text: 'ok',
+        },
+        {
+          model: 'claude-3-5-haiku',
+          available: true,
+          latency_ms: 110,
+          error: null,
+          response_text: 'ok',
+        },
+        {
+          model: 'claude-3-opus',
+          available: true,
+          latency_ms: 130,
+          error: null,
+          response_text: 'ok',
+        },
+      ],
+    },
+  }
+}
 
 const storedPaths: ConfigPath[] = [
   {
@@ -135,6 +171,52 @@ describe('ConfigPage', () => {
 
     await waitFor(() => {
       expect(onDeletePath).toHaveBeenCalledWith('claude-custom')
+    })
+  })
+
+  it('applies selected available Claude models into settings.json draft env', async () => {
+    mockReadTextFile.mockResolvedValue(
+      JSON.stringify({ env: { EXISTING_FLAG: 'keep-me' } }, null, 2),
+    )
+
+    render(
+      <ConfigPage
+        providers={[createAvailableProvider()]}
+        storedPaths={storedPaths}
+        onUpsertPath={vi.fn()}
+        onDeletePath={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await screen.findByText('配置管理')
+    await userEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(await screen.findByText('应用到 Claude settings.json')).toBeInTheDocument()
+
+    const dialog = screen.getByText('应用到 Claude settings.json').closest('div[role], div')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择 ANTHROPIC_DEFAULT_OPUS_MODEL' }),
+      'claude-3-opus',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用到草稿' }))
+
+    const saveButtons = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtons[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalled()
+    })
+
+    const [, savedContent] = mockWriteTextFile.mock.calls.at(-1)
+    const parsed = JSON.parse(savedContent)
+    expect(parsed.env).toMatchObject({
+      EXISTING_FLAG: 'keep-me',
+      ANTHROPIC_BASE_URL: 'https://claude.example.com/v1',
+      ANTHROPIC_AUTH_TOKEN: 'sk-claude-secret',
+      ANTHROPIC_MODEL: 'claude-3-5-sonnet',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-3-5-haiku',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-3-5-sonnet',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-3-opus',
     })
   })
 })
