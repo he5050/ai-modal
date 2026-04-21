@@ -28,15 +28,13 @@ export function serializePromptCategories(categories: string[]) {
 
 export function createEmptyPrompt(
   now: number,
-  category = "未分类",
+  tags: string[] = [],
 ): PromptRecord {
   return {
     id: `prompt-${now}-${Math.random().toString(36).slice(2, 8)}`,
     title: "",
     content: "",
-    category,
-    tags: [],
-    note: "",
+    tags: parsePromptCategories(tags.join(" / ")),
     createdAt: now,
     updatedAt: now,
   };
@@ -48,7 +46,7 @@ export function buildPromptCategories(
   const groups = new Map<string, { count: number; updatedAt: number | null }>();
 
   for (const record of records) {
-    const keys = parsePromptCategories(record.category);
+    const keys = record.tags;
 
     if (keys.length === 0) {
       const key = "未分类";
@@ -115,9 +113,6 @@ export function parsePromptImportJson(
       typeof item?.id !== "string" ||
       typeof item?.title !== "string" ||
       typeof item?.content !== "string" ||
-      typeof item?.category !== "string" ||
-      !Array.isArray(item?.tags) ||
-      typeof item?.note !== "string" ||
       typeof item?.createdAt !== "number" ||
       typeof item?.updatedAt !== "number" ||
       item.title.trim() === "" ||
@@ -127,13 +122,22 @@ export function parsePromptImportJson(
       continue;
     }
 
+    const legacyCategoryTags =
+      typeof item.category === "string"
+        ? parsePromptCategories(item.category)
+        : [];
+    const explicitTags = Array.isArray(item.tags)
+      ? item.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+      : [];
+
     valid.push({
       id: item.id,
       title: item.title.trim(),
       content: item.content,
-      category: serializePromptCategories(parsePromptCategories(item.category)) || "未分类",
-      tags: item.tags.filter((tag: unknown): tag is string => typeof tag === "string"),
-      note: item.note,
+      tags:
+        legacyCategoryTags.length > 0
+          ? legacyCategoryTags
+          : parsePromptCategories(explicitTags.join(" / ")),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     });

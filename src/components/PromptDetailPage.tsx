@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { animate, spring } from "animejs";
+import CodeMirror from "@uiw/react-codemirror";
+import { markdown } from "@codemirror/lang-markdown";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView } from "@codemirror/view";
 import {
   ArrowLeft,
   Copy,
+  Eye,
   FilePenLine,
   Save,
   Trash2,
+  WandSparkles,
   X,
 } from "lucide-react";
 import {
@@ -13,21 +19,16 @@ import {
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
-  BUTTON_SIZE_SM_CLASS,
   BUTTON_SIZE_XS_CLASS,
 } from "../lib/buttonStyles";
-import {
-  createEmptyPrompt,
-  parsePromptCategories,
-  serializePromptCategories,
-} from "../lib/promptStore";
+import { createEmptyPrompt, parsePromptCategories } from "../lib/promptStore";
 import { toast } from "../lib/toast";
 import type { PromptRecord } from "../types";
 
 interface Props {
   prompt: PromptRecord | null;
   mode: "detail" | "edit" | "create";
-  availableCategories: string[];
+  availableTags: string[];
   onBack: () => void;
   onSave: (prompt: PromptRecord) => void;
   onDelete: (id: string) => void;
@@ -35,9 +36,7 @@ interface Props {
 }
 
 function createDraft(prompt: PromptRecord | null) {
-  return prompt
-    ? { ...prompt }
-    : createEmptyPrompt(Date.now(), "");
+  return prompt ? { ...prompt } : createEmptyPrompt(Date.now(), []);
 }
 
 function serializeDraftComparable(record: PromptRecord) {
@@ -45,24 +44,8 @@ function serializeDraftComparable(record: PromptRecord) {
     id: record.id,
     title: record.title,
     content: record.content,
-    category: record.category,
     tags: record.tags,
-    note: record.note,
   });
-}
-
-function parseTagsInput(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function buildDraftCategoryValue(selectedValues: string[], inputValue: string) {
-  return serializePromptCategories([
-    ...selectedValues,
-    ...parsePromptCategories(inputValue),
-  ]);
 }
 
 function formatPromptTime(timestamp: number | null) {
@@ -74,6 +57,178 @@ function formatPromptTime(timestamp: number | null) {
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
   return `${year}/${month}/${day} ${hour}:${minute}`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderMarkdownInline(value: string) {
+  let rendered = escapeHtml(value);
+  rendered = rendered.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noreferrer" class="text-indigo-300 underline decoration-indigo-400/60 underline-offset-4">$1</a>',
+  );
+  rendered = rendered.replace(
+    /`([^`]+)`/g,
+    '<code class="rounded bg-white/10 px-1.5 py-0.5 text-[0.92em] text-amber-200">$1</code>',
+  );
+  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  rendered = rendered.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  return rendered;
+}
+
+function renderMarkdownToHtml(markdownText: string) {
+  const lines = markdownText.replace(/\r\n/g, "\n").split("\n");
+  const html: string[] = [];
+  let paragraphLines: string[] = [];
+  let listType: "ul" | "ol" | null = null;
+  let codeLines: string[] = [];
+  let codeFence: string | null = null;
+  let blockquoteLines: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    html.push(
+      `<p class="mb-4 leading-8 text-gray-100">${renderMarkdownInline(
+        paragraphLines.join(" "),
+      )}</p>`,
+    );
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listType) return;
+    html.push(`</${listType}>`);
+    listType = null;
+  };
+
+  const flushBlockquote = () => {
+    if (blockquoteLines.length === 0) return;
+    html.push(
+      `<blockquote class="mb-4 border-l-2 border-indigo-400/50 pl-4 text-gray-300">${blockquoteLines
+        .map(
+          (line) =>
+            `<p class="leading-7">${renderMarkdownInline(line)}</p>`,
+        )
+        .join("")}</blockquote>`,
+    );
+    blockquoteLines = [];
+  };
+
+  const flushCodeBlock = () => {
+    if (codeFence == null) return;
+    html.push(
+      `<pre class="mb-4 overflow-x-auto rounded-2xl border border-gray-800 bg-black/40 p-4 text-sm leading-7 text-emerald-100"><code>${escapeHtml(
+        codeLines.join("\n"),
+      )}</code></pre>`,
+    );
+    codeLines = [];
+    codeFence = null;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const fenceMatch = trimmed.match(/^```/);
+    if (fenceMatch) {
+      flushParagraph();
+      flushList();
+      flushBlockquote();
+      if (codeFence == null) {
+        codeFence = trimmed;
+      } else {
+        flushCodeBlock();
+      }
+      continue;
+    }
+
+    if (codeFence != null) {
+      codeLines.push(line);
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      flushBlockquote();
+      const level = headingMatch[1].length;
+      const sizeClass =
+        level === 1
+          ? "text-3xl"
+          : level === 2
+            ? "text-2xl"
+            : level === 3
+              ? "text-xl"
+              : "text-lg";
+      html.push(
+        `<h${level} class="mb-3 mt-6 font-semibold tracking-tight text-white ${sizeClass}">${renderMarkdownInline(
+          headingMatch[2],
+        )}</h${level}>`,
+      );
+      continue;
+    }
+
+    const blockquoteMatch = trimmed.match(/^>\s?(.*)$/);
+    if (blockquoteMatch) {
+      flushParagraph();
+      flushList();
+      blockquoteLines.push(blockquoteMatch[1]);
+      continue;
+    }
+
+    const ulMatch = trimmed.match(/^[-*+]\s+(.+)$/);
+    if (ulMatch) {
+      flushParagraph();
+      flushBlockquote();
+      if (listType !== "ul") {
+        flushList();
+        listType = "ul";
+        html.push(
+          '<ul class="mb-4 list-disc space-y-2 pl-6 leading-7 text-gray-100">',
+        );
+      }
+      html.push(`<li>${renderMarkdownInline(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (olMatch) {
+      flushParagraph();
+      flushBlockquote();
+      if (listType !== "ol") {
+        flushList();
+        listType = "ol";
+        html.push(
+          '<ol class="mb-4 list-decimal space-y-2 pl-6 leading-7 text-gray-100">',
+        );
+      }
+      html.push(`<li>${renderMarkdownInline(olMatch[1])}</li>`);
+      continue;
+    }
+
+    if (trimmed === "") {
+      flushParagraph();
+      flushList();
+      flushBlockquote();
+      continue;
+    }
+
+    flushList();
+    flushBlockquote();
+    paragraphLines.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  flushBlockquote();
+  flushCodeBlock();
+
+  return html.join("");
 }
 
 function DeletePromptDialog({
@@ -114,10 +269,54 @@ function DeletePromptDialog({
   );
 }
 
+const promptMarkdownEditorTheme = EditorView.theme(
+  {
+    "&": {
+      minHeight: "520px",
+      borderRadius: "1rem",
+      border: "1px solid rgba(55, 65, 81, 0.9)",
+      backgroundColor: "rgba(2, 6, 23, 0.82)",
+      overflow: "hidden",
+    },
+    "&.cm-focused": {
+      outline: "none",
+      borderColor: "rgb(99 102 241)",
+    },
+    ".cm-scroller": {
+      minHeight: "520px",
+      overflow: "auto",
+      fontFamily:
+        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+    },
+    ".cm-gutters": {
+      backgroundColor: "rgba(2, 6, 23, 0.88)",
+      borderRight: "1px solid rgba(55, 65, 81, 0.7)",
+      color: "rgb(75 85 99)",
+    },
+    ".cm-content": {
+      padding: "18px",
+      fontSize: "14px",
+      lineHeight: "1.85",
+      color: "rgb(226 232 240)",
+      caretColor: "#f8fafc",
+    },
+    ".cm-placeholder": {
+      color: "rgb(107 114 128)",
+    },
+    ".cm-activeLine": {
+      backgroundColor: "rgba(99, 102, 241, 0.08)",
+    },
+    ".cm-selectionBackground, ::selection": {
+      backgroundColor: "rgba(99, 102, 241, 0.24) !important",
+    },
+  },
+  { dark: true },
+);
+
 export function PromptDetailPage({
   prompt,
   mode,
-  availableCategories,
+  availableTags,
   onBack,
   onSave,
   onDelete,
@@ -131,25 +330,22 @@ export function PromptDetailPage({
   const [baselineDraft, setBaselineDraft] = useState<PromptRecord>(
     createDraft(prompt),
   );
-  const [draftCategorySelections, setDraftCategorySelections] = useState<string[]>(
-    parsePromptCategories(prompt?.category ?? ""),
-  );
-  const [draftCategoryInput, setDraftCategoryInput] = useState("");
   const [tagsInput, setTagsInput] = useState((prompt?.tags ?? []).join(", "));
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [editorTab, setEditorTab] = useState<"write" | "preview">("write");
 
+  const editorExtensions = useMemo(
+    () => [markdown(), promptMarkdownEditorTheme],
+    [],
+  );
+  const draftTags = useMemo(
+    () => parsePromptCategories(tagsInput),
+    [tagsInput],
+  );
   const dirty = useMemo(
     () =>
       serializeDraftComparable(draft) !== serializeDraftComparable(baselineDraft),
     [baselineDraft, draft],
-  );
-
-  const draftCategoryPreview = useMemo(
-    () =>
-      parsePromptCategories(
-        buildDraftCategoryValue(draftCategorySelections, draftCategoryInput),
-      ),
-    [draftCategoryInput, draftCategorySelections],
   );
 
   useEffect(() => {
@@ -167,10 +363,9 @@ export function PromptDetailPage({
     const nextDraft = createDraft(prompt);
     setDraft(nextDraft);
     setBaselineDraft(nextDraft);
-    setDraftCategorySelections(parsePromptCategories(nextDraft.category));
-    setDraftCategoryInput("");
     setTagsInput(nextDraft.tags.join(", "));
     setViewMode(mode === "detail" ? "detail" : "edit");
+    setEditorTab("write");
     setDeleteConfirmOpen(false);
   }, [mode, prompt]);
 
@@ -178,15 +373,6 @@ export function PromptDetailPage({
     onDirtyChange(viewMode === "edit" ? dirty : false);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange, viewMode]);
-
-  function applyDraftCategories(selectedValues: string[], inputValue: string) {
-    setDraftCategorySelections(selectedValues);
-    setDraftCategoryInput(inputValue);
-    setDraft((current) => ({
-      ...current,
-      category: buildDraftCategoryValue(selectedValues, inputValue),
-    }));
-  }
 
   async function copyPromptContent(content: string) {
     try {
@@ -198,15 +384,32 @@ export function PromptDetailPage({
     }
   }
 
+  async function handleFormatMarkdown() {
+    if (!draft.content.trim()) return;
+    try {
+      const [{ default: prettier }, markdownPluginModule] = await Promise.all([
+        import("prettier/standalone"),
+        import("prettier/plugins/markdown"),
+      ]);
+      const formatted = await prettier.format(draft.content, {
+        parser: "markdown",
+        plugins: [markdownPluginModule.default ?? markdownPluginModule],
+      });
+      setDraft((current) => ({
+        ...current,
+        content: formatted,
+      }));
+      toast("已按标准 Markdown formatter 格式化", "success");
+    } catch (error) {
+      console.error("Failed to format markdown", error);
+      toast("Markdown 格式化失败", "error");
+    }
+  }
+
   function handleSave() {
     const title = draft.title.trim();
     const content = draft.content.trim();
-    const category =
-      serializePromptCategories(
-        parsePromptCategories(
-          buildDraftCategoryValue(draftCategorySelections, draftCategoryInput),
-        ),
-      ) || "未分类";
+    const tags = parsePromptCategories(tagsInput);
 
     if (!title || !content) {
       toast("标题和内容不能为空", "warning");
@@ -218,9 +421,7 @@ export function PromptDetailPage({
       ...draft,
       title,
       content,
-      category,
-      tags: parseTagsInput(tagsInput),
-      note: draft.note.trim(),
+      tags,
       createdAt: prompt?.createdAt ?? draft.createdAt ?? now,
       updatedAt: now,
     };
@@ -228,8 +429,6 @@ export function PromptDetailPage({
     onSave(nextPrompt);
     setBaselineDraft(nextPrompt);
     setDraft(nextPrompt);
-    setDraftCategorySelections(parsePromptCategories(nextPrompt.category));
-    setDraftCategoryInput("");
     setTagsInput(nextPrompt.tags.join(", "));
     setViewMode("detail");
     toast("提示词已保存", "success");
@@ -237,18 +436,9 @@ export function PromptDetailPage({
 
   const panelTitle =
     mode === "create" ? "新增提示词" : viewMode === "detail" ? "提示词详情" : "编辑提示词";
-  const activeTitle =
-    (viewMode === "detail" && prompt ? prompt.title : draft.title).trim() ||
-    "未命名提示词";
-  const activeCategories =
-    viewMode === "detail" && prompt
-      ? parsePromptCategories(prompt.category)
-      : draftCategoryPreview;
-  const activeTags =
-    viewMode === "detail" && prompt ? prompt.tags : parseTagsInput(tagsInput);
+  const activeTags = viewMode === "detail" && prompt ? prompt.tags : draftTags;
   const activeContent =
     viewMode === "detail" && prompt ? prompt.content : draft.content;
-  const activeNote = viewMode === "detail" && prompt ? prompt.note : draft.note;
   const updatedLabel =
     viewMode === "detail" && prompt
       ? formatPromptTime(prompt.updatedAt)
@@ -256,11 +446,14 @@ export function PromptDetailPage({
         ? formatPromptTime(prompt.updatedAt)
         : "保存后生成";
   const metaChips = [
-    `${activeCategories.length} 个分类`,
     `${activeTags.length} 个标签`,
     `${activeContent.trim().length} 字内容`,
     updatedLabel,
   ];
+  const renderedMarkdown = useMemo(
+    () => renderMarkdownToHtml(activeContent),
+    [activeContent],
+  );
 
   return (
     <div
@@ -284,8 +477,8 @@ export function PromptDetailPage({
               </h2>
               <p className="mt-1 text-xs text-gray-500">
                 {viewMode === "detail"
-                  ? "查看当前提示词内容与分类信息。"
-                  : "编辑内容后保存，返回列表继续管理。"}
+                  ? "查看当前提示词内容与标签信息。"
+                  : "编辑 Markdown 内容后保存，返回列表继续管理。"}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {metaChips.map((item) => (
@@ -320,13 +513,22 @@ export function PromptDetailPage({
               </>
             )}
             {(viewMode === "edit" || mode === "create") && (
-              <button
-                onClick={handleSave}
-                className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-              >
-                <Save className="h-3.5 w-3.5" />
-                保存
-              </button>
+              <>
+                <button
+                  onClick={handleFormatMarkdown}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  <WandSparkles className="h-3.5 w-3.5" />
+                  格式化
+                </button>
+                <button
+                  onClick={handleSave}
+                  className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  保存
+                </button>
+              </>
             )}
             {prompt && (
               <button
@@ -340,14 +542,12 @@ export function PromptDetailPage({
             )}
           </div>
         </div>
-
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         <section className="rounded-2xl border border-gray-800 bg-gray-900/80">
           <div className="flex items-center justify-between border-b border-gray-800/60 px-5 py-4">
             <div className="flex items-center gap-4 text-xs text-gray-400">
-              <span>{activeCategories.length} 个分类</span>
               <span>{activeTags.length} 个标签</span>
               <span>{activeContent.trim().length} 字内容</span>
             </div>
@@ -365,200 +565,191 @@ export function PromptDetailPage({
           </div>
 
           <div className="px-5 py-5">
-          {viewMode === "detail" && prompt ? (
-            <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-              <div className="space-y-4">
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
-                  <div className="text-xs uppercase tracking-widest text-gray-500">
-                    分类
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {parsePromptCategories(prompt.category).map((category) => (
-                      <span
-                        key={`detail-category-${category}`}
-                        className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-100"
-                      >
-                        {category}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
-                  <div className="text-xs uppercase tracking-widest text-gray-500">
-                    标签
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {prompt.tags.length > 0 ? (
-                      prompt.tags.map((tag) => (
-                        <span
-                          key={`detail-tag-${tag}`}
-                          className="rounded-full border border-gray-700 bg-black/10 px-2 py-1 text-[10px] text-gray-300"
-                        >
-                          {tag}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-gray-400">暂无标签</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
-                  <div className="text-xs uppercase tracking-widest text-gray-500">
-                    备注
-                  </div>
-                  <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-200">
-                    {prompt.note || "暂无备注"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-gray-800/90 bg-[linear-gradient(180deg,rgba(3,7,18,0.98)_0%,rgba(6,10,24,0.92)_100%)] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="border-b border-gray-800/80 pb-4">
-                  <div className="text-xs uppercase tracking-widest text-gray-500">
-                    提示词正文
-                  </div>
-                  <div className="mt-2 text-lg font-semibold tracking-tight text-white">
-                    {prompt.title}
-                  </div>
-                </div>
-                <div className="mt-5 whitespace-pre-wrap text-[15px] leading-8 text-gray-100">
-                  {prompt.content}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-              <div className="space-y-4">
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
-                <label className="mb-1.5 block text-xs text-gray-500">标题</label>
-                <input
-                  aria-label="标题"
-                  value={draft.title}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      title: event.target.value,
-                    }))
-                  }
-                  className="h-11 w-full rounded-xl border border-gray-700 bg-black/20 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
-                />
-                </div>
-
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
-                  <label className="mb-1.5 block text-xs text-gray-500">分类</label>
-                  <input
-                    aria-label="分类"
-                    value={draftCategoryInput}
-                    onChange={(event) =>
-                      applyDraftCategories(
-                        draftCategorySelections,
-                        event.target.value,
-                      )
-                    }
-                    placeholder="输入新分类，支持逗号或斜杠分隔"
-                    className="h-11 w-full rounded-xl border border-gray-700 bg-black/20 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
-                  />
-                  {draftCategoryPreview.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {draftCategoryPreview.map((category) => (
-                        <span
-                          key={`draft-category-${category}`}
-                          className="rounded-full border border-indigo-500/35 bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-100"
-                        >
-                          {category}
-                        </span>
-                      ))}
+            {viewMode === "detail" && prompt ? (
+              <div className="space-y-5">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
+                    <div className="text-xs uppercase tracking-widest text-gray-500">
+                      名称
                     </div>
-                  )}
-                  {availableCategories.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {availableCategories.map((category) => {
-                        const active = draftCategoryPreview.includes(category);
-                        return (
-                          <button
-                            key={`available-category-${category}`}
-                            type="button"
-                            aria-label={`选择分类${category}`}
-                            onClick={() => {
-                              const nextSelections = active
-                                ? draftCategorySelections.filter(
-                                    (item) => item !== category,
-                                  )
-                                : [...draftCategorySelections, category];
-                              applyDraftCategories(
-                                nextSelections,
-                                draftCategoryInput,
-                              );
-                            }}
-                            className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                              active
-                                ? "border-indigo-500/45 bg-indigo-500/12 text-white"
-                                : "border-gray-700 bg-black/10 text-gray-300 hover:border-gray-600 hover:text-white"
-                            }`}
+                    <div className="mt-2 text-lg font-semibold tracking-tight text-white">
+                      {prompt.title}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
+                    <div className="text-xs uppercase tracking-widest text-gray-500">
+                      标签
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {prompt.tags.length > 0 ? (
+                        prompt.tags.map((tag) => (
+                          <span
+                            key={`detail-tag-${tag}`}
+                            className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-100"
                           >
-                            {category}
-                          </button>
-                        );
-                      })}
+                            {tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-gray-400">暂无标签</span>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
 
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
+                <div className="rounded-2xl border border-gray-800/90 bg-[linear-gradient(180deg,rgba(3,7,18,0.98)_0%,rgba(6,10,24,0.92)_100%)] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                  <div className="border-b border-gray-800/80 pb-4">
+                    <div className="text-xs uppercase tracking-widest text-gray-500">
+                      Markdown 正文
+                    </div>
+                  </div>
+                  <div className="mt-5 whitespace-pre-wrap text-[15px] leading-8 text-gray-100">
+                    <div
+                      data-testid="prompt-markdown-preview"
+                      className="markdown-preview"
+                      dangerouslySetInnerHTML={{ __html: renderedMarkdown }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
+                    <label className="mb-1.5 block text-xs text-gray-500">名称</label>
+                    <input
+                      aria-label="名称"
+                      value={draft.title}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          title: event.target.value,
+                        }))
+                      }
+                      className="h-11 w-full rounded-xl border border-gray-700 bg-black/20 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
                     <label className="mb-1.5 block text-xs text-gray-500">标签</label>
                     <input
                       aria-label="标签"
                       value={tagsInput}
                       onChange={(event) => setTagsInput(event.target.value)}
-                      placeholder="多个标签用逗号分隔"
+                      placeholder="多个标签用逗号、斜杠或换行分隔"
                       className="h-11 w-full rounded-xl border border-gray-700 bg-black/20 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
                     />
+                    {draftTags.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {draftTags.map((tag) => (
+                          <span
+                            key={`draft-tag-${tag}`}
+                            className="rounded-full border border-indigo-500/35 bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-100"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {availableTags.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {availableTags.map((tag) => {
+                          const active = draftTags.includes(tag);
+                          return (
+                            <button
+                              key={`available-tag-${tag}`}
+                              type="button"
+                              aria-label={`选择标签${tag}`}
+                              onClick={() => {
+                                const next = active
+                                  ? draftTags.filter((item) => item !== tag)
+                                  : [...draftTags, tag];
+                                setTagsInput(next.join(", "));
+                              }}
+                              className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                                active
+                                  ? "border-indigo-500/45 bg-indigo-500/12 text-white"
+                                  : "border-gray-700 bg-black/10 text-gray-300 hover:border-gray-600 hover:text-white"
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
-                <label className="mb-1.5 block text-xs text-gray-500">备注</label>
-                <textarea
-                  aria-label="备注"
-                  value={draft.note}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      note: event.target.value,
-                    }))
-                  }
-                  className="min-h-[112px] w-full rounded-xl border border-gray-700 bg-black/20 px-3 py-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
-                />
-              </div>
-              </div>
-
-              <div className="rounded-2xl border border-gray-800/90 bg-[linear-gradient(180deg,rgba(3,7,18,0.98)_0%,rgba(6,10,24,0.92)_100%)] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="border-b border-gray-800/80 pb-4">
-                  <div className="text-xs uppercase tracking-widest text-gray-500">
-                    提示词正文
+                <div className="rounded-2xl border border-gray-800/90 bg-[linear-gradient(180deg,rgba(3,7,18,0.98)_0%,rgba(6,10,24,0.92)_100%)] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                  <div className="border-b border-gray-800/80 pb-4">
+                    <div className="text-xs uppercase tracking-widest text-gray-500">
+                      Markdown 正文
+                    </div>
                   </div>
-                  <div className="mt-2 text-lg font-semibold tracking-tight text-white">
-                    {draft.title.trim() || "未命名提示词"}
+                  <div className="mt-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <label className="block text-xs text-gray-500">
+                        内容（Markdown）
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditorTab("write")}
+                          className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                            editorTab === "write"
+                              ? "border-indigo-500/45 bg-indigo-500/12 text-white"
+                              : "border-gray-700 bg-black/10 text-gray-300 hover:border-gray-600 hover:text-white"
+                          }`}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditorTab("preview")}
+                          className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                            editorTab === "preview"
+                              ? "border-indigo-500/45 bg-indigo-500/12 text-white"
+                              : "border-gray-700 bg-black/10 text-gray-300 hover:border-gray-600 hover:text-white"
+                          }`}
+                        >
+                          <Eye className="mr-1 inline h-3.5 w-3.5" />
+                          预览
+                        </button>
+                      </div>
+                    </div>
+                    {editorTab === "write" ? (
+                      <CodeMirror
+                        value={draft.content}
+                        onChange={(value) =>
+                          setDraft((current) => ({
+                            ...current,
+                            content: value,
+                          }))
+                        }
+                        extensions={editorExtensions}
+                        theme={oneDark}
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: true,
+                          dropCursor: false,
+                          allowMultipleSelections: false,
+                          indentOnInput: true,
+                          highlightActiveLineGutter: false,
+                        }}
+                        placeholder="输入 Markdown 提示词正文，支持标题、列表、代码块等语法。"
+                      />
+                    ) : (
+                      <div
+                        data-testid="prompt-markdown-preview"
+                        className="min-h-[520px] rounded-2xl border border-gray-800 bg-black/25 px-5 py-5"
+                        dangerouslySetInnerHTML={{ __html: renderedMarkdown }}
+                      />
+                    )}
                   </div>
                 </div>
-                <div className="mt-4">
-                <label className="mb-1.5 block text-xs text-gray-500">内容</label>
-                <textarea
-                  aria-label="内容"
-                  value={draft.content}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      content: event.target.value,
-                    }))
-                  }
-                  className="min-h-[520px] w-full rounded-xl border border-gray-700 bg-black/20 px-4 py-4 text-[15px] leading-8 text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
-                />
               </div>
-              </div>
-            </div>
-          )}
+            )}
           </div>
         </section>
       </div>

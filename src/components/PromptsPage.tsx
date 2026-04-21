@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { Copy, Download, Eye, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import {
+  BUTTON_ICON_MD_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
@@ -11,7 +12,6 @@ import {
 import {
   buildPromptCategories,
   mergeImportedPrompts,
-  parsePromptCategories,
   parsePromptImportJson,
   serializePromptRecords,
   summarizePromptImport,
@@ -25,6 +25,10 @@ interface Props {
   onOpenDetail: (id: string, mode: "detail" | "edit") => void;
   onDelete: (id: string) => void;
   onImport: (nextPrompts: PromptRecord[]) => void;
+}
+
+function summarizePromptContent(content: string) {
+  return content.replace(/\s+/g, " ").trim();
 }
 
 function formatPromptTime(timestamp: number | null) {
@@ -82,22 +86,18 @@ export function PromptsPage({
   onDelete,
   onImport,
 }: Props) {
-  const [selectedCategory, setSelectedCategory] = useState("全部");
+  const [selectedTag, setSelectedTag] = useState("全部");
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<PromptRecord | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  const categories = buildPromptCategories(prompts);
+  const tags = buildPromptCategories(prompts);
   const filtered = prompts.filter((item) => {
-    const matchesCategory =
-      selectedCategory === "全部" ||
-      parsePromptCategories(item.category).includes(selectedCategory);
+    const matchesTag = selectedTag === "全部" || item.tags.includes(selectedTag);
     const keyword = query.trim().toLowerCase();
-    const haystack = [item.title, item.content, item.note, ...item.tags]
-      .join("\n")
-      .toLowerCase();
+    const haystack = [item.title, item.content, ...item.tags].join("\n").toLowerCase();
     const matchesQuery = keyword === "" || haystack.includes(keyword);
-    return matchesCategory && matchesQuery;
+    return matchesTag && matchesQuery;
   });
 
   async function copyPromptContent(content: string) {
@@ -153,14 +153,14 @@ export function PromptsPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-6 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+      <div className="shrink-0 px-6 pb-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-xl">
             <h2 className="text-base font-semibold tracking-tight text-white">
               提示词管理
             </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              分类浏览、搜索定位和资产级导入导出。
+            <p className="mt-1 text-xs leading-5 text-gray-500">
+              标签浏览、搜索定位和资产级导入导出。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -177,14 +177,14 @@ export function PromptsPage({
             />
             <button
               onClick={() => importInputRef.current?.click()}
-              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS} bg-black/10 text-gray-300`}
             >
               <Upload className="h-3.5 w-3.5" />
               导入
             </button>
             <button
               onClick={() => void handleExportJson()}
-              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS} bg-black/10 text-gray-300`}
             >
               <Download className="h-3.5 w-3.5" />
               导出
@@ -201,26 +201,26 @@ export function PromptsPage({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/80 px-4 py-4">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索标题、内容、标签或备注"
-                className="h-11 w-full rounded-xl border border-gray-700 bg-gray-950 px-3 pl-9 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
+                placeholder="搜索标题、内容或标签"
+                className="h-10 w-full rounded-xl border border-gray-700 bg-gray-950/85 px-3 pl-9 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
               />
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {categories.map((item) => (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {tags.map((item) => (
               <button
                 key={item.key}
-                onClick={() => setSelectedCategory(item.key)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                  selectedCategory === item.key
+                onClick={() => setSelectedTag(item.key)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors ${
+                  selectedTag === item.key
                     ? "border-indigo-500/45 bg-indigo-500/12 text-white"
                     : "border-gray-800 bg-black/10 text-gray-300 hover:border-gray-700 hover:text-white"
                 }`}
@@ -229,7 +229,7 @@ export function PromptsPage({
                 <span className="font-medium">{item.label}</span>
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                    selectedCategory === item.key
+                    selectedTag === item.key
                       ? "bg-white/10 text-white/80"
                       : "bg-gray-800 text-gray-400"
                   }`}
@@ -240,7 +240,7 @@ export function PromptsPage({
             ))}
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-xl border border-gray-800 bg-black/10">
+          <div className="mt-4 overflow-hidden rounded-xl border border-gray-800/90 bg-black/10">
             {filtered.length === 0 ? (
               <div className="px-4 py-8 text-sm text-gray-500">
                 {emptyListMessage}
@@ -248,23 +248,17 @@ export function PromptsPage({
             ) : (
               <table className="w-full table-fixed text-sm">
                 <thead>
-                  <tr className="border-b border-gray-800 bg-gray-950/40">
-                    <th className="w-[18%] px-5 py-2.5 text-left text-xs text-gray-400">
+                  <tr className="border-b border-gray-800/70 bg-gray-950/25">
+                    <th className="w-[40%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
                       标题
                     </th>
-                    <th className="w-[15%] px-5 py-2.5 text-left text-xs text-gray-400">
-                      分类
-                    </th>
-                    <th className="w-[12%] px-5 py-2.5 text-left text-xs text-gray-400">
+                    <th className="w-[28%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
                       标签
                     </th>
-                    <th className="w-[19%] px-5 py-2.5 text-left text-xs text-gray-400">
-                      备注
-                    </th>
-                    <th className="w-[12%] px-5 py-2.5 text-left text-xs text-gray-400">
+                    <th className="w-[14%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
                       更新时间
                     </th>
-                    <th className="w-[24%] px-5 py-2.5 text-left text-xs text-gray-400">
+                    <th className="w-[18%] px-4 py-2 text-right text-[11px] font-medium tracking-wide text-gray-500">
                       操作
                     </th>
                   </tr>
@@ -275,28 +269,19 @@ export function PromptsPage({
                       key={item.id}
                       className={`transition-colors hover:bg-gray-800/20 ${
                         index < filtered.length - 1
-                          ? "border-b border-gray-800/60"
+                          ? "border-b border-gray-800/50"
                           : ""
                       }`}
                     >
-                      <td className="px-5 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-top">
                         <div className="truncate text-sm font-medium text-white">
                           {item.title}
                         </div>
-                      </td>
-                      <td className="px-5 py-2.5 align-top">
-                        <div className="flex flex-wrap gap-1.5">
-                          {parsePromptCategories(item.category).map((category) => (
-                            <span
-                              key={`${item.id}-${category}`}
-                              className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200"
-                            >
-                              {category}
-                            </span>
-                          ))}
+                        <div className="mt-1 truncate text-xs leading-5 text-gray-500">
+                          {summarizePromptContent(item.content) || "—"}
                         </div>
                       </td>
-                      <td className="px-5 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-top">
                         <div className="flex flex-wrap gap-1.5">
                           {item.tags.length > 0 ? (
                             item.tags.map((tag) => (
@@ -312,41 +297,33 @@ export function PromptsPage({
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-2.5 align-top">
-                        <div className="truncate text-xs leading-5 text-gray-400">
-                          {item.note || "—"}
-                        </div>
-                      </td>
-                      <td className="px-5 py-2.5 align-top text-xs text-gray-500">
+                      <td className="px-4 py-2.5 align-top text-xs text-gray-500">
                         <span className="whitespace-nowrap">
                           {formatPromptTime(item.updatedAt)}
                         </span>
                       </td>
-                      <td className="px-5 py-2.5 align-top">
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <td className="px-4 py-2.5 align-top">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => onOpenDetail(item.id, "detail")}
-                            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                            className={BUTTON_ICON_MD_CLASS}
                             aria-label={`详情${item.title}`}
                           >
-                            <Eye className="h-3.5 w-3.5" />
-                            详情
+                            <Eye className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => void copyPromptContent(item.content)}
-                            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                            className={BUTTON_ICON_MD_CLASS}
                             aria-label={`复制${item.title}`}
                           >
-                            <Copy className="h-3.5 w-3.5" />
-                            复制
+                            <Copy className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => setDeleteTarget(item)}
-                            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                            className={`${BUTTON_ICON_MD_CLASS} border-red-500/30 text-red-200 hover:border-red-400/40 hover:text-white`}
                             aria-label={`删除${item.title}`}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>

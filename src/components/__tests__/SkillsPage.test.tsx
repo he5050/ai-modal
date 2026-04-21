@@ -125,6 +125,13 @@ const builtinTargets: SkillTargetConfig[] = [
     isBuiltin: true,
     enabled: true,
   },
+  {
+    id: 'snow',
+    label: 'Snow',
+    path: '/Users/test/.snow/skills',
+    isBuiltin: true,
+    enabled: true,
+  },
 ]
 
 const builtinStatuses: SkillTargetStatus[] = [
@@ -136,6 +143,15 @@ const builtinStatuses: SkillTargetStatus[] = [
     managedCount: 1,
     brokenCount: 0,
     totalEntries: 1,
+  },
+  {
+    id: 'snow',
+    label: 'Snow',
+    path: '/Users/test/.snow/skills',
+    exists: false,
+    managedCount: 0,
+    brokenCount: 0,
+    totalEntries: 0,
   },
 ]
 
@@ -223,5 +239,15 @@ describe('SkillsPage', () => {
       expect.objectContaining({ action: 'remove' }),
     )
     expect(mockToast).toHaveBeenCalledWith('请填写要移除的技能名', 'warning')
+  })
+
+  it('shows snow as a builtin sync target', async () => {
+    const user = userEvent.setup()
+    await renderSkillsPage()
+    await user.click(screen.getByRole('button', { name: '同步与安装' }))
+
+    expect(screen.getAllByText('Snow').length).toBeGreaterThan(0)
+    await user.selectOptions(screen.getByRole('combobox'), 'snow')
+    expect(screen.getByDisplayValue('/Users/test/.snow/skills')).toBeInTheDocument()
   })
 })

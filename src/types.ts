@@ -11,7 +11,13 @@ export type AppPage =
 
 export type ConfigFormat = "json" | "toml" | "yaml" | "xml";
 
-export type ConfigGroupId = "claude" | "codex" | "gemini" | "opencode" | "qwen";
+export type ConfigGroupId =
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "opencode"
+  | "qwen"
+  | "snow";
 
 export interface RulePath {
   id: string;
@@ -190,9 +196,7 @@ export interface PromptRecord {
   id: string;
   title: string;
   content: string;
-  category: string;
   tags: string[];
-  note: string;
   createdAt: number;
   updatedAt: number;
 }

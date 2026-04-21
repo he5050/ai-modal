@@ -56,7 +56,6 @@ import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
 import type {
   ConfigFormat,
-  ConfigGroupFileView,
   ConfigGroupId,
   ConfigPath,
   ModelResult,
@@ -955,7 +954,7 @@ export function ConfigPage({
             <h2 className="text-base font-semibold tracking-tight text-white">
               配置管理
             </h2>
-            <HintTooltip content="管理 Claude、Codex、Gemini、OpenCode、Qwen 的主配置文件，和规则文件分开维护。" />
+            <HintTooltip content="管理 Claude、Codex、Gemini、OpenCode、Qwen、Snow 的主配置文件，和规则文件分开维护。" />
           </div>
         </div>
       </div>

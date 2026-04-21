@@ -12,14 +12,12 @@ import {
 describe("promptStore", () => {
   it("creates a new prompt record with required defaults", () => {
     const now = 1_700_000_000_000;
-    const record = createEmptyPrompt(now, "产品");
+    const record = createEmptyPrompt(now, ["产品"]);
 
     expect(record).toMatchObject({
       title: "",
       content: "",
-      category: "产品",
-      tags: [],
-      note: "",
+      tags: ["产品"],
       createdAt: now,
       updatedAt: now,
     });
@@ -33,9 +31,7 @@ describe("promptStore", () => {
         id: "a",
         title: "A",
         content: "alpha",
-        category: "产品 / 高频",
-        tags: ["高频"],
-        note: "",
+        tags: ["产品", "高频"],
         createdAt: 1,
         updatedAt: 10,
       },
@@ -43,9 +39,7 @@ describe("promptStore", () => {
         id: "b",
         title: "B",
         content: "beta",
-        category: "开发",
-        tags: [],
-        note: "",
+        tags: ["开发"],
         createdAt: 2,
         updatedAt: 20,
       },
@@ -53,9 +47,7 @@ describe("promptStore", () => {
         id: "c",
         title: "C",
         content: "gamma",
-        category: "产品",
-        tags: [],
-        note: "",
+        tags: ["产品"],
         createdAt: 3,
         updatedAt: 30,
       },
@@ -87,8 +79,7 @@ describe("promptStore", () => {
         title: "Prompt 1",
         content: "Body",
         category: "产品",
-        tags: ["高频"],
-        note: "note",
+        tags: [],
         createdAt: 1,
         updatedAt: 2,
       },
@@ -103,6 +94,7 @@ describe("promptStore", () => {
     expect(result.valid).toHaveLength(1);
     expect(result.skipped).toBe(1);
     expect(result.valid[0].title).toBe("Prompt 1");
+    expect(result.valid[0].tags).toEqual(["产品"]);
   });
 
   it("merges imported prompts by id into add/overwrite/skip counts", () => {
@@ -111,9 +103,7 @@ describe("promptStore", () => {
         id: "same",
         title: "Old",
         content: "Old body",
-        category: "产品",
-        tags: [],
-        note: "",
+        tags: ["产品"],
         createdAt: 1,
         updatedAt: 1,
       },
@@ -123,9 +113,7 @@ describe("promptStore", () => {
         id: "same",
         title: "New",
         content: "New body",
-        category: "产品",
-        tags: [],
-        note: "updated",
+        tags: ["产品", "更新"],
         createdAt: 1,
         updatedAt: 2,
       },
@@ -133,9 +121,7 @@ describe("promptStore", () => {
         id: "fresh",
         title: "Fresh",
         content: "Fresh body",
-        category: "开发",
         tags: ["新增"],
-        note: "",
         createdAt: 3,
         updatedAt: 4,
       },

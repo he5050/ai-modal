@@ -133,6 +133,56 @@ export const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
       },
     ],
   },
+  {
+    id: "snow",
+    label: "Snow",
+    rootDir: ".snow",
+    accentClass: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+    files: [
+      {
+        id: "snow",
+        label: "active-profile.json",
+        fileName: "active-profile.json",
+        relativePath: "active-profile.json",
+        format: "json",
+      },
+      {
+        id: "snow::config.json",
+        label: "config.json",
+        fileName: "config.json",
+        relativePath: "config.json",
+        format: "json",
+      },
+      {
+        id: "snow::proxy-config.json",
+        label: "proxy-config.json",
+        fileName: "proxy-config.json",
+        relativePath: "proxy-config.json",
+        format: "json",
+      },
+      {
+        id: "snow::system-prompt.json",
+        label: "system-prompt.json",
+        fileName: "system-prompt.json",
+        relativePath: "system-prompt.json",
+        format: "json",
+      },
+      {
+        id: "snow::language.json",
+        label: "language.json",
+        fileName: "language.json",
+        relativePath: "language.json",
+        format: "json",
+      },
+      {
+        id: "snow::theme.json",
+        label: "theme.json",
+        fileName: "theme.json",
+        relativePath: "theme.json",
+        format: "json",
+      },
+    ],
+  },
 ];
 
 export function normalizeGroupRelativePath(input: string): string | null {

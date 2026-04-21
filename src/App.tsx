@@ -17,6 +17,7 @@ import { ProviderDetailPage } from "./components/ProviderDetailPage";
 import { PromptDetailPage } from "./components/PromptDetailPage";
 import { SkillsPage } from "./components/SkillsPage";
 import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
+import { parsePromptCategories } from "./lib/promptStore";
 import type {
   AppPage,
   ConfigPath,
@@ -123,19 +124,34 @@ function parsePrompts(raw: unknown): PromptRecord[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter(
-      (item): item is PromptRecord =>
+      (item): item is {
+        id: string;
+        title: string;
+        content: string;
+        tags?: unknown;
+        category?: unknown;
+        createdAt: number;
+        updatedAt: number;
+      } =>
         typeof item?.id === "string" &&
         typeof item?.title === "string" &&
         typeof item?.content === "string" &&
-        typeof item?.category === "string" &&
-        Array.isArray(item?.tags) &&
-        typeof item?.note === "string" &&
         typeof item?.createdAt === "number" &&
         typeof item?.updatedAt === "number",
     )
     .map((item) => ({
-      ...item,
-      tags: item.tags.filter((tag): tag is string => typeof tag === "string"),
+      id: item.id,
+      title: item.title,
+      content: item.content,
+      tags:
+        typeof item.category === "string" &&
+        parsePromptCategories(item.category).length > 0
+          ? parsePromptCategories(item.category)
+          : Array.isArray(item.tags)
+            ? item.tags.filter((tag): tag is string => typeof tag === "string")
+            : [],
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -620,8 +636,8 @@ export default function App() {
                 : prompts.find((item) => item.id === detailPromptId) ?? null
             }
             mode={promptDetailMode}
-            availableCategories={Array.from(
-              new Set(prompts.flatMap((item) => item.category.split(/\s*\/\s*/))),
+            availableTags={Array.from(
+              new Set(prompts.flatMap((item) => item.tags)),
             ).filter(Boolean)}
             onBack={() => handlePageChange("prompts")}
             onSave={handleSavePrompt}

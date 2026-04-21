@@ -114,6 +114,12 @@ const BUILTIN_TARGETS: BuiltinSkillTarget[] = [
     relativePath: ".config/opencode/skills",
     accentClass: "border-amber-500/30 bg-amber-500/10 text-amber-100",
   },
+  {
+    id: "snow",
+    label: "Snow",
+    relativePath: ".snow/skills",
+    accentClass: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+  },
 ];
 
 function createEmptyCatalog(
