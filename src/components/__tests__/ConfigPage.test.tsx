@@ -245,7 +245,7 @@ describe('ConfigPage', () => {
     const parsed = JSON.parse(savedContent)
     expect(parsed.env).toMatchObject({
       EXISTING_FLAG: 'keep-me',
-      ANTHROPIC_BASE_URL: 'https://claude.example.com/v1',
+      ANTHROPIC_BASE_URL: 'https://claude.example.com',
       ANTHROPIC_AUTH_TOKEN: 'sk-claude-secret',
       ANTHROPIC_MODEL: 'claude-3-5-sonnet',
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-3-5-haiku',
@@ -377,7 +377,7 @@ describe('ConfigPage', () => {
           npm: '@ai-sdk/openai-compatible',
           name: 'Claude Relay',
           options: {
-            baseURL: 'https://claude.example.com/v1',
+            baseURL: 'https://claude.example.com',
             apiKey: 'sk-claude-secret',
           },
           models: {
@@ -471,7 +471,7 @@ describe('ConfigPage', () => {
     expect(envContent).not.toContain('\n\nGEMINI_API_KEY=')
     expect(envContent).toContain('GEMINI_API_KEY=sk-needkey')
     expect(envContent).toContain(
-      'GEMINI_API_KEY=sk-needkey\nGOOGLE_GEMINI_BASE_URL=https://iruidong.com',
+      'GEMINI_API_KEY=sk-needkey\nGOOGLE_GEMINI_BASE_URL=https://iruidong.com/v1beta',
     )
   })
 
@@ -537,7 +537,7 @@ describe('ConfigPage', () => {
     expect(JSON.parse(configContent)).toMatchObject({
       snowcfg: {
         existingFlag: 'keep-me',
-        baseUrl: 'https://claude.example.com/v1',
+        baseUrl: 'https://claude.example.com',
         apiKey: 'sk-claude-secret',
         requestMethod: 'anthropic',
         advancedModel: 'claude-3-opus',

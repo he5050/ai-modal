@@ -2,7 +2,9 @@ import { useState } from "react";
 import { BUTTON_ICON_SM_CLASS } from "../lib/buttonStyles";
 import { savePersistedJson } from "../lib/persistence";
 import { HintTooltip } from "./HintTooltip";
+import { ModelConfigSection } from "./ModelConfigSection";
 import { toast } from "../lib/toast";
+import type { Provider } from "../types";
 
 export const DEBUG_KEY = "ai-modal-debug";
 export const DEBUG_DB_KEY = "debug_enabled";
@@ -19,12 +21,18 @@ export function getConcurrency(): number {
 }
 
 interface Props {
+  providers: Provider[];
   debugEnabled: boolean;
   onDebugChange: (v: boolean) => void;
-  _onDirtyChange?: (v: boolean) => void;
+  onDirtyChange?: (v: boolean) => void;
 }
 
-export function SettingsPage({ debugEnabled, onDebugChange }: Props) {
+export function SettingsPage({
+  providers,
+  debugEnabled,
+  onDebugChange,
+  onDirtyChange,
+}: Props) {
   const [concurrency, setConcurrency] = useState<number>(getConcurrency);
 
   async function handleToggle() {
@@ -133,6 +141,11 @@ export function SettingsPage({ debugEnabled, onDebugChange }: Props) {
             </div>
           </div>
         </section>
+
+        <ModelConfigSection
+          providers={providers}
+          onDirtyChange={onDirtyChange ?? (() => {})}
+        />
       </div>
     </div>
   );

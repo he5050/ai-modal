@@ -647,8 +647,10 @@ export default function App() {
         )}
         {page === "settings" && (
           <SettingsPage
+            providers={providers}
             debugEnabled={debugEnabled}
             onDebugChange={setDebugEnabled}
+            onDirtyChange={setEditingDirty}
           />
         )}
         {page === "rules" && (

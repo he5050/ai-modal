@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Save, X } from "lucide-react";
+import { Eye, EyeOff, Save, WandSparkles, X } from "lucide-react";
 import { testModelConfig } from "../api";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_MD_CLASS,
 } from "../lib/buttonStyles";
+import {
+  buildOpenAiCompatibleWritebackUrl,
+  buildWritebackUrl,
+  inferWritebackKindFromModel,
+} from "../lib/providerBaseUrl";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import { logger } from "../lib/devlog";
@@ -51,12 +56,6 @@ function maskKey(key: string) {
   return key.slice(0, 2) + "******" + key.slice(-2);
 }
 
-function maskPreviewText(value: string) {
-  if (!value) return "—";
-  if (value.length <= 4) return `${value.slice(0, 1)}******${value.slice(-1)}`;
-  return `${value.slice(0, 2)}******${value.slice(-2)}`;
-}
-
 function ClearInputButton({
   onClick,
   label,
@@ -75,6 +74,125 @@ function ClearInputButton({
     >
       <X className="h-3.5 w-3.5" />
     </button>
+  );
+}
+
+function QuickApplyModal({
+  providerOptions,
+  selectedProviderId,
+  selectedModelId,
+  onProviderChange,
+  onModelChange,
+  onConfirm,
+  onCancel,
+}: {
+  providerOptions: {
+    id: string;
+    providerName: string;
+    availableCount: number;
+    models: {
+      id: string;
+      model: string;
+      baseUrl: string;
+      apiKey: string;
+      supportedProtocols: string[];
+    }[];
+  }[];
+  selectedProviderId: string;
+  selectedModelId: string;
+  onProviderChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const selectedProvider =
+    providerOptions.find((item) => item.id === selectedProviderId) ??
+    providerOptions[0] ??
+    null;
+  const selectedModel =
+    selectedProvider?.models.find((item) => item.id === selectedModelId) ??
+    selectedProvider?.models[0] ??
+    null;
+
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-indigo-500/25 bg-indigo-500/10 text-indigo-200">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              快捷应用
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              选择一个可用模型，应用后会自动带入该模型对应的 URL、Token 和 Model。
+            </p>
+          </div>
+        </div>
+
+        {providerOptions.length > 0 && selectedProvider && selectedModel ? (
+          <>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                  Provider
+                </p>
+                <select
+                  value={selectedProvider.id}
+                  onChange={(event) => onProviderChange(event.target.value)}
+                  className={FIELD_SELECT_CLASS}
+                  aria-label="选择可用 Provider"
+                >
+                  {providerOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.providerName} ({option.availableCount} 个可用)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                  Model
+                </p>
+                <select
+                  value={selectedModel.id}
+                  onChange={(event) => onModelChange(event.target.value)}
+                  className={FIELD_SELECT_CLASS}
+                  aria-label="选择 Provider 下的可用模型"
+                >
+                  {selectedProvider.models.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-5 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
+            当前还没有可用模型。请先去模型列表或详情页完成检测。
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!selectedModel}
+            className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
+          >
+            应用
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -98,8 +216,7 @@ export function ModelConfigSection({
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [testingModelConfig, setTestingModelConfig] = useState(false);
   const [modelConfigReady, setModelConfigReady] = useState(false);
-  const [helperExpanded, setHelperExpanded] = useState(false);
-  const [shortcutExpanded, setShortcutExpanded] = useState(false);
+  const [quickApplyOpen, setQuickApplyOpen] = useState(false);
 
   const availableProviderOptions = useMemo(() => {
     return providers
@@ -111,12 +228,18 @@ export function ModelConfigSection({
               .map((result) => result.model)
               .filter(Boolean),
           ),
-        ).map((model) => ({
-          id: `${provider.id}::${model}`,
-          model,
-          baseUrl: provider.baseUrl,
-          apiKey: provider.apiKey,
-        }));
+        ).map((model) => {
+          const result = (provider.lastResult?.results ?? []).find(
+            (item) => item.available && item.model === model,
+          );
+          return {
+            id: `${provider.id}::${model}`,
+            model,
+            baseUrl: provider.baseUrl,
+            apiKey: provider.apiKey,
+            supportedProtocols: result?.supported_protocols ?? [],
+          };
+        });
 
         return models.length > 0
           ? {
@@ -136,6 +259,7 @@ export function ModelConfigSection({
         model: string;
         baseUrl: string;
         apiKey: string;
+        supportedProtocols: string[];
       }[];
     }[];
   }, [providers]);
@@ -255,12 +379,12 @@ export function ModelConfigSection({
         MODEL_CONFIG_KEY,
       );
       setSavedModelConfig(modelConfig);
-      logger.info("[模型配置] 已保存");
-      toast("模型配置已保存", "success");
+      logger.info("[LLM 配置] 已保存");
+      toast("LLM 配置已保存", "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[模型配置] 保存失败：${message}`);
-      toast("模型配置保存失败", "error");
+      logger.error(`[LLM 配置] 保存失败：${message}`);
+      toast("LLM 配置保存失败", "error");
     }
   }
 
@@ -268,14 +392,16 @@ export function ModelConfigSection({
     if (!selectedAvailableModel) return;
     setModelConfig((prev) => ({
       ...prev,
-      baseUrl: selectedAvailableModel.baseUrl,
+      baseUrl: buildOpenAiCompatibleWritebackUrl(
+        selectedAvailableModel.baseUrl,
+      ),
       apiKey: selectedAvailableModel.apiKey,
       model: selectedAvailableModel.model,
       lastTestResult: null,
       lastTestAt: null,
     }));
     toast(
-      `已带入模型：${selectedAvailableModel.model}，请点击“保存”完成持久化`,
+      `已带入 LLM：${selectedAvailableModel.model}，请点击“保存”完成持久化`,
       "success",
     );
   }
@@ -290,7 +416,7 @@ export function ModelConfigSection({
 
     setTestingModelConfig(true);
     logger.info(
-      `[模型配置] 开始测试：${modelConfig.baseUrl} / ${modelConfig.model}`,
+      `[LLM 配置] 开始测试：${modelConfig.baseUrl} / ${modelConfig.model}`,
     );
     try {
       const result = await testModelConfig(
@@ -303,17 +429,17 @@ export function ModelConfigSection({
         lastTestAt: Date.now(),
       });
       if (result.available) {
-        logger.success(`[模型配置] 已连接：${modelConfig.model}`);
+        logger.success(`[LLM 配置] 已连接：${modelConfig.model}`);
       } else {
-        logger.warn(`[模型配置] 连接失败：${getModelConfigResultText(result)}`);
+        logger.warn(`[LLM 配置] 连接失败：${getModelConfigResultText(result)}`);
       }
       toast(
-        result.available ? "模型配置测试通过" : "模型配置测试失败",
+        result.available ? "LLM 配置测试通过" : "LLM 配置测试失败",
         result.available ? "success" : "warning",
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[模型配置] 测试异常：${message}`);
+      logger.error(`[LLM 配置] 测试异常：${message}`);
       updateModelConfig({
         lastTestResult: {
           model: modelConfig.model,
@@ -333,205 +459,16 @@ export function ModelConfigSection({
   return (
     <section className="mt-6">
       <h3 className="mb-3 text-xs font-medium uppercase tracking-widest text-gray-500">
-        模型配置
+        LLM 配置
       </h3>
       <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div className="rounded-xl border border-indigo-500/15 bg-indigo-500/5">
-          <button
-            onClick={() => setHelperExpanded((prev) => !prev)}
-            className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
-          >
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-medium text-gray-100">
-                  Base URL 支持常见 OpenAI 兼容写法
-                </p>
-                <HintTooltip content="支持根地址、/v1、/v1/models、/chat/completions，系统会自动归一化。" />
-              </div>
-            </div>
-            <span className="flex items-center gap-2 text-xs text-gray-400">
-              {helperExpanded ? "收起" : "展开"}
-              {helperExpanded ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
-            </span>
-          </button>
-
-          {helperExpanded && (
-            <div className="border-t border-indigo-500/10 px-3 pb-3">
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-400">
-                <span className="rounded-full border border-gray-700 bg-gray-950/60 px-2.5 py-1 font-mono">
-                  https://api.openai.com
-                </span>
-                <span className="rounded-full border border-gray-700 bg-gray-950/60 px-2.5 py-1 font-mono">
-                  https://openrouter.ai/api
-                </span>
-                <span className="rounded-full border border-gray-700 bg-gray-950/60 px-2.5 py-1 font-mono">
-                  https://your-gateway.example.com/v1/models
-                </span>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                <button
-                  type="button"
-                  onClick={() => setShortcutExpanded((prev) => !prev)}
-                  className="flex w-full items-start justify-between gap-3 text-left"
-                >
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-100">
-                        可用模型快捷选择
-                      </p>
-                      <HintTooltip content="从已检测可用的 Provider 和模型中一键带入当前配置。" />
-                    </div>
-                  </div>
-                  <span className="flex items-center gap-2 rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300">
-                    {availableProviderOptions.reduce(
-                      (total, item) => total + item.availableCount,
-                      0,
-                    )}{" "}
-                    个可用模型
-                    {shortcutExpanded ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </span>
-                </button>
-
-                {shortcutExpanded && (
-                  <div className="mt-3 border-t border-gray-800 pt-3">
-                    {availableProviderOptions.length > 0 &&
-                    selectedAvailableModel ? (
-                      <>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div>
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              Provider
-                            </p>
-                            <select
-                              value={selectedAvailableProvider?.id ?? ""}
-                              onChange={(event) => {
-                                const nextProvider =
-                                  availableProviderOptions.find(
-                                    (item) => item.id === event.target.value,
-                                  ) ?? null;
-                                setSelectedAvailableProviderId(
-                                  event.target.value,
-                                );
-                                setSelectedAvailableModelId(
-                                  nextProvider?.models[0]?.id ?? "",
-                                );
-                              }}
-                              className={FIELD_SELECT_CLASS}
-                              aria-label="选择可用模型 Provider"
-                            >
-                              {availableProviderOptions.map((option) => (
-                                <option key={option.id} value={option.id}>
-                                  {option.providerName} ({option.availableCount}{" "}
-                                  个可用)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              模型
-                            </p>
-                            <select
-                              value={selectedAvailableModel.id}
-                              onChange={(event) =>
-                                setSelectedAvailableModelId(event.target.value)
-                              }
-                              className={FIELD_SELECT_CLASS}
-                              aria-label="选择 Provider 下的可用模型"
-                            >
-                              {(selectedAvailableProvider?.models ?? []).map(
-                                (option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.model}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-                          </div>
-                        </div>
-                        <div className="mt-3 grid gap-3 md:grid-cols-3">
-                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              模型名
-                            </p>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="truncate font-mono text-xs text-gray-200">
-                                {selectedAvailableModel.model}
-                              </span>
-                              <CopyButton
-                                text={selectedAvailableModel.model}
-                                message="已复制模型名"
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              Base URL
-                            </p>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="truncate font-mono text-xs text-gray-200">
-                                {maskPreviewText(
-                                  selectedAvailableModel.baseUrl,
-                                )}
-                              </span>
-                              <CopyButton
-                                text={selectedAvailableModel.baseUrl}
-                                message="已复制 Base URL"
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-gray-800 bg-black/15 px-3 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                              API Key
-                            </p>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="truncate font-mono text-xs text-gray-200">
-                                {maskKey(selectedAvailableModel.apiKey)}
-                              </span>
-                              <CopyButton
-                                text={selectedAvailableModel.apiKey}
-                                message="已复制 API Key"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                          <span className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-indigo-100">
-                            {selectedAvailableProvider?.providerName}
-                          </span>
-                          <HintTooltip content="当前来自可用检测结果。" />
-                          <button
-                            onClick={handleApplySelectedModel}
-                            className="inline-flex h-9 items-center rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                          >
-                            应用到当前配置
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
-                        当前还没有可用模型。请先去模型列表或详情页完成检测。
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+        <div className="mb-3 flex items-center gap-1.5 text-sm text-gray-300">
+          <span>LLM URL 支持常见 OpenAI 兼容写法</span>
+          <HintTooltip content="支持根地址、/v1、/v1/models、/chat/completions，系统会自动归一化。" />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2.5">
-          <div className="relative min-w-[300px] flex-1">
+        <div className="flex flex-wrap items-center gap-2.5 xl:flex-nowrap">
+          <div className="relative min-w-[280px] flex-1">
             <input
               value={modelConfig.baseUrl}
               onChange={(event) =>
@@ -549,15 +486,55 @@ export function ModelConfigSection({
                     baseUrl: "",
                   })
                 }
-                label="清空模型配置 Base URL"
+                label="清空 LLM URL"
               />
             )}
           </div>
-          <CopyButton
-            text={modelConfig.baseUrl}
-            message="已复制模型配置 Base URL"
-          />
-          <div className="relative min-w-[220px] flex-1">
+          <div className="relative min-w-[220px] flex-1 xl:max-w-[260px]">
+            <input
+              type={apiKeyVisible ? "text" : "password"}
+              value={modelConfig.apiKey}
+              onChange={(event) =>
+                updateModelConfig({
+                  apiKey: event.target.value,
+                })
+              }
+              placeholder="Token"
+              className={`${FIELD_MONO_INPUT_CLASS} pr-16`}
+            />
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
+              {modelConfig.apiKey && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateModelConfig({
+                      apiKey: "",
+                    })
+                  }
+                  aria-label="清空 LLM Token"
+                  title="清空 LLM Token"
+                  className="text-gray-500 transition-colors hover:text-gray-300"
+                  tabIndex={-1}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setApiKeyVisible((visible) => !visible)}
+                aria-label={apiKeyVisible ? "隐藏 LLM Token" : "显示 LLM Token"}
+                title={apiKeyVisible ? "隐藏 LLM Token" : "显示 LLM Token"}
+                className="text-gray-500 transition-colors hover:text-gray-300"
+              >
+                {apiKeyVisible ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </div>
+          <div className="relative min-w-[220px] flex-1 xl:max-w-[260px]">
             <input
               value={modelConfig.model}
               onChange={(event) =>
@@ -575,70 +552,10 @@ export function ModelConfigSection({
                     model: "",
                   })
                 }
-                label="清空模型配置模型名"
+                label="清空 LLM Model"
               />
             )}
           </div>
-          <CopyButton text={modelConfig.model} message="已复制模型配置模型名" />
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2.5">
-          <div className="relative w-full min-w-[220px] flex-1 sm:w-[240px] sm:flex-none">
-            <input
-              type={apiKeyVisible ? "text" : "password"}
-              value={modelConfig.apiKey}
-              onChange={(event) =>
-                updateModelConfig({
-                  apiKey: event.target.value,
-                })
-              }
-              placeholder="sk-..."
-              className={`${FIELD_MONO_INPUT_CLASS} pr-16`}
-            />
-            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
-              {modelConfig.apiKey && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateModelConfig({
-                      apiKey: "",
-                    })
-                  }
-                  aria-label="清空模型配置 API Key"
-                  title="清空模型配置 API Key"
-                  className="text-gray-500 transition-colors hover:text-gray-300"
-                  tabIndex={-1}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setApiKeyVisible((visible) => !visible)}
-                aria-label={
-                  apiKeyVisible
-                    ? "隐藏模型配置 API Key"
-                    : "显示模型配置 API Key"
-                }
-                title={
-                  apiKeyVisible
-                    ? "隐藏模型配置 API Key"
-                    : "显示模型配置 API Key"
-                }
-                className="text-gray-500 transition-colors hover:text-gray-300"
-              >
-                {apiKeyVisible ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-          </div>
-          <CopyButton
-            text={modelConfig.apiKey}
-            message="已复制模型配置 API Key"
-          />
           <button
             onClick={() => void handleSaveModelConfig()}
             className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
@@ -658,6 +575,12 @@ export function ModelConfigSection({
           >
             测试
           </button>
+          <button
+            onClick={() => setQuickApplyOpen(true)}
+            className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
+          >
+            快捷应用
+          </button>
           <span
             className={`rounded-full px-2.5 py-1 text-xs ${
               modelConfig.lastTestResult?.available
@@ -671,6 +594,27 @@ export function ModelConfigSection({
           </span>
         </div>
       </div>
+      {quickApplyOpen && (
+        <QuickApplyModal
+          providerOptions={availableProviderOptions}
+          selectedProviderId={selectedAvailableProvider?.id ?? ""}
+          selectedModelId={selectedAvailableModel?.id ?? ""}
+          onProviderChange={(value) => {
+            const nextProvider =
+              availableProviderOptions.find((item) => item.id === value) ?? null;
+            setSelectedAvailableProviderId(value);
+            setSelectedAvailableModelId(nextProvider?.models[0]?.id ?? "");
+          }}
+          onModelChange={(value) => {
+            setSelectedAvailableModelId(value);
+          }}
+          onConfirm={() => {
+            handleApplySelectedModel();
+            setQuickApplyOpen(false);
+          }}
+          onCancel={() => setQuickApplyOpen(false)}
+        />
+      )}
     </section>
   );
 }

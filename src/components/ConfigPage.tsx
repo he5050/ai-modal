@@ -51,6 +51,13 @@ import {
   normalizeGroupRelativePath,
   resolveGroupAbsolutePath,
 } from "../lib/configGroups";
+import {
+  buildClaudeWritebackUrl,
+  buildGeminiWritebackUrl,
+  buildOpenAiCompatibleWritebackUrl,
+  buildWritebackUrl,
+  inferWritebackKindFromModel,
+} from "../lib/providerBaseUrl";
 import { toast } from "../lib/toast";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
@@ -1564,7 +1571,9 @@ export function ConfigPage({
           ? { ...(root.env as Record<string, unknown>) }
           : {};
 
-      currentEnv.ANTHROPIC_BASE_URL = selectedAvailableModel.baseUrl;
+      currentEnv.ANTHROPIC_BASE_URL = buildClaudeWritebackUrl(
+        selectedAvailableModel.baseUrl,
+      );
       currentEnv.ANTHROPIC_AUTH_TOKEN = selectedAvailableModel.apiKey;
       for (const field of CLAUDE_ENV_MODEL_FIELDS) {
         currentEnv[field] = claudeEnvSelection[field];
@@ -1635,7 +1644,9 @@ export function ConfigPage({
             ...((((parsedConfig as Record<string, unknown>).model_providers as
             | Record<string, unknown>
             | undefined)?.codex as Record<string, unknown> | undefined) ?? {}),
-            base_url: selectedAvailableProvider.models[0]?.baseUrl ?? "",
+            base_url: buildOpenAiCompatibleWritebackUrl(
+              selectedAvailableProvider.models[0]?.baseUrl ?? "",
+            ),
             name: "codex",
             wire_api: "responses",
           },
@@ -1771,8 +1782,9 @@ export function ConfigPage({
 
       const nextEnv = upsertEnvAssignments(envDraft?.contentDraft ?? "", {
         GEMINI_API_KEY: selectedAvailableProvider.models[0]?.apiKey ?? "",
-        GOOGLE_GEMINI_BASE_URL:
+        GOOGLE_GEMINI_BASE_URL: buildGeminiWritebackUrl(
           selectedAvailableProvider.models[0]?.baseUrl ?? "",
+        ),
       });
       updateDraftState(envFile.id, {
         contentDraft: nextEnv,
@@ -1819,7 +1831,18 @@ export function ConfigPage({
 
       root.snowcfg = {
         ...currentSnowcfg,
-        baseUrl: selectedAvailableProvider.models[0]?.baseUrl ?? "",
+        baseUrl:
+          selectedSnowRequestMethod === "anthropic"
+            ? buildClaudeWritebackUrl(
+                selectedAvailableProvider.models[0]?.baseUrl ?? "",
+              )
+            : selectedSnowRequestMethod === "gemini"
+              ? buildGeminiWritebackUrl(
+                  selectedAvailableProvider.models[0]?.baseUrl ?? "",
+                )
+              : buildOpenAiCompatibleWritebackUrl(
+                  selectedAvailableProvider.models[0]?.baseUrl ?? "",
+                ),
         apiKey: selectedAvailableProvider.models[0]?.apiKey ?? "",
         requestMethod: selectedSnowRequestMethod,
         advancedModel: selectedSnowAdvancedModel,
@@ -1882,7 +1905,13 @@ export function ConfigPage({
         npm: "@ai-sdk/openai-compatible",
         name: selectedAvailableProvider.providerName,
         options: {
-          baseURL: selectedAvailableProvider.models[0]?.baseUrl ?? "",
+          baseURL: buildWritebackUrl(
+            selectedAvailableProvider.models[0]?.baseUrl ?? "",
+            inferWritebackKindFromModel(
+              selectedAvailableProvider.models[0]?.model ?? "",
+              selectedAvailableProvider.models[0]?.supportedProtocols,
+            ),
+          ),
           apiKey: selectedAvailableProvider.models[0]?.apiKey ?? "",
         },
         models: Object.fromEntries(
