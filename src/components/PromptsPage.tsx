@@ -16,8 +16,10 @@ import {
   serializePromptRecords,
   summarizePromptImport,
 } from "../lib/promptStore";
+import { renderMarkdownToHtml } from "../lib/promptMarkdown";
 import { toast } from "../lib/toast";
 import type { PromptRecord } from "../types";
+import { Tooltip } from "./Tooltip";
 
 interface Props {
   prompts: PromptRecord[];
@@ -249,16 +251,19 @@ export function PromptsPage({
               <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800/70 bg-gray-950/25">
-                    <th className="w-[40%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[24%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
                       标题
                     </th>
-                    <th className="w-[28%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[32%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                      内容
+                    </th>
+                    <th className="w-[18%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
                       标签
                     </th>
-                    <th className="w-[14%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[12%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
                       更新时间
                     </th>
-                    <th className="w-[18%] px-4 py-2 text-right text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[14%] px-4 py-2 text-right text-[11px] font-medium tracking-wide text-gray-500">
                       操作
                     </th>
                   </tr>
@@ -273,15 +278,45 @@ export function PromptsPage({
                           : ""
                       }`}
                     >
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-3 align-middle">
                         <div className="truncate text-sm font-medium text-white">
                           {item.title}
                         </div>
-                        <div className="mt-1 truncate text-xs leading-5 text-gray-500">
-                          {summarizePromptContent(item.content) || "—"}
-                        </div>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-3 align-middle">
+                        {summarizePromptContent(item.content) ? (
+                          <Tooltip
+                            placement="bottom"
+                            interactive
+                            contentClassName="w-[520px] max-w-[520px] rounded-2xl border-gray-700 bg-gray-900/98 p-0 shadow-2xl"
+                            content={
+                              <div className="overflow-hidden rounded-2xl">
+                                <div className="border-b border-gray-800 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                                  Markdown 内容预览
+                                </div>
+                                <div
+                                  className="max-h-[360px] overflow-y-auto px-4 py-4 text-sm"
+                                  data-testid={`prompt-preview-${item.id}`}
+                                  dangerouslySetInnerHTML={{
+                                    __html: renderMarkdownToHtml(item.content),
+                                  }}
+                                />
+                              </div>
+                            }
+                          >
+                            <button
+                              type="button"
+                              className="w-full truncate text-left text-xs leading-6 text-gray-400 transition-colors hover:text-gray-200"
+                              aria-label={`预览内容${item.title}`}
+                            >
+                              {summarizePromptContent(item.content)}
+                            </button>
+                          </Tooltip>
+                        ) : (
+                          <span className="text-xs text-gray-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-middle">
                         <div className="flex flex-wrap gap-1.5">
                           {item.tags.length > 0 ? (
                             item.tags.map((tag) => (
@@ -297,12 +332,12 @@ export function PromptsPage({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 align-top text-xs text-gray-500">
+                      <td className="px-4 py-3 align-middle text-xs text-gray-500">
                         <span className="whitespace-nowrap">
                           {formatPromptTime(item.updatedAt)}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-3 align-middle">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => onOpenDetail(item.id, "detail")}

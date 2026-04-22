@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SkillsPage } from '../SkillsPage'
@@ -18,6 +18,7 @@ const {
   mockRunSkillsCommand,
   mockSearchOnlineSkills,
   mockSyncSkillTargets,
+  mockListen,
   mockLoadPersistedJson,
   mockSavePersistedJson,
   mockToast,
@@ -31,6 +32,7 @@ const {
   mockRunSkillsCommand: vi.fn(),
   mockSearchOnlineSkills: vi.fn(),
   mockSyncSkillTargets: vi.fn(),
+  mockListen: vi.fn(),
   mockLoadPersistedJson: vi.fn(),
   mockSavePersistedJson: vi.fn(),
   mockToast: vi.fn(),
@@ -45,6 +47,10 @@ const {
 
 vi.mock('@tauri-apps/api/path', () => ({
   homeDir: mockHomeDir,
+}))
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: mockListen,
 }))
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -98,6 +104,22 @@ function createDemoSkill() {
     hasSkillFile: true,
     sourceType: 'github' as const,
     sourceValue: 'example/repo',
+  }
+}
+
+function createDocxSkill() {
+  return {
+    name: 'docx',
+    dir: 'docx',
+    description: 'docx description',
+    version: '1.0.0',
+    updatedAt: Date.now(),
+    categories: ['docs'],
+    internal: false,
+    path: '/Users/test/.agents/skills/docx',
+    hasSkillFile: true,
+    sourceType: 'github' as const,
+    sourceValue: 'example/docx',
   }
 }
 
@@ -166,8 +188,8 @@ beforeEach(() => {
   mockLoadPersistedJson
     .mockResolvedValueOnce(builtinTargets)
     .mockResolvedValueOnce({})
-    .mockResolvedValueOnce(createCatalog([createDemoSkill()]))
-  mockScanLocalSkills.mockResolvedValue(createCatalog([createDemoSkill()]))
+    .mockResolvedValueOnce(createCatalog([createDemoSkill(), createDocxSkill()]))
+  mockScanLocalSkills.mockResolvedValue(createCatalog([createDemoSkill(), createDocxSkill()]))
   mockInspectSkillTargets.mockResolvedValue(builtinStatuses)
   mockSearchOnlineSkills.mockResolvedValue({
     query: 'skill',
@@ -178,6 +200,7 @@ beforeEach(() => {
   })
   mockSyncSkillTargets.mockResolvedValue([])
   mockRunSkillsCommand.mockResolvedValue(createCommandResult())
+  mockListen.mockResolvedValue(() => {})
   mockSavePersistedJson.mockResolvedValue(undefined)
 })
 
@@ -191,7 +214,10 @@ describe('SkillsPage', () => {
     await user.click(screen.getByRole('button', { name: '更新全部技能' }))
 
     await waitFor(() => {
-      expect(mockRunSkillsCommand).toHaveBeenCalledWith({ action: 'update' })
+      expect(mockRunSkillsCommand).toHaveBeenCalledWith({
+        action: 'update',
+        skillNames: ['demo-skill', 'docx'],
+      })
     })
 
     await user.click(screen.getByRole('button', { name: /最近命令结果/ }))
@@ -199,6 +225,104 @@ describe('SkillsPage', () => {
     expect(
       await screen.findByText(/command:\s*npx -y skills update -g -y/i),
     ).toBeInTheDocument()
+  })
+
+  it('shows progress immediately when running global update', async () => {
+    const user = userEvent.setup()
+    let resolveCommand: ((value: SkillsCommandResult) => void) | null = null
+    mockRunSkillsCommand.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve
+        }),
+    )
+
+    await renderSkillsPage()
+
+    await user.click(screen.getByRole('button', { name: '同步与安装' }))
+    await user.click(screen.getByRole('button', { name: '更新全部' }))
+    await user.click(screen.getByRole('button', { name: '更新全部技能' }))
+
+    expect(
+      await screen.findByText('开始执行：更新全部全局技能'),
+    ).toBeInTheDocument()
+
+    resolveCommand?.(createCommandResult())
+
+    await waitFor(() => {
+      expect(mockRunSkillsCommand).toHaveBeenCalledWith({
+        action: 'update',
+        skillNames: ['demo-skill', 'docx'],
+      })
+    })
+  })
+
+  it('shows stderr warning summary when npm config warnings are folded', async () => {
+    const user = userEvent.setup()
+    mockRunSkillsCommand.mockResolvedValueOnce(
+      createCommandResult({
+        stderr: [
+          'npm warn Unknown user config "python"',
+          'npm warn Unknown env config "registry"',
+        ].join('\n'),
+      }),
+    )
+
+    await renderSkillsPage()
+
+    await user.click(screen.getByRole('button', { name: '同步与安装' }))
+    await user.click(screen.getByRole('button', { name: '更新全部' }))
+    await user.click(screen.getByRole('button', { name: '更新全部技能' }))
+
+    expect(
+      await screen.findByText(/stderr 摘要：包含 2 条 npm 配置告警，已折叠。/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/示例：npm warn Unknown user config "python"/),
+    ).toBeInTheDocument()
+  })
+
+  it('updates visible progress from skills-command-progress events', async () => {
+    const user = userEvent.setup()
+    let progressHandler:
+      | ((event: {
+          payload: {
+            action: 'update'
+            stage: string
+            message: string
+            current?: number
+            total?: number
+            skillName?: string
+          }
+        }) => void)
+      | null = null
+
+    mockListen.mockImplementationOnce(async (_event, handler) => {
+      progressHandler = handler
+      return () => {}
+    })
+
+    await renderSkillsPage()
+    await user.click(screen.getByRole('button', { name: '同步与安装' }))
+    await user.click(screen.getByRole('button', { name: '更新全部' }))
+    await user.click(screen.getByRole('button', { name: '更新全部技能' }))
+
+    await act(async () => {
+      progressHandler?.({
+        payload: {
+          action: 'update',
+          stage: 'checking',
+          message: '正在检查 23 / 76：docx',
+          current: 23,
+          total: 76,
+          skillName: 'docx',
+        },
+      })
+    })
+
+    expect(await screen.findByText('正在检查 23 / 76：docx')).toBeInTheDocument()
+    expect(await screen.findByText('当前进度：23 / 76 · docx')).toBeInTheDocument()
+    expect(await screen.findByRole('progressbar', { name: '技能更新进度' })).toHaveAttribute('aria-valuenow', '30')
   })
 
   it('shows confirmation and removes a local skill from the list tab', async () => {

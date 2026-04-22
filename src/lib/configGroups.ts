@@ -82,9 +82,9 @@ export const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
     files: [
       {
         id: "gemini",
-        label: "settings.json",
-        fileName: "settings.json",
-        relativePath: "settings.json",
+        label: ".settings.json",
+        fileName: ".settings.json",
+        relativePath: ".settings.json",
         format: "json",
       },
       {
@@ -92,7 +92,7 @@ export const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
         label: ".env",
         fileName: ".env",
         relativePath: ".env",
-        format: "json",
+        format: "env",
       },
     ],
   },
@@ -154,6 +154,13 @@ export const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
         format: "json",
       },
       {
+        id: "snow::mcp-config.json",
+        label: "mcp-config.json",
+        fileName: "mcp-config.json",
+        relativePath: "mcp-config.json",
+        format: "json",
+      },
+      {
         id: "snow::proxy-config.json",
         label: "proxy-config.json",
         fileName: "proxy-config.json",
@@ -165,6 +172,13 @@ export const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
         label: "system-prompt.json",
         fileName: "system-prompt.json",
         relativePath: "system-prompt.json",
+        format: "json",
+      },
+      {
+        id: "snow::custom-headers.json",
+        label: "custom-headers.json",
+        fileName: "custom-headers.json",
+        relativePath: "custom-headers.json",
         format: "json",
       },
       {
@@ -214,6 +228,7 @@ export function resolveGroupAbsolutePath(
 
 export function inferConfigFormatFromPath(path: string): ConfigFormat {
   const normalized = path.toLowerCase();
+  if (normalized.endsWith(".env")) return "env";
   if (normalized.endsWith(".toml")) return "toml";
   if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {
     return "yaml";

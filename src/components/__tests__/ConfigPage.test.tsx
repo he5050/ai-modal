@@ -75,6 +75,7 @@ function createAvailableProvider(): Provider {
           latency_ms: 123,
           error: null,
           response_text: 'ok',
+          supported_protocols: ['claude', 'openai'],
         },
         {
           model: 'claude-3-5-haiku',
@@ -82,6 +83,7 @@ function createAvailableProvider(): Provider {
           latency_ms: 110,
           error: null,
           response_text: 'ok',
+          supported_protocols: ['claude', 'openai'],
         },
         {
           model: 'claude-3-opus',
@@ -89,6 +91,38 @@ function createAvailableProvider(): Provider {
           latency_ms: 130,
           error: null,
           response_text: 'ok',
+          supported_protocols: ['claude', 'openai'],
+        },
+      ],
+    },
+  }
+}
+
+function createGeminiAvailableProvider(): Provider {
+  return {
+    id: 'provider-gemini',
+    name: 'Gemini Relay',
+    baseUrl: 'https://iruidong.com',
+    apiKey: 'sk-needkey',
+    createdAt: 1,
+    lastResult: {
+      timestamp: 1_700_000_000_000,
+      results: [
+        {
+          model: 'gemini-3.1-pro',
+          available: true,
+          latency_ms: 88,
+          error: null,
+          response_text: 'ok',
+          supported_protocols: ['gemini'],
+        },
+        {
+          model: 'gemini-2.5-flash',
+          available: true,
+          latency_ms: 66,
+          error: null,
+          response_text: 'ok',
+          supported_protocols: ['gemini'],
         },
       ],
     },
@@ -352,6 +386,164 @@ describe('ConfigPage', () => {
           },
         },
       },
+    })
+  })
+
+  it('applies selected Gemini model into .settings.json and .env drafts', async () => {
+    mockReadTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/.gemini/.settings.json')) {
+        return JSON.stringify(
+          {
+            general: { existingFlag: true },
+            security: { audit: 'keep-me' },
+            extra: 'keep-me',
+          },
+          null,
+          2,
+        )
+      }
+      if (path.endsWith('/.gemini/.env')) {
+        return 'EXISTING_FLAG=keep-me\n'
+      }
+      return '{}'
+    })
+
+    render(
+      <ConfigPage
+        providers={[createGeminiAvailableProvider()]}
+        storedPaths={storedPaths}
+        onUpsertPath={vi.fn()}
+        onDeletePath={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await screen.findByText('配置管理')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择工具' }),
+      'gemini',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(await screen.findByText('应用到 Gemini 配置')).toBeInTheDocument()
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择 Gemini 模型' }),
+      'gemini-3.1-pro',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用到草稿' }))
+
+    const saveButtons = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtons[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalledTimes(1)
+    })
+
+    const [settingsPath, settingsContent] = mockWriteTextFile.mock.calls[0]
+    expect(settingsPath).toContain('/.gemini/.settings.json')
+    expect(JSON.parse(settingsContent)).toMatchObject({
+      model: {
+        name: 'gemini-3.1-pro',
+      },
+      general: {
+        existingFlag: true,
+        previewFeatures: true,
+      },
+      security: {
+        audit: 'keep-me',
+        auth: {
+          selectedType: 'gemini-api-key',
+        },
+      },
+      extra: 'keep-me',
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /\.env/ }))
+    const saveButtonsAfterSwitch = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtonsAfterSwitch[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalledTimes(2)
+    })
+
+    const [envPath, envContent] = mockWriteTextFile.mock.calls[1]
+    expect(envPath).toContain('/.gemini/.env')
+    expect(envContent).toContain('EXISTING_FLAG=keep-me')
+    expect(envContent).not.toContain('\n\nGEMINI_API_KEY=')
+    expect(envContent).toContain('GEMINI_API_KEY=sk-needkey')
+    expect(envContent).toContain(
+      'GEMINI_API_KEY=sk-needkey\nGOOGLE_GEMINI_BASE_URL=https://iruidong.com',
+    )
+  })
+
+  it('applies selected requestMethod and models into snow config draft', async () => {
+    mockReadTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/.snow/config.json')) {
+        return JSON.stringify(
+          {
+            snowcfg: {
+              existingFlag: 'keep-me',
+            },
+            extra: 'keep-me',
+          },
+          null,
+          2,
+        )
+      }
+      return '{}'
+    })
+
+    render(
+      <ConfigPage
+        providers={[createAvailableProvider()]}
+        storedPaths={storedPaths}
+        onUpsertPath={vi.fn()}
+        onDeletePath={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await screen.findByText('配置管理')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择工具' }),
+      'snow',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(await screen.findByText('应用到 Snow 配置')).toBeInTheDocument()
+
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择 Snow 请求模式' }),
+      'anthropic',
+    )
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择 Snow advancedModel' }),
+      'claude-3-opus',
+    )
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '选择 Snow basicModel' }),
+      'claude-3-5-haiku',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '应用到草稿' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'config.json未保存' }))
+    const saveButtons = screen.getAllByRole('button', { name: '保存' })
+    await userEvent.click(saveButtons[0])
+
+    await waitFor(() => {
+      expect(mockWriteTextFile).toHaveBeenCalledTimes(1)
+    })
+
+    const [configPath, configContent] = mockWriteTextFile.mock.calls[0]
+    expect(configPath).toContain('/.snow/config.json')
+    expect(JSON.parse(configContent)).toMatchObject({
+      snowcfg: {
+        existingFlag: 'keep-me',
+        baseUrl: 'https://claude.example.com/v1',
+        apiKey: 'sk-claude-secret',
+        requestMethod: 'anthropic',
+        advancedModel: 'claude-3-opus',
+        basicModel: 'claude-3-5-haiku',
+      },
+      extra: 'keep-me',
     })
   })
 })

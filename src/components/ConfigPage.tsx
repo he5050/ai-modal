@@ -109,6 +109,7 @@ type ClaudeEnvModelField =
   | "ANTHROPIC_DEFAULT_HAIKU_MODEL"
   | "ANTHROPIC_DEFAULT_SONNET_MODEL"
   | "ANTHROPIC_DEFAULT_OPUS_MODEL";
+type SnowRequestMethod = "chat" | "responses" | "gemini" | "anthropic";
 
 const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
 const MODEL_CONFIGS_DB_KEY = "model_configs";
@@ -123,6 +124,18 @@ const CLAUDE_ENV_MODEL_FIELD_LABELS: Record<ClaudeEnvModelField, string> = {
   ANTHROPIC_DEFAULT_HAIKU_MODEL: "Haiku 默认模型",
   ANTHROPIC_DEFAULT_SONNET_MODEL: "Sonnet 默认模型",
   ANTHROPIC_DEFAULT_OPUS_MODEL: "Opus 默认模型",
+};
+const SNOW_REQUEST_METHOD_OPTIONS: SnowRequestMethod[] = [
+  "chat",
+  "responses",
+  "gemini",
+  "anthropic",
+];
+const SNOW_REQUEST_METHOD_LABELS: Record<SnowRequestMethod, string> = {
+  chat: "OpenAI Chat Completion",
+  responses: "OpenAI Responses",
+  gemini: "Gemini",
+  anthropic: "Anthropic",
 };
 
 const configEditorTheme = EditorView.theme(
@@ -220,6 +233,8 @@ const tomlFoldExtension = foldService.of((state, lineStart) => {
 
 function getConfigLanguageExtensions(format: ConfigFormat) {
   switch (format) {
+    case "env":
+      return [];
     case "toml":
       return [tomlLanguage, tomlFoldExtension];
     case "yaml":
@@ -298,6 +313,58 @@ function buildClaudeModelGuessMap(
     ANTHROPIC_DEFAULT_SONNET_MODEL: findByKeyword("sonnet"),
     ANTHROPIC_DEFAULT_OPUS_MODEL: findByKeyword("opus"),
   };
+}
+
+function inferSnowRequestMethod(protocols: string[] | undefined) {
+  const normalized = new Set(
+    (protocols ?? []).map((protocol) => protocol.toLowerCase()),
+  );
+
+  if (normalized.has("claude")) return "anthropic";
+  if (normalized.has("gemini")) return "gemini";
+  if (normalized.has("openai")) return "responses";
+  return "chat";
+}
+
+function pickDefaultSnowBasicModel(availableModels: string[], primary: string) {
+  return availableModels.find((model) => model !== primary) ?? primary;
+}
+
+function formatEnvValue(value: string) {
+  if (value === "") return "";
+  if (/[#\s"'`]/.test(value)) {
+    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return value;
+}
+
+function upsertEnvAssignments(
+  content: string,
+  entries: Record<string, string>,
+) {
+  const sourceLines = content.length > 0 ? content.split(/\r?\n/) : [];
+  const lines = sourceLines.filter((line, index, all) => {
+    return !(index === all.length - 1 && line === "");
+  });
+  const pendingKeys = new Set(Object.keys(entries));
+
+  const nextLines = lines.map((line) => {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (!match) return line;
+
+    const key = match[1];
+    if (!pendingKeys.has(key)) return line;
+    pendingKeys.delete(key);
+    return `${key}=${formatEnvValue(entries[key] ?? "")}`;
+  });
+
+  if (pendingKeys.size > 0) {
+    for (const key of pendingKeys) {
+      nextLines.push(`${key}=${formatEnvValue(entries[key] ?? "")}`);
+    }
+  }
+
+  return `${nextLines.join("\n")}\n`;
 }
 
 function SelectionCheckbox({
@@ -561,6 +628,207 @@ function CodexApplyModal({
   );
 }
 
+function GeminiApplyModal({
+  providerName,
+  availableModels,
+  selectedModel,
+  onChange,
+  onConfirm,
+  onCancel,
+}: {
+  providerName: string;
+  availableModels: string[];
+  selectedModel: string;
+  onChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="flex h-[min(720px,88vh)] w-full max-w-xl flex-col rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-fuchsia-500/25 bg-fuchsia-500/10 text-fuchsia-200">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              应用到 Gemini 配置
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              选择当前 Provider 要写入 Gemini 的模型。当前会同时更新
+              .settings.json 与 .env 草稿，不会直接保存到磁盘。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+            Provider
+          </p>
+          <p className="mt-2 truncate text-sm font-medium text-gray-200">
+            {providerName}
+          </p>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-4">
+          <div className="grid items-center gap-2 md:grid-cols-[80px_minmax(0,1fr)]">
+            <p className="text-sm font-medium text-gray-300">模型</p>
+            <select
+              value={selectedModel}
+              onChange={(event) => onChange(event.target.value)}
+              className={FIELD_SELECT_CLASS}
+              aria-label="选择 Gemini 模型"
+            >
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            应用到草稿
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SnowApplyModal({
+  providerName,
+  availableModels,
+  requestMethods,
+  selectedRequestMethod,
+  selectedAdvancedModel,
+  selectedBasicModel,
+  onRequestMethodChange,
+  onAdvancedModelChange,
+  onBasicModelChange,
+  onConfirm,
+  onCancel,
+}: {
+  providerName: string;
+  availableModels: string[];
+  requestMethods: SnowRequestMethod[];
+  selectedRequestMethod: SnowRequestMethod;
+  selectedAdvancedModel: string;
+  selectedBasicModel: string;
+  onRequestMethodChange: (value: SnowRequestMethod) => void;
+  onAdvancedModelChange: (value: string) => void;
+  onBasicModelChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+      <div className="flex h-[min(720px,88vh)] w-full max-w-2xl flex-col rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start gap-4">
+          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-sky-500/25 bg-sky-500/10 text-sky-100">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold tracking-tight text-white">
+              应用到 Snow 配置
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              选择 Snow 的请求模式与模型映射。当前只更新 config.json 草稿，不会直接保存到磁盘。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+            Provider
+          </p>
+          <p className="mt-2 truncate text-sm font-medium text-gray-200">
+            {providerName}
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-3 rounded-2xl border border-gray-800 bg-black/15 px-4 py-4">
+          <div className="grid items-center gap-2 md:grid-cols-[120px_minmax(0,1fr)]">
+            <p className="text-sm font-medium text-gray-300">请求模式</p>
+            <select
+              value={selectedRequestMethod}
+              onChange={(event) =>
+                onRequestMethodChange(event.target.value as SnowRequestMethod)
+              }
+              className={FIELD_SELECT_CLASS}
+              aria-label="选择 Snow 请求模式"
+            >
+              {requestMethods.map((method) => (
+                <option key={method} value={method}>
+                  {SNOW_REQUEST_METHOD_LABELS[method]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid items-center gap-2 md:grid-cols-[120px_minmax(0,1fr)]">
+            <p className="text-sm font-medium text-gray-300">高级模型</p>
+            <select
+              value={selectedAdvancedModel}
+              onChange={(event) => onAdvancedModelChange(event.target.value)}
+              className={FIELD_SELECT_CLASS}
+              aria-label="选择 Snow advancedModel"
+            >
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid items-center gap-2 md:grid-cols-[120px_minmax(0,1fr)]">
+            <p className="text-sm font-medium text-gray-300">基础模型</p>
+            <select
+              value={selectedBasicModel}
+              onChange={(event) => onBasicModelChange(event.target.value)}
+              className={FIELD_SELECT_CLASS}
+              aria-label="选择 Snow basicModel"
+            >
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            应用到草稿
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OpenCodeApplyModal({
   providerName,
   models,
@@ -686,9 +954,20 @@ export function ConfigPage({
   const [modelConfigsReady, setModelConfigsReady] = useState(false);
   const [claudeApplyModalOpen, setClaudeApplyModalOpen] = useState(false);
   const [codexApplyModalOpen, setCodexApplyModalOpen] = useState(false);
+  const [geminiApplyModalOpen, setGeminiApplyModalOpen] = useState(false);
+  const [snowApplyModalOpen, setSnowApplyModalOpen] = useState(false);
   const [openCodeApplyModalOpen, setOpenCodeApplyModalOpen] = useState(false);
   const [selectedCodexApplyModel, setSelectedCodexApplyModel] =
     useState<string>("");
+  const [selectedGeminiApplyModel, setSelectedGeminiApplyModel] =
+    useState<string>("");
+  const [selectedSnowRequestMethod, setSelectedSnowRequestMethod] =
+    useState<SnowRequestMethod>("responses");
+  const [selectedSnowAdvancedModel, setSelectedSnowAdvancedModel] =
+    useState<string>("");
+  const [selectedSnowBasicModel, setSelectedSnowBasicModel] = useState<string>(
+    "",
+  );
   const [selectedOpenCodeModels, setSelectedOpenCodeModels] = useState<string[]>(
     [],
   );
@@ -763,12 +1042,18 @@ export function ConfigPage({
               .map((result) => result.model)
               .filter(Boolean),
           ),
-        ).map((model) => ({
-          id: `${provider.id}::${model}`,
-          model,
-          baseUrl: provider.baseUrl,
-          apiKey: provider.apiKey,
-        }));
+        ).map((model) => {
+          const result = (provider.lastResult?.results ?? []).find(
+            (item) => item.available && item.model === model,
+          );
+          return {
+            id: `${provider.id}::${model}`,
+            model,
+            baseUrl: provider.baseUrl,
+            apiKey: provider.apiKey,
+            supportedProtocols: result?.supported_protocols ?? [],
+          };
+        });
 
         return models.length > 0
           ? {
@@ -788,6 +1073,7 @@ export function ConfigPage({
         model: string;
         baseUrl: string;
         apiKey: string;
+        supportedProtocols: string[];
       }[];
     }[];
   }, [providers]);
@@ -805,6 +1091,8 @@ export function ConfigPage({
   const isClaudeSettingsShortcutTarget =
     selectedGroup?.id === "claude" && selectedFile?.id === "claude";
   const isCodexShortcutTarget = selectedGroup?.id === "codex";
+  const isGeminiShortcutTarget = selectedGroup?.id === "gemini";
+  const isSnowShortcutTarget = selectedGroup?.id === "snow";
   const isOpenCodeShortcutTarget = selectedGroup?.id === "opencode";
 
   function updateDraftState(fileId: string, patch: Partial<FileDraftState>) {
@@ -1397,6 +1685,165 @@ export function ConfigPage({
     }
   }
 
+  async function handleApplyGeminiShortcutToDraft() {
+    if (!selectedAvailableProvider || !selectedGroup) return;
+
+    const settingsFile =
+      selectedGroup.files.find((file) => file.id === "gemini") ?? null;
+    const envFile =
+      selectedGroup.files.find((file) => file.id === "gemini::.env") ?? null;
+
+    if (!settingsFile || !envFile) {
+      toast("未找到 Gemini 配置文件入口", "error");
+      return;
+    }
+
+    try {
+      const [settingsDraft, envDraft] = await Promise.all([
+        ensureFileDraftState(settingsFile),
+        ensureFileDraftState(envFile),
+      ]);
+
+      const parsedSettings =
+        settingsDraft?.contentDraft.trim()
+          ? JSON.parse(settingsDraft.contentDraft)
+          : {};
+      if (
+        parsedSettings == null ||
+        Array.isArray(parsedSettings) ||
+        typeof parsedSettings !== "object"
+      ) {
+        throw new Error("当前 .settings.json 顶层不是对象");
+      }
+
+      const settingsRoot = {
+        ...(parsedSettings as Record<string, unknown>),
+      } as Record<string, unknown>;
+      settingsRoot.model = {
+        ...(settingsRoot.model &&
+        typeof settingsRoot.model === "object" &&
+        !Array.isArray(settingsRoot.model)
+          ? (settingsRoot.model as Record<string, unknown>)
+          : {}),
+        name: selectedGeminiApplyModel,
+      };
+      settingsRoot.general = {
+        ...(settingsRoot.general &&
+        typeof settingsRoot.general === "object" &&
+        !Array.isArray(settingsRoot.general)
+          ? (settingsRoot.general as Record<string, unknown>)
+          : {}),
+        previewFeatures: true,
+      };
+      settingsRoot.security = {
+        ...(settingsRoot.security &&
+        typeof settingsRoot.security === "object" &&
+        !Array.isArray(settingsRoot.security)
+          ? (settingsRoot.security as Record<string, unknown>)
+          : {}),
+        auth: {
+          ...(((settingsRoot.security &&
+            typeof settingsRoot.security === "object" &&
+            !Array.isArray(settingsRoot.security)
+            ? (settingsRoot.security as Record<string, unknown>).auth
+            : null) &&
+          typeof (settingsRoot.security as Record<string, unknown>).auth ===
+            "object" &&
+          !Array.isArray(
+            (settingsRoot.security as Record<string, unknown>).auth,
+          )
+            ? ((settingsRoot.security as Record<string, unknown>).auth as Record<
+                string,
+                unknown
+              >)
+            : {}) as Record<string, unknown>),
+          selectedType: "gemini-api-key",
+        },
+      };
+
+      const formattedSettings = await formatConfigContent(
+        JSON.stringify(settingsRoot),
+        "json",
+      );
+      updateDraftState(settingsFile.id, {
+        contentDraft: formattedSettings.formatted,
+      });
+
+      const nextEnv = upsertEnvAssignments(envDraft?.contentDraft ?? "", {
+        GEMINI_API_KEY: selectedAvailableProvider.models[0]?.apiKey ?? "",
+        GOOGLE_GEMINI_BASE_URL:
+          selectedAvailableProvider.models[0]?.baseUrl ?? "",
+      });
+      updateDraftState(envFile.id, {
+        contentDraft: nextEnv,
+      });
+
+      setGeminiApplyModalOpen(false);
+      toast("已将 Gemini 配置应用到当前草稿", "success");
+    } catch (error) {
+      console.error("Failed to apply Gemini shortcut config", error);
+      toast(
+        error instanceof Error
+          ? `应用失败：${error.message}`
+          : "应用失败，请检查当前配置文件内容",
+        "error",
+      );
+    }
+  }
+
+  async function handleApplySnowShortcutToDraft() {
+    if (!selectedAvailableProvider || !selectedGroup) return;
+
+    const configFile =
+      selectedGroup.files.find((file) => file.id === "snow::config.json") ??
+      null;
+
+    if (!configFile) {
+      toast("未找到 Snow 配置文件入口", "error");
+      return;
+    }
+
+    try {
+      const draft = await ensureFileDraftState(configFile);
+      const parsed =
+        draft?.contentDraft.trim() ? JSON.parse(draft.contentDraft) : {};
+      if (parsed == null || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("当前 config.json 顶层不是对象");
+      }
+
+      const root = { ...(parsed as Record<string, unknown>) };
+      const currentSnowcfg =
+        root.snowcfg && typeof root.snowcfg === "object" && !Array.isArray(root.snowcfg)
+          ? { ...(root.snowcfg as Record<string, unknown>) }
+          : {};
+
+      root.snowcfg = {
+        ...currentSnowcfg,
+        baseUrl: selectedAvailableProvider.models[0]?.baseUrl ?? "",
+        apiKey: selectedAvailableProvider.models[0]?.apiKey ?? "",
+        requestMethod: selectedSnowRequestMethod,
+        advancedModel: selectedSnowAdvancedModel,
+        basicModel: selectedSnowBasicModel,
+      };
+
+      const formatted = await formatConfigContent(JSON.stringify(root), "json");
+      updateDraftState(configFile.id, {
+        contentDraft: formatted.formatted,
+      });
+
+      setSnowApplyModalOpen(false);
+      toast("已将 Snow 配置应用到当前草稿", "success");
+    } catch (error) {
+      console.error("Failed to apply Snow shortcut config", error);
+      toast(
+        error instanceof Error
+          ? `应用失败：${error.message}`
+          : "应用失败，请检查当前配置文件内容",
+        "error",
+      );
+    }
+  }
+
   function handleToggleOpenCodeModel(model: string) {
     setSelectedOpenCodeModels((prev) =>
       prev.includes(model)
@@ -1476,6 +1923,34 @@ export function ConfigPage({
         selectedAvailableProvider.models[0]?.model ?? "",
       );
       setCodexApplyModalOpen(true);
+      return;
+    }
+
+    if (isGeminiShortcutTarget) {
+      if (!selectedAvailableProvider) return;
+      setSelectedGeminiApplyModel(
+        selectedAvailableProvider.models[0]?.model ?? "",
+      );
+      setGeminiApplyModalOpen(true);
+      return;
+    }
+
+    if (isSnowShortcutTarget) {
+      if (!selectedAvailableProvider) return;
+      const primaryModel = selectedAvailableProvider.models[0]?.model ?? "";
+      setSelectedSnowRequestMethod(
+        inferSnowRequestMethod(
+          selectedAvailableProvider.models[0]?.supportedProtocols,
+        ),
+      );
+      setSelectedSnowAdvancedModel(primaryModel);
+      setSelectedSnowBasicModel(
+        pickDefaultSnowBasicModel(
+          selectedAvailableProvider.models.map((item) => item.model),
+          primaryModel,
+        ),
+      );
+      setSnowApplyModalOpen(true);
       return;
     }
 
@@ -1725,6 +2200,8 @@ export function ConfigPage({
                     </div>
                     {(isClaudeSettingsShortcutTarget ||
                       isCodexShortcutTarget ||
+                      isGeminiShortcutTarget ||
+                      isSnowShortcutTarget ||
                       isOpenCodeShortcutTarget) && (
                       <button
                         onClick={handleApplyShortcut}
@@ -2088,6 +2565,37 @@ export function ConfigPage({
           onChange={setSelectedCodexApplyModel}
           onConfirm={() => void handleApplyCodexShortcutToDraft()}
           onCancel={() => setCodexApplyModalOpen(false)}
+        />
+      )}
+
+      {geminiApplyModalOpen && selectedAvailableProvider && (
+        <GeminiApplyModal
+          providerName={selectedAvailableProvider.providerName}
+          availableModels={selectedAvailableProvider.models.map(
+            (item) => item.model,
+          )}
+          selectedModel={selectedGeminiApplyModel}
+          onChange={setSelectedGeminiApplyModel}
+          onConfirm={() => void handleApplyGeminiShortcutToDraft()}
+          onCancel={() => setGeminiApplyModalOpen(false)}
+        />
+      )}
+
+      {snowApplyModalOpen && selectedAvailableProvider && (
+        <SnowApplyModal
+          providerName={selectedAvailableProvider.providerName}
+          availableModels={selectedAvailableProvider.models.map(
+            (item) => item.model,
+          )}
+          requestMethods={SNOW_REQUEST_METHOD_OPTIONS}
+          selectedRequestMethod={selectedSnowRequestMethod}
+          selectedAdvancedModel={selectedSnowAdvancedModel}
+          selectedBasicModel={selectedSnowBasicModel}
+          onRequestMethodChange={setSelectedSnowRequestMethod}
+          onAdvancedModelChange={setSelectedSnowAdvancedModel}
+          onBasicModelChange={setSelectedSnowBasicModel}
+          onConfirm={() => void handleApplySnowShortcutToDraft()}
+          onCancel={() => setSnowApplyModalOpen(false)}
         />
       )}
 

@@ -9,7 +9,7 @@ export type AppPage =
   | "configs"
   | "settings";
 
-export type ConfigFormat = "json" | "toml" | "yaml" | "xml";
+export type ConfigFormat = "json" | "toml" | "yaml" | "xml" | "env";
 
 export type ConfigGroupId =
   | "claude"
@@ -160,6 +160,15 @@ export interface SkillsCommandResult {
   stdout: string;
   stderr: string;
   catalogRefreshed: boolean;
+}
+
+export interface SkillsCommandProgressEvent {
+  action: SkillsCommandAction;
+  stage: string;
+  message: string;
+  current?: number | null;
+  total?: number | null;
+  skillName?: string | null;
 }
 
 export interface SkillSourceMeta {

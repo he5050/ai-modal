@@ -116,6 +116,53 @@ describe("PromptsPage", () => {
     expect(onOpenDetail).toHaveBeenCalledWith("prompt-1", "detail");
   });
 
+  it("renders a dedicated content column and shows markdown preview on hover", async () => {
+    const user = userEvent.setup();
+    renderPage([
+      {
+        id: "prompt-1",
+        title: "日报总结",
+        content: "## 今日进展\n- 完成接口联调\n- 修复列表样式",
+        tags: ["日报"],
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ]);
+
+    expect(screen.getByText("内容")).toBeInTheDocument();
+    await user.hover(screen.getByRole("button", { name: "预览内容日报总结" }));
+
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+    expect(await screen.findByText("Markdown 内容预览")).toBeInTheDocument();
+    expect(await screen.findByText("今日进展")).toBeInTheDocument();
+  });
+
+  it("keeps markdown preview visible while hovering the preview itself", async () => {
+    const user = userEvent.setup();
+    renderPage([
+      {
+        id: "prompt-1",
+        title: "日报总结",
+        content: "## 今日进展\n- 完成接口联调\n- 修复列表样式",
+        tags: ["日报"],
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ]);
+
+    const trigger = screen.getByRole("button", { name: "预览内容日报总结" });
+    await user.hover(trigger);
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toBeInTheDocument();
+
+    await user.unhover(trigger);
+    await user.hover(tooltip);
+
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    expect(screen.getByText("Markdown 内容预览")).toBeInTheDocument();
+  });
+
   it("deletes a prompt after confirmation", async () => {
     const user = userEvent.setup();
     const { onDelete } = renderPage([

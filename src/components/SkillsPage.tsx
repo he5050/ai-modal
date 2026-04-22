@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { homeDir } from "@tauri-apps/api/path";
+import { listen } from "@tauri-apps/api/event";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
@@ -40,6 +41,7 @@ import type {
   SkillsCatalogSnapshot,
   SkillsCommandAction,
   SkillsCommandRequest,
+  SkillsCommandProgressEvent,
   SkillsCommandResult,
 } from "../types";
 import {
@@ -266,6 +268,17 @@ export function SkillsPage({
   const [checkingTargets, setCheckingTargets] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [commandRunning, setCommandRunning] = useState(false);
+  const [commandProgress, setCommandProgress] = useState<string>("");
+  const [commandProgressStage, setCommandProgressStage] = useState<string>("");
+  const [commandProgressMeta, setCommandProgressMeta] = useState<{
+    current: number | null;
+    total: number | null;
+    skillName: string | null;
+  }>({
+    current: null,
+    total: null,
+    skillName: null,
+  });
   const [commandResult, setCommandResult] =
     useState<SkillsCommandResult | null>(null);
   const [query, setQuery] = useState("");
@@ -295,6 +308,30 @@ export function SkillsPage({
     onDirtyChange(false);
     return () => onDirtyChange(false);
   }, [onDirtyChange]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    void listen<SkillsCommandProgressEvent>(
+      "skills-command-progress",
+      (event) => {
+        const payload = event.payload;
+        setCommandProgress(payload.message);
+        setCommandProgressStage(payload.stage);
+        setCommandProgressMeta({
+          current: payload.current ?? null,
+          total: payload.total ?? null,
+          skillName: payload.skillName ?? null,
+        });
+      },
+    ).then((dispose) => {
+      unlisten = dispose;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -476,6 +513,23 @@ export function SkillsPage({
   }, [localSkills, query, selectedCategory]);
 
   const enabledTargets = targets.filter((item) => item.enabled);
+  const commandWarnings = commandResult
+    ? extractNpmConfigWarnings(commandResult.stderr)
+    : { warningLines: [], remainingLines: [] };
+  const commandProgressPercent =
+    commandProgressMeta.current != null &&
+    commandProgressMeta.total != null &&
+    commandProgressMeta.total > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              (commandProgressMeta.current / commandProgressMeta.total) * 100,
+            ),
+          ),
+        )
+      : null;
   const selectedTarget =
     targets.find((item) => item.id === selectedTargetId) ?? null;
 
@@ -937,6 +991,8 @@ export function SkillsPage({
     },
   ) {
     setCommandRunning(true);
+    setCommandProgress(`开始执行：${describeSkillsCommand(request)}`);
+    setCommandProgressStage("starting");
     logger.info(
       `[技能] 开始执行 ${request.action}，${describeSkillsCommand(request)}`,
     );
@@ -962,7 +1018,7 @@ export function SkillsPage({
           logger.warn(`[技能] stderr: ${remainingLines.join("\n")}`);
         } else if (warningLines.length > 0) {
           logger.info(
-            `[技能] stderr 含 ${warningLines.length} 条 npm 配置告警，已折叠显示；原文可在“最近命令结果”查看`,
+            `[技能] stderr 含 ${warningLines.length} 条 npm 配置告警，已折叠显示；示例：${warningLines[0]}；原文可在“最近命令结果”查看`,
           );
         }
       } else {
@@ -977,6 +1033,13 @@ export function SkillsPage({
         result.success ? successMessage : "技能命令执行失败",
         result.success ? "success" : "error",
       );
+      if (result.success) {
+        setCommandProgress("正在刷新本地技能目录...");
+        setCommandProgressStage("refreshing");
+      } else {
+        setCommandProgress(`执行失败：${describeSkillsCommand(request)}`);
+        setCommandProgressStage("failed");
+      }
       if (result.success && request.action === "add" && sourceMeta) {
         const nextCatalog = await scanLocalSkills();
         const nextSources = { ...skillSources };
@@ -1014,7 +1077,15 @@ export function SkillsPage({
       } else {
         await refreshCatalog();
       }
+      if (result.success) {
+        setCommandProgress("正在检查同步目标状态...");
+        setCommandProgressStage("checking-targets");
+      }
       await refreshTargetStatuses();
+      if (result.success) {
+        setCommandProgress(`已完成：${describeSkillsCommand(request)}`);
+        setCommandProgressStage("done");
+      }
     } catch (error) {
       console.error("Failed to run skills command", error);
       logger.error(
@@ -1022,6 +1093,8 @@ export function SkillsPage({
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      setCommandProgress(`执行异常：${describeSkillsCommand(request)}`);
+      setCommandProgressStage("failed");
       toast("技能命令执行失败", "error");
     } finally {
       setCommandRunning(false);
@@ -1029,6 +1102,13 @@ export function SkillsPage({
   }
 
   async function handleRunCommand(action: SkillsCommandAction) {
+    setCommandProgress("");
+    setCommandProgressStage("");
+    setCommandProgressMeta({
+      current: null,
+      total: null,
+      skillName: null,
+    });
     const request =
       action === "add"
         ? {
@@ -1504,6 +1584,53 @@ export function SkillsPage({
                 ))}
               </div>
 
+              {commandProgress && (
+                <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 text-sm text-indigo-100">
+                  <div className="flex items-start gap-2">
+                    {commandRunning ? (
+                      <Loader2 className="mt-0.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCcw className="mt-0.5 h-4 w-4" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{commandProgress}</span>
+                        {commandProgressStage && (
+                          <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-indigo-200/80">
+                            {commandProgressStage}
+                          </span>
+                        )}
+                      </div>
+                      {commandProgressMeta.current != null &&
+                        commandProgressMeta.total != null && (
+                          <div className="mt-1 text-xs text-indigo-200/70">
+                            当前进度：{commandProgressMeta.current} /{" "}
+                            {commandProgressMeta.total}
+                            {commandProgressMeta.skillName
+                              ? ` · ${commandProgressMeta.skillName}`
+                              : ""}
+                          </div>
+                        )}
+                      {commandProgressPercent != null && (
+                        <div className="mt-2 w-[320px] max-w-full">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-gray-800/80">
+                            <div
+                              className="h-full rounded-full bg-indigo-400 transition-[width] duration-200 ease-out"
+                              style={{ width: `${commandProgressPercent}%` }}
+                              role="progressbar"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={commandProgressPercent}
+                              aria-label="技能更新进度"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-4 space-y-3">
                 {/* Search mode */}
                 {installMode === "search" && (
@@ -1727,12 +1854,25 @@ export function SkillsPage({
                         更新所有全局已安装技能到最新版本
                       </p>
                       <p className="mt-1 text-xs text-amber-300/70">
-                        此操作将显式以全局模式执行 skills update，
-                        更新 ~/.agents/skills 中已安装的全局技能，并刷新技能目录。
+                        此操作会基于 ~/.agents/skills 当前扫描结果，显式把
+                        {` ${localSkills.length} `}
+                        个本地技能逐个传给 skills update，并刷新技能目录。
                       </p>
                     </div>
                     <button
-                      onClick={() => void handleRunCommand("update")}
+                      onClick={() => {
+                        if (localSkills.length === 0) {
+                          toast("当前没有可更新的本地技能", "warning");
+                          return;
+                        }
+                        void executeSkillsCommand(
+                          {
+                            action: "update",
+                            skillNames: localSkills.map((skill) => skill.dir),
+                          },
+                          "技能命令执行完成",
+                        );
+                      }}
                       disabled={commandRunning}
                       className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-sm text-amber-200 transition-colors hover:border-amber-400/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
@@ -1810,15 +1950,35 @@ export function SkillsPage({
                   </div>
                 )}
                 {!commandLogExpanded && commandResult && (
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <span
-                      className={`rounded-full px-2 py-0.5 ${commandResult.success ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border border-red-500/30 bg-red-500/10 text-red-300"}`}
-                    >
-                      {commandResult.success ? "成功" : "失败"}
-                    </span>
-                    <span className="font-mono text-gray-500">
-                      {commandResult.command.join(" ")}
-                    </span>
+                  <div className="mt-2 space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 ${commandResult.success ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border border-red-500/30 bg-red-500/10 text-red-300"}`}
+                      >
+                        {commandResult.success ? "成功" : "失败"}
+                      </span>
+                      <span className="font-mono text-gray-500">
+                        {commandResult.command.join(" ")}
+                      </span>
+                    </div>
+                    {commandWarnings.warningLines.length > 0 && (
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200/90">
+                        <div>
+                          stderr 摘要：包含 {commandWarnings.warningLines.length} 条 npm 配置告警，已折叠。
+                        </div>
+                        <div className="mt-1 truncate text-amber-200/70">
+                          示例：{commandWarnings.warningLines[0]}
+                        </div>
+                      </div>
+                    )}
+                    {commandWarnings.remainingLines.length > 0 && (
+                      <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-200/90">
+                        <div>stderr 摘要：存在非 npm 告警内容。</div>
+                        <div className="mt-1 truncate text-red-200/70">
+                          示例：{commandWarnings.remainingLines[0]}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {!commandResult && (

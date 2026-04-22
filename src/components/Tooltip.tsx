@@ -5,8 +5,10 @@ type Placement = "top" | "bottom" | "left" | "right"
 
 interface TooltipProps {
   content: React.ReactNode
+  contentClassName?: string
   placement?: Placement
   delay?: number
+  interactive?: boolean
   children: React.ReactElement
   disabled?: boolean
 }
@@ -115,8 +117,10 @@ function Arrow({ placement }: { placement: Placement }) {
 
 export function Tooltip({
   content,
+  contentClassName = "",
   placement = "top",
   delay = 100,
+  interactive = false,
   children,
   disabled = false,
 }: TooltipProps) {
@@ -125,6 +129,7 @@ export function Tooltip({
   const triggerRef = useRef<HTMLElement | null>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverStateRef = useRef({ trigger: false, tooltip: false })
 
   const reposition = useCallback(() => {
     const triggerEl = triggerRef.current
@@ -156,6 +161,19 @@ export function Tooltip({
     setPos(null)
   }
 
+  function scheduleHide() {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      if (
+        interactive &&
+        (hoverStateRef.current.trigger || hoverStateRef.current.tooltip)
+      ) {
+        return
+      }
+      hide()
+    }, 80)
+  }
+
   const child = cloneElement(children, {
     ref: (el: HTMLElement | null) => {
       triggerRef.current = el
@@ -168,19 +186,23 @@ export function Tooltip({
     },
     onMouseEnter: (e: React.MouseEvent) => {
       children.props.onMouseEnter?.(e)
+      hoverStateRef.current.trigger = true
       show()
     },
     onMouseLeave: (e: React.MouseEvent) => {
       children.props.onMouseLeave?.(e)
-      hide()
+      hoverStateRef.current.trigger = false
+      scheduleHide()
     },
     onFocus: (e: React.FocusEvent) => {
       children.props.onFocus?.(e)
+      hoverStateRef.current.trigger = true
       show()
     },
     onBlur: (e: React.FocusEvent) => {
       children.props.onBlur?.(e)
-      hide()
+      hoverStateRef.current.trigger = false
+      scheduleHide()
     },
   })
 
@@ -196,11 +218,21 @@ export function Tooltip({
             top: pos ? pos.top : -9999,
             left: pos ? pos.left : -9999,
             zIndex: 9999,
-            pointerEvents: "none",
+            pointerEvents: interactive ? "auto" : "none",
             opacity: pos ? 1 : 0,
             transition: "opacity 0.12s ease",
           }}
-          className="max-w-xs rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-gray-100 shadow-xl break-all"
+          className={`max-w-xs rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-gray-100 shadow-xl break-all ${contentClassName}`}
+          onMouseEnter={() => {
+            if (!interactive) return
+            hoverStateRef.current.tooltip = true
+            if (timerRef.current) clearTimeout(timerRef.current)
+          }}
+          onMouseLeave={() => {
+            if (!interactive) return
+            hoverStateRef.current.tooltip = false
+            scheduleHide()
+          }}
         >
           {content}
           <Arrow placement={pos?.actualPlacement ?? placement} />
