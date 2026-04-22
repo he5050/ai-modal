@@ -8,6 +8,7 @@ use commands::model_config::test_model_config;
 use commands::provider::{
     list_models_by_provider, test_models_by_provider, test_single_model_by_provider,
 };
+use commands::skill_enrichment::{enrich_single_skill, resolve_system_llm};
 use commands::skills::{
     inspect_skill_targets, run_skills_command, scan_local_skills, search_online_skills,
     sync_skill_targets,
@@ -63,6 +64,8 @@ pub fn run() {
             sync_skill_targets,
             run_skills_command,
             search_online_skills,
+            resolve_system_llm,
+            enrich_single_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

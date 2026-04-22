@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
+  enrichSingleSkill,
   inspectSkillTargets,
   runSkillsCommand,
   scanLocalSkills,
@@ -18,6 +19,12 @@ import {
 } from "../lib/formStyles";
 import { logger } from "../lib/devlog";
 import {
+  getSkillDescription,
+  getSkillEnrichment,
+  getSkillTags,
+  needsSkillEnrichment,
+} from "../lib/skillEnrichment";
+import {
   ACTION_GROUP_BUTTON_ACTIVE_CLASS,
   ACTION_GROUP_BUTTON_BASE_CLASS,
   ACTION_GROUP_BUTTON_INACTIVE_CLASS,
@@ -31,8 +38,12 @@ import {
 } from "../lib/buttonStyles";
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
+import { Tooltip } from "./Tooltip";
 import type {
+  EnrichSkillRequest,
   OnlineSkill,
+  Provider,
+  SkillEnrichmentRecord,
   SkillRecord,
   SkillSourceMeta,
   SkillSourceType,
@@ -43,6 +54,7 @@ import type {
   SkillsCommandRequest,
   SkillsCommandProgressEvent,
   SkillsCommandResult,
+  SystemLlmProfile,
 } from "../types";
 import {
   Check,
@@ -57,6 +69,7 @@ import {
   Search,
   Trash2,
   Upload,
+  WandSparkles,
   X,
   ChevronDown,
   ChevronUp,
@@ -68,9 +81,24 @@ const SKILLS_CATALOG_KEY = "ai-modal-skills-catalog";
 const SKILLS_CATALOG_DB_KEY = "skills_catalog";
 const SKILL_SOURCES_KEY = "ai-modal-skill-sources";
 const SKILL_SOURCES_DB_KEY = "skills_sources";
+const SKILL_ENRICHMENTS_KEY = "ai-modal-skill-enrichments";
+const SKILL_ENRICHMENTS_DB_KEY = "skill_enrichments";
+const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
+const MODEL_CONFIGS_DB_KEY = "model_configs";
 
 type InstallMode = "search" | "github" | "local" | "update" | "remove";
 type SkillsTab = "list" | "manage";
+type SkillAnnotationMode = "full" | "incremental";
+type PersistedModelConfig = {
+  id: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  lastTestAt?: number | null;
+  lastTestResult?: {
+    supported_protocols?: string[];
+  } | null;
+};
 
 type BuiltinSkillTarget = {
   id: string;
@@ -251,8 +279,12 @@ function extractNpmConfigWarnings(stderr: string) {
 
 export function SkillsPage({
   onDirtyChange,
+  providers = [],
+  enrichmentDelayMs = 5000,
 }: {
   onDirtyChange: (dirty: boolean) => void;
+  providers?: Provider[];
+  enrichmentDelayMs?: number;
 }) {
   const [homePath, setHomePath] = useState("");
   const [targetsReady, setTargetsReady] = useState(false);
@@ -264,7 +296,28 @@ export function SkillsPage({
     Record<string, SkillTargetStatus>
   >({});
   const [catalog, setCatalog] = useState<SkillsCatalogSnapshot | null>(null);
+  const [skillEnrichments, setSkillEnrichments] = useState<
+    Record<string, SkillEnrichmentRecord>
+  >({});
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [loadingLlmProfiles, setLoadingLlmProfiles] = useState(false);
+  const [modelConfigs, setModelConfigs] = useState<PersistedModelConfig[]>([]);
+  const [selectedLlmProfileId, setSelectedLlmProfileId] = useState("");
+  const [enrichmentQueueRunning, setEnrichmentQueueRunning] = useState(false);
+  const [enrichmentQueuePhase, setEnrichmentQueuePhase] = useState<
+    "idle" | "waiting" | "running" | "stopped" | "done"
+  >("idle");
+  const [enrichmentQueueTotal, setEnrichmentQueueTotal] = useState(0);
+  const [enrichmentQueueCompleted, setEnrichmentQueueCompleted] = useState(0);
+  const [currentEnrichmentSkillDir, setCurrentEnrichmentSkillDir] = useState<
+    string | null
+  >(null);
+  const [nextEnrichmentRunAt, setNextEnrichmentRunAt] = useState<number | null>(
+    null,
+  );
+  const [enrichmentQueueMessage, setEnrichmentQueueMessage] = useState("");
+  const [queueNow, setQueueNow] = useState(Date.now());
+  const [annotationModalOpen, setAnnotationModalOpen] = useState(false);
   const [checkingTargets, setCheckingTargets] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [commandRunning, setCommandRunning] = useState(false);
@@ -293,6 +346,8 @@ export function SkillsPage({
   const [customPath, setCustomPath] = useState("");
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [pathDraft, setPathDraft] = useState("");
+  const enrichmentRunIdRef = useRef(0);
+  const stopEnrichmentRef = useRef(false);
 
   // Online search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -308,6 +363,13 @@ export function SkillsPage({
     onDirtyChange(false);
     return () => onDirtyChange(false);
   }, [onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      stopEnrichmentRef.current = true;
+      enrichmentRunIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -338,7 +400,15 @@ export function SkillsPage({
 
     async function bootstrapTargets() {
       try {
-        const [home, raw, storedSources, storedCatalog] = await Promise.all([
+        const [
+          home,
+          raw,
+          storedSources,
+          storedCatalog,
+          storedEnrichments,
+          storedModelConfigs,
+        ] =
+          await Promise.all([
           homeDir().catch(() => ""),
           loadPersistedJson<unknown[]>(
             SKILL_TARGETS_DB_KEY,
@@ -354,6 +424,16 @@ export function SkillsPage({
             SKILLS_CATALOG_DB_KEY,
             SKILLS_CATALOG_KEY,
             createEmptyCatalog(),
+          ),
+          loadPersistedJson<Record<string, SkillEnrichmentRecord>>(
+            SKILL_ENRICHMENTS_DB_KEY,
+            SKILL_ENRICHMENTS_KEY,
+            {},
+          ),
+          loadPersistedJson<PersistedModelConfig[]>(
+            MODEL_CONFIGS_DB_KEY,
+            MODEL_CONFIGS_KEY,
+            [],
           ),
         ]);
         if (!active) return;
@@ -374,6 +454,10 @@ export function SkillsPage({
         setHomePath(home);
         setTargets([...mergedBuiltins, ...customTargets]);
         setSkillSources(storedSources);
+        setSkillEnrichments(storedEnrichments);
+        setModelConfigs(
+          Array.isArray(storedModelConfigs) ? storedModelConfigs : [],
+        );
         setCatalog(
           storedCatalog && storedCatalog.sourceDir
             ? mergeCatalogWithSources(storedCatalog, storedSources)
@@ -416,6 +500,17 @@ export function SkillsPage({
       console.error("Failed to persist skill sources", error);
     });
   }, [skillSources, targetsReady]);
+
+  useEffect(() => {
+    if (!targetsReady) return;
+    void savePersistedJson(
+      SKILL_ENRICHMENTS_DB_KEY,
+      skillEnrichments,
+      SKILL_ENRICHMENTS_KEY,
+    ).catch((error) => {
+      console.error("Failed to persist skill enrichments", error);
+    });
+  }, [skillEnrichments, targetsReady]);
 
   async function refreshCatalog(nextSources?: Record<string, SkillSourceMeta>) {
     setLoadingCatalog(true);
@@ -465,6 +560,34 @@ export function SkillsPage({
     if (!targetsReady) return;
     void refreshTargetStatuses();
   }, [targets, targetsReady]);
+
+  useEffect(() => {
+    if (!nextEnrichmentRunAt) return;
+    const timer = window.setInterval(() => {
+      setQueueNow(Date.now());
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [nextEnrichmentRunAt]);
+
+  async function refreshLlmProfiles() {
+    setLoadingLlmProfiles(true);
+    try {
+      const storedModelConfigs = await loadPersistedJson<PersistedModelConfig[]>(
+        MODEL_CONFIGS_DB_KEY,
+        MODEL_CONFIGS_KEY,
+        [],
+      );
+      setModelConfigs(Array.isArray(storedModelConfigs) ? storedModelConfigs : []);
+    } catch (error) {
+      console.error("Failed to refresh ai-modal llm profiles", error);
+    } finally {
+      setLoadingLlmProfiles(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshLlmProfiles();
+  }, []);
   // Auto-load top skills when switching to search tab
   useEffect(() => {
     if (installMode === "search" && !searched) {
@@ -493,24 +616,236 @@ export function SkillsPage({
   const categories = useMemo(() => {
     const values = new Set<string>();
     localSkills.forEach((skill) => {
-      skill.categories.forEach((category) => values.add(category));
+      getSkillTags(skill, skillEnrichments).forEach((category) =>
+        values.add(category),
+      );
     });
     return ["全部", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
-  }, [localSkills]);
+  }, [localSkills, skillEnrichments]);
 
   const filteredSkills = useMemo(() => {
     return localSkills.filter((skill) => {
       const matchesQuery =
         !query.trim() ||
         skill.name.toLowerCase().includes(query.trim().toLowerCase()) ||
-        skill.description.toLowerCase().includes(query.trim().toLowerCase()) ||
+        getSkillDescription(skill, skillEnrichments)
+          .toLowerCase()
+          .includes(query.trim().toLowerCase()) ||
         skill.dir.toLowerCase().includes(query.trim().toLowerCase());
+      const displayTags = getSkillTags(skill, skillEnrichments);
       const matchesCategory =
-        selectedCategory === "全部" ||
-        skill.categories.includes(selectedCategory);
+        selectedCategory === "全部" || displayTags.includes(selectedCategory);
       return matchesQuery && matchesCategory;
     });
-  }, [localSkills, query, selectedCategory]);
+  }, [localSkills, query, selectedCategory, skillEnrichments]);
+  const incrementalAnnotationSkills = useMemo(
+    () =>
+      filteredSkills.filter((skill) =>
+        needsSkillEnrichment(skill, skillEnrichments),
+      ),
+    [filteredSkills, skillEnrichments],
+  );
+
+  const availableLlmProfiles = useMemo(() => {
+    const modelConfigProfiles = modelConfigs
+      .filter(
+        (config) =>
+          config.baseUrl?.trim() &&
+          config.apiKey?.trim() &&
+          config.model?.trim(),
+      )
+      .map((config) => ({
+        toolId: `aimodal:model-config:${config.id}`,
+        label: "AIModal 模型配置",
+        sourcePath: "ai-modal:model_configs",
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+        requestKind: "openai-chat" as const,
+        protocols: config.lastTestResult?.supported_protocols ?? ["openai"],
+        updatedAt: config.lastTestAt ?? 0,
+      }));
+    modelConfigProfiles.sort(
+      (left, right) =>
+        (right.updatedAt ?? 0) - (left.updatedAt ?? 0) ||
+        left.label.localeCompare(right.label),
+    );
+    return modelConfigProfiles;
+  }, [modelConfigs]);
+
+  const selectedLlmProfile =
+    availableLlmProfiles.find((profile) => profile.toolId === selectedLlmProfileId) ??
+    availableLlmProfiles[0] ??
+    null;
+
+  useEffect(() => {
+    if (!selectedLlmProfileId && selectedLlmProfile) {
+      setSelectedLlmProfileId(selectedLlmProfile.toolId);
+    }
+  }, [selectedLlmProfile, selectedLlmProfileId]);
+
+  function buildEnrichmentErrorRecord(
+    skill: SkillRecord,
+    profile: SystemLlmProfile,
+    errorMessage: string,
+  ): SkillEnrichmentRecord {
+    return {
+      skillDir: skill.dir,
+      skillPath: skill.path,
+      sourceUpdatedAt: skill.updatedAt ?? null,
+      sourceDescription: skill.description,
+      localizedDescription: "",
+      fullDescription: "",
+      contentSummary: "",
+      usage: "",
+      scenarios: "",
+      tags: [],
+      status: "error",
+      providerLabel: profile.label,
+      model: profile.model,
+      requestKind: profile.requestKind,
+      rawResponse: null,
+      errorMessage,
+      enrichedAt: Date.now(),
+    };
+  }
+
+  async function waitForNextEnrichment(runId: number) {
+    const target = Date.now() + enrichmentDelayMs;
+    setEnrichmentQueuePhase("waiting");
+    setNextEnrichmentRunAt(target);
+    while (Date.now() < target) {
+      if (stopEnrichmentRef.current || enrichmentRunIdRef.current !== runId) {
+        break;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(200, enrichmentDelayMs)),
+      );
+    }
+    setNextEnrichmentRunAt(null);
+  }
+
+  function stopEnrichmentQueue() {
+    stopEnrichmentRef.current = true;
+    enrichmentRunIdRef.current += 1;
+    setEnrichmentQueueRunning(false);
+    setEnrichmentQueuePhase("stopped");
+    setEnrichmentQueueMessage("已停止当前富化队列");
+    setCurrentEnrichmentSkillDir(null);
+    setNextEnrichmentRunAt(null);
+  }
+
+  async function handleRunEnrichmentQueue(
+    mode: SkillAnnotationMode = "full",
+  ) {
+    const targetSkills =
+      mode === "incremental" ? incrementalAnnotationSkills : filteredSkills;
+    if (!selectedLlmProfile) {
+      toast("未解析到 AIModal 内可用的 LLM 参数，请先在配置管理中写入并保存", "warning");
+      return;
+    }
+    if (targetSkills.length === 0) {
+      toast(
+        mode === "incremental"
+          ? "当前筛选结果里没有需要增量注解的技能"
+          : "当前筛选结果里没有可注解的技能",
+        "warning",
+      );
+      return;
+    }
+
+    stopEnrichmentRef.current = false;
+    const runId = Date.now();
+    enrichmentRunIdRef.current = runId;
+    setEnrichmentQueueRunning(true);
+    setEnrichmentQueuePhase("running");
+    setEnrichmentQueueTotal(targetSkills.length);
+    setEnrichmentQueueCompleted(0);
+    setEnrichmentQueueMessage(
+      `准备使用 ${selectedLlmProfile.label} 执行${mode === "incremental" ? "增量" : "全量"}技能注解`,
+    );
+    setAnnotationModalOpen(true);
+
+    for (let index = 0; index < targetSkills.length; index += 1) {
+      if (stopEnrichmentRef.current || enrichmentRunIdRef.current !== runId) {
+        break;
+      }
+      const skill = targetSkills[index];
+      setCurrentEnrichmentSkillDir(skill.dir);
+      setEnrichmentQueuePhase("running");
+      setEnrichmentQueueMessage(`正在注解 ${skill.name}`);
+
+      setSkillEnrichments((current) => ({
+        ...current,
+        [skill.dir]: {
+          skillDir: skill.dir,
+          skillPath: skill.path,
+          sourceUpdatedAt: skill.updatedAt ?? null,
+          sourceDescription: skill.description,
+          localizedDescription: current[skill.dir]?.localizedDescription ?? "",
+          fullDescription: current[skill.dir]?.fullDescription ?? "",
+          contentSummary: current[skill.dir]?.contentSummary ?? "",
+          usage: current[skill.dir]?.usage ?? "",
+          scenarios: current[skill.dir]?.scenarios ?? "",
+          tags: current[skill.dir]?.tags ?? [],
+          status: "running",
+          providerLabel: selectedLlmProfile.label,
+          model: selectedLlmProfile.model,
+          requestKind: selectedLlmProfile.requestKind,
+          rawResponse: current[skill.dir]?.rawResponse ?? null,
+          errorMessage: null,
+          enrichedAt: current[skill.dir]?.enrichedAt ?? null,
+        },
+      }));
+
+      try {
+        const request: EnrichSkillRequest = {
+          baseUrl: selectedLlmProfile.baseUrl,
+          apiKey: selectedLlmProfile.apiKey,
+          model: selectedLlmProfile.model,
+          requestKind: selectedLlmProfile.requestKind,
+          protocols: selectedLlmProfile.protocols,
+          skillDir: skill.dir,
+          skillPath: skill.path,
+          description: skill.description,
+          categories: skill.categories,
+          updatedAt: skill.updatedAt ?? null,
+          providerLabel: selectedLlmProfile.label,
+        };
+        // eslint-disable-next-line no-await-in-loop
+        const enriched = await enrichSingleSkill(request);
+        setSkillEnrichments((current) => ({
+          ...current,
+          [skill.dir]: enriched,
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSkillEnrichments((current) => ({
+          ...current,
+          [skill.dir]: buildEnrichmentErrorRecord(
+            skill,
+            selectedLlmProfile,
+            message,
+          ),
+        }));
+      }
+
+      setEnrichmentQueueCompleted(index + 1);
+      if (index < targetSkills.length - 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await waitForNextEnrichment(runId);
+      }
+    }
+
+    if (enrichmentRunIdRef.current === runId && !stopEnrichmentRef.current) {
+      setEnrichmentQueueRunning(false);
+      setEnrichmentQueuePhase("done");
+      setCurrentEnrichmentSkillDir(null);
+      setEnrichmentQueueMessage("技能注解队列已完成");
+      toast("技能注解完成", "success");
+    }
+  }
 
   const enabledTargets = targets.filter((item) => item.enabled);
   const commandWarnings = commandResult
@@ -532,6 +867,19 @@ export function SkillsPage({
       : null;
   const selectedTarget =
     targets.find((item) => item.id === selectedTargetId) ?? null;
+  const nextEnrichmentSeconds = nextEnrichmentRunAt
+    ? Math.max(0, Math.ceil((nextEnrichmentRunAt - queueNow) / 1000))
+    : null;
+  const enrichmentProgressPercent =
+    enrichmentQueueTotal > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round((enrichmentQueueCompleted / enrichmentQueueTotal) * 100),
+          ),
+        )
+      : 0;
 
   function setTargetEnabled(id: string, enabled: boolean) {
     setTargets((prev) =>
@@ -1185,10 +1533,47 @@ export function SkillsPage({
                   {catalog?.sourceDir || "~/.agents/skills"}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2 text-xs text-gray-300">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">当前请求 LLM</span>
+                    {loadingLlmProfiles && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-500" />
+                    )}
+                  </div>
+                  {selectedLlmProfile ? (
+                    <div className="mt-1">
+                      <div className="font-medium text-gray-100">
+                        {selectedLlmProfile.label} · {selectedLlmProfile.model}
+                      </div>
+                      <div className="mt-1 text-[11px] text-gray-500">
+                        来源：系统配置 / LLM 配置
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-[11px] text-amber-300">
+                      未识别到系统配置中已保存的 LLM 配置
+                    </div>
+                  )}
+                </div>
                 <span className="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs text-gray-300">
                   {catalog?.totalSkills ?? 0} 个技能
                 </span>
+                {enrichmentQueuePhase !== "idle" && (
+                  <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-100">
+                    <div>{enrichmentQueueMessage || "技能富化队列运行中"}</div>
+                    <div className="mt-1 text-indigo-200/70">
+                      {enrichmentQueueCompleted}/{enrichmentQueueTotal}
+                      {currentEnrichmentSkillDir
+                        ? ` · 当前 ${currentEnrichmentSkillDir}`
+                        : ""}
+                      {enrichmentQueuePhase === "waiting" &&
+                      nextEnrichmentSeconds != null
+                        ? ` · ${nextEnrichmentSeconds}s 后继续`
+                        : ""}
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={() => void refreshCatalog()}
                   disabled={loadingCatalog}
@@ -1211,6 +1596,38 @@ export function SkillsPage({
                 >
                   <FolderOpen className="h-4 w-4" />
                   打开目录
+                </button>
+                <button
+                  onClick={() => void refreshLlmProfiles()}
+                  disabled={loadingLlmProfiles}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  {loadingLlmProfiles ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="h-4 w-4" />
+                  )}
+                  刷新 LLM
+                </button>
+                <button
+                  onClick={() => setAnnotationModalOpen(true)}
+                  disabled={enrichmentQueueRunning || !selectedLlmProfile}
+                  className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  {enrichmentQueueRunning ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <WandSparkles className="h-4 w-4" />
+                  )}
+                  技能注解
+                </button>
+                <button
+                  onClick={stopEnrichmentQueue}
+                  disabled={!enrichmentQueueRunning}
+                  className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  <X className="h-4 w-4" />
+                  停止
                 </button>
               </div>
             </div>
@@ -1247,6 +1664,80 @@ export function SkillsPage({
                 >
                   <div className="flex h-full flex-col justify-between gap-3">
                     <div className="min-w-0">
+                      {(() => {
+                        const enrichment = getSkillEnrichment(
+                          skill,
+                          skillEnrichments,
+                        );
+                        const displayTags = getSkillTags(
+                          skill,
+                          skillEnrichments,
+                        );
+                        const displayDescription = getSkillDescription(
+                          skill,
+                          skillEnrichments,
+                        );
+                        const tooltipContent = (
+                          <div className="overflow-hidden rounded-2xl">
+                            <div className="border-b border-gray-800 px-4 py-3">
+                              <div className="text-sm font-semibold text-white">
+                                {skill.name}
+                              </div>
+                              <div className="mt-1 text-[11px] text-gray-500">
+                                {skill.dir}
+                              </div>
+                            </div>
+                            <div className="max-h-[420px] space-y-4 overflow-y-auto px-4 py-4 text-sm">
+                              {[
+                                ["完整介绍", enrichment?.fullDescription || skill.description || "暂无说明"],
+                                ["内容摘要", enrichment?.contentSummary || "暂无摘要"],
+                                ["用法", enrichment?.usage || "暂无用法说明"],
+                                ["使用场景", enrichment?.scenarios || "暂无场景说明"],
+                              ].map(([label, content]) => (
+                                <div key={label}>
+                                  <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                    {label}
+                                  </div>
+                                  <div className="mt-1 whitespace-pre-wrap leading-6 text-gray-200">
+                                    {content}
+                                  </div>
+                                </div>
+                              ))}
+                              <div>
+                                <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                  功能标签
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {displayTags.length > 0 ? (
+                                    displayTags.map((tag) => (
+                                      <span
+                                        key={`${skill.dir}-tooltip-${tag}`}
+                                        className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-300"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-gray-500">暂无标签</span>
+                                  )}
+                                </div>
+                              </div>
+                              {enrichment?.errorMessage && (
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-[0.16em] text-red-300/80">
+                                    最近失败
+                                  </div>
+                                  <div className="mt-1 whitespace-pre-wrap leading-6 text-red-200">
+                                    {enrichment.errorMessage}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+
+                        return (
+                          <>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-gray-100">
@@ -1289,7 +1780,7 @@ export function SkillsPage({
                             internal
                           </span>
                         )}
-                        {skill.categories.slice(0, 3).map((category) => (
+                        {displayTags.slice(0, 4).map((category) => (
                           <span
                             key={category}
                             className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400"
@@ -1297,15 +1788,46 @@ export function SkillsPage({
                             {category}
                           </span>
                         ))}
-                        {skill.categories.length > 3 && (
+                        {displayTags.length > 4 && (
                           <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-500">
-                            +{skill.categories.length - 3}
+                            +{displayTags.length - 4}
+                          </span>
+                        )}
+                        {enrichment?.status && enrichment.status !== "success" && (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] ${
+                              enrichment.status === "error"
+                                ? "border border-red-500/30 bg-red-500/10 text-red-200"
+                                : enrichment.status === "running"
+                                  ? "border border-indigo-500/30 bg-indigo-500/10 text-indigo-200"
+                                  : "border border-gray-700 bg-gray-950 text-gray-400"
+                            }`}
+                          >
+                            {enrichment.status === "running"
+                              ? "处理中"
+                              : enrichment.status === "error"
+                                ? "失败"
+                                : enrichment.status}
                           </span>
                         )}
                       </div>
-                      <p className="mt-3 line-clamp-3 text-xs leading-5 text-gray-400">
-                        {skill.description || "暂无说明"}
-                      </p>
+                      <Tooltip
+                        placement="bottom"
+                        interactive
+                        contentClassName="w-[560px] max-w-[560px] rounded-2xl border-gray-700 bg-gray-900/98 p-0 shadow-2xl"
+                        content={tooltipContent}
+                      >
+                        <button
+                          type="button"
+                          className="mt-3 line-clamp-3 w-full text-left text-xs leading-5 text-gray-400 transition-colors hover:text-gray-200"
+                          aria-label={`查看 ${skill.name} 的技能详情`}
+                        >
+                          {displayDescription}
+                        </button>
+                      </Tooltip>
+                      </>
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center justify-between gap-2 border-t border-gray-800 pt-2">
                       <div className="flex min-w-0 flex-col">
@@ -2023,6 +2545,142 @@ export function SkillsPage({
                 <Trash2 className="h-4 w-4" />
                 确认移除
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {annotationModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-white">技能注解</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-400">
+                  使用系统配置里已保存的 LLM 参数，对当前筛选范围内的技能做一次中文注解处理。
+                </p>
+              </div>
+              {!enrichmentQueueRunning && (
+                <button
+                  onClick={() => setAnnotationModalOpen(false)}
+                  className="text-gray-500 transition-colors hover:text-gray-300"
+                  aria-label="关闭技能注解弹窗"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-xl border border-gray-800 bg-black/10 px-4 py-3 text-sm text-gray-300">
+              <div>
+                当前 LLM：
+                <span className="ml-1 font-medium text-gray-100">
+                  {selectedLlmProfile
+                    ? `${selectedLlmProfile.label} · ${selectedLlmProfile.model}`
+                    : "未识别"}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                当前筛选技能：{filteredSkills.length} 个
+              </div>
+            </div>
+
+            {enrichmentQueuePhase !== "idle" && (
+              <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-indigo-100">
+                      {enrichmentQueueMessage || "技能注解任务运行中"}
+                    </div>
+                    <div className="mt-1 text-xs text-indigo-200/75">
+                      {enrichmentQueueCompleted}/{enrichmentQueueTotal}
+                      {currentEnrichmentSkillDir
+                        ? ` · 当前 ${currentEnrichmentSkillDir}`
+                        : ""}
+                      {enrichmentQueuePhase === "waiting" &&
+                      nextEnrichmentSeconds != null
+                        ? ` · ${nextEnrichmentSeconds}s 后继续`
+                        : ""}
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.16em] text-indigo-100/80">
+                    {enrichmentQueuePhase}
+                  </span>
+                </div>
+
+                <div className="mt-3">
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-800/80">
+                    <div
+                      className="h-full rounded-full bg-indigo-400 transition-[width] duration-200 ease-out"
+                      style={{ width: `${enrichmentProgressPercent}%` }}
+                      role="progressbar"
+                      aria-label="技能注解进度"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={enrichmentProgressPercent}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <button
+                onClick={() => void handleRunEnrichmentQueue("full")}
+                disabled={
+                  enrichmentQueueRunning ||
+                  !selectedLlmProfile ||
+                  filteredSkills.length === 0
+                }
+                className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-left transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <WandSparkles className="h-4 w-4 text-indigo-200" />
+                  全量注解
+                </div>
+                <p className="mt-2 text-xs leading-6 text-gray-400">
+                  对当前筛选结果里的 {filteredSkills.length} 个技能全部重新处理一次。
+                </p>
+              </button>
+
+              <button
+                onClick={() => void handleRunEnrichmentQueue("incremental")}
+                disabled={
+                  enrichmentQueueRunning ||
+                  !selectedLlmProfile ||
+                  incrementalAnnotationSkills.length === 0
+                }
+                className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <RefreshCcw className="h-4 w-4 text-emerald-200" />
+                  增量注解
+                </div>
+                <p className="mt-2 text-xs leading-6 text-gray-400">
+                  仅处理未成功注解，或源 skill 已变化的
+                  {incrementalAnnotationSkills.length} 个技能。
+                </p>
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              {enrichmentQueueRunning ? (
+                <button
+                  onClick={stopEnrichmentQueue}
+                  className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  <X className="h-4 w-4" />
+                  停止注解
+                </button>
+              ) : (
+                <button
+                  onClick={() => setAnnotationModalOpen(false)}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  <X className="h-4 w-4" />
+                  关闭
+                </button>
+              )}
             </div>
           </div>
         </div>

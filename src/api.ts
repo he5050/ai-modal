@@ -1,12 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  EnrichSkillRequest,
   ModelResult,
   OnlineSearchResponse,
+  SkillEnrichmentRecord,
   SkillTargetConfig,
   SkillTargetStatus,
   SkillsCatalogSnapshot,
   SkillsCommandRequest,
   SkillsCommandResult,
+  SystemLlmSnapshot,
   SyncSkillTargetResult,
 } from "./types";
 
@@ -94,4 +97,14 @@ export async function searchOnlineSkills(
     limit,
     source: source ?? null,
   });
+}
+
+export async function resolveSystemLlm(): Promise<SystemLlmSnapshot> {
+  return invoke("resolve_system_llm");
+}
+
+export async function enrichSingleSkill(
+  request: EnrichSkillRequest,
+): Promise<SkillEnrichmentRecord> {
+  return invoke("enrich_single_skill", { request });
 }

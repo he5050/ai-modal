@@ -616,7 +616,12 @@ export default function App() {
             onSaveResult={handleSaveResult}
           />
         )}
-        {page === "skills" && <SkillsPage onDirtyChange={setEditingDirty} />}
+        {page === "skills" && (
+          <SkillsPage
+            providers={providers}
+            onDirtyChange={setEditingDirty}
+          />
+        )}
         {page === "prompts" && (
           <Suspense fallback={<PageFallback />}>
             <PromptsPage

@@ -110,6 +110,71 @@ export interface SkillRecord {
   hasSkillFile: boolean;
 }
 
+export type LlmRequestKind =
+  | "openai-chat"
+  | "openai-responses"
+  | "claude"
+  | "gemini";
+
+export interface SystemLlmProfile {
+  toolId: string;
+  label: string;
+  sourcePath: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  requestKind: LlmRequestKind;
+  protocols: string[];
+  updatedAt?: number | null;
+}
+
+export interface SystemLlmSnapshot {
+  current: SystemLlmProfile | null;
+  profiles: SystemLlmProfile[];
+}
+
+export type SkillEnrichmentStatus =
+  | "idle"
+  | "pending"
+  | "running"
+  | "success"
+  | "error"
+  | "stale";
+
+export interface SkillEnrichmentRecord {
+  skillDir: string;
+  skillPath: string;
+  sourceUpdatedAt?: number | null;
+  sourceDescription: string;
+  localizedDescription: string;
+  fullDescription: string;
+  contentSummary: string;
+  usage: string;
+  scenarios: string;
+  tags: string[];
+  status: SkillEnrichmentStatus;
+  providerLabel?: string | null;
+  model: string;
+  requestKind: LlmRequestKind;
+  rawResponse?: string | null;
+  errorMessage?: string | null;
+  enrichedAt?: number | null;
+}
+
+export interface EnrichSkillRequest {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  requestKind: LlmRequestKind;
+  protocols?: string[] | null;
+  skillDir: string;
+  skillPath: string;
+  description: string;
+  categories: string[];
+  updatedAt?: number | null;
+  providerLabel?: string | null;
+}
+
 export type SkillSourceType = "github" | "npx" | "local" | "manual" | "unknown";
 
 export interface SkillsCatalogSnapshot {

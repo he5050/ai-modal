@@ -1,4 +1,5 @@
 use reqwest::{Client, RequestBuilder};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -73,6 +74,15 @@ fn collect_response_headers(headers: &reqwest::header::HeaderMap) -> BTreeMap<St
 pub enum ModelProtocol {
     OpenAi,
     OpenRouter,
+    Claude,
+    Gemini,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LlmRequestKind {
+    OpenAiChat,
+    OpenAiResponses,
     Claude,
     Gemini,
 }
@@ -189,6 +199,14 @@ pub fn infer_protocol_from_base_url(base_url: &str) -> ModelProtocol {
 fn client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(10))
+        .use_rustls_tls()
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn generation_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(Duration::from_secs(45))
         .use_rustls_tls()
         .build()
         .map_err(|e| e.to_string())
@@ -535,6 +553,180 @@ fn build_test_body(protocol: ModelProtocol, model: &str) -> Value {
             }
         }),
     }
+}
+
+pub async fn generate_text(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    request_kind: LlmRequestKind,
+    prompt: &str,
+) -> Result<String, String> {
+    let client = generation_client()?;
+    let protocol = match request_kind {
+        LlmRequestKind::OpenAiChat | LlmRequestKind::OpenAiResponses => {
+            infer_protocol_from_base_url(base_url)
+        }
+        LlmRequestKind::Claude => ModelProtocol::Claude,
+        LlmRequestKind::Gemini => ModelProtocol::Gemini,
+    };
+
+    let url = match request_kind {
+        LlmRequestKind::OpenAiChat => build_openai_style_url(base_url, "chat/completions"),
+        LlmRequestKind::OpenAiResponses => build_openai_style_url(base_url, "responses"),
+        LlmRequestKind::Claude => build_claude_url(base_url, "messages"),
+        LlmRequestKind::Gemini => {
+            let base = normalize_gemini_base(base_url);
+            let model_path = normalize_gemini_model_path(model);
+            format!("{}/{}:generateContent", base, model_path)
+        }
+    };
+
+    let body = match request_kind {
+        LlmRequestKind::OpenAiChat => json!({
+            "model": model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "stream": false,
+            "temperature": 0.2,
+            "max_completion_tokens": 1400
+        }),
+        LlmRequestKind::OpenAiResponses => json!({
+            "model": model,
+            "input": prompt,
+            "max_output_tokens": 1400
+        }),
+        LlmRequestKind::Claude => json!({
+            "model": model,
+            "max_tokens": 1400,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }),
+        LlmRequestKind::Gemini => json!({
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 1400,
+                "temperature": 0.2
+            }
+        }),
+    };
+
+    let response = apply_auth(client.post(&url), protocol, api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|error| classify_error(None, &error.to_string()))?;
+
+    let status = response.status().as_u16();
+    let raw_text = response
+        .text()
+        .await
+        .map_err(|error| format!("读取 LLM 响应失败：{error}"))?;
+
+    if !(200..300).contains(&status) {
+        return Err(classify_error(Some(status), &raw_text));
+    }
+
+    parse_generation_text(request_kind, &raw_text)
+}
+
+fn parse_generation_text(request_kind: LlmRequestKind, raw_text: &str) -> Result<String, String> {
+    let value: Value =
+        serde_json::from_str(raw_text).map_err(|error| format!("解析 LLM 响应失败：{error}"))?;
+
+    let maybe_text = match request_kind {
+        LlmRequestKind::OpenAiChat => value
+            .get("choices")
+            .and_then(|choices| choices.as_array())
+            .and_then(|choices| choices.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("content"))
+            .and_then(extract_content_string),
+        LlmRequestKind::OpenAiResponses => value
+            .get("output_text")
+            .and_then(|text| text.as_str())
+            .map(|text| text.to_string())
+            .or_else(|| {
+                value
+                    .get("output")
+                    .and_then(|output| output.as_array())
+                    .and_then(|output| output.first())
+                    .and_then(|entry| entry.get("content"))
+                    .and_then(|content| content.as_array())
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|part| {
+                                part.get("text")
+                                    .and_then(|text| text.as_str())
+                                    .map(|text| text.to_string())
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+            }),
+        LlmRequestKind::Claude => value
+            .get("content")
+            .and_then(|content| content.as_array())
+            .map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|part| {
+                        part.get("text")
+                            .and_then(|text| text.as_str())
+                            .map(|text| text.to_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }),
+        LlmRequestKind::Gemini => value
+            .get("candidates")
+            .and_then(|candidates| candidates.as_array())
+            .and_then(|candidates| candidates.first())
+            .and_then(|candidate| candidate.get("content"))
+            .and_then(|content| content.get("parts"))
+            .and_then(|parts| parts.as_array())
+            .map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|part| {
+                        part.get("text")
+                            .and_then(|text| text.as_str())
+                            .map(|text| text.to_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }),
+    };
+
+    let text = maybe_text
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| "LLM 响应中未解析到文本内容".to_string())?;
+
+    Ok(text)
+}
+
+fn extract_content_string(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+
+    value.as_array().map(|items| {
+        items
+            .iter()
+            .filter_map(|item| {
+                item.get("text")
+                    .and_then(|text| text.as_str())
+                    .map(|text| text.to_string())
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
 }
 
 fn parse_models_response(protocol: ModelProtocol, body: &str) -> Result<Vec<String>, String> {

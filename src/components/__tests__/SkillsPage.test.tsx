@@ -1,12 +1,15 @@
+import type { ComponentProps } from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SkillsPage } from '../SkillsPage'
 import type {
+  SkillEnrichmentRecord,
   SkillTargetConfig,
   SkillTargetStatus,
   SkillsCatalogSnapshot,
   SkillsCommandResult,
+  SystemLlmSnapshot,
 } from '../../types'
 
 const {
@@ -15,10 +18,12 @@ const {
   mockOpenPath,
   mockScanLocalSkills,
   mockInspectSkillTargets,
-  mockRunSkillsCommand,
-  mockSearchOnlineSkills,
-  mockSyncSkillTargets,
-  mockListen,
+    mockRunSkillsCommand,
+    mockSearchOnlineSkills,
+    mockSyncSkillTargets,
+    mockResolveSystemLlm,
+    mockEnrichSingleSkill,
+    mockListen,
   mockLoadPersistedJson,
   mockSavePersistedJson,
   mockToast,
@@ -29,10 +34,12 @@ const {
   mockOpenPath: vi.fn(),
   mockScanLocalSkills: vi.fn(),
   mockInspectSkillTargets: vi.fn(),
-  mockRunSkillsCommand: vi.fn(),
-  mockSearchOnlineSkills: vi.fn(),
-  mockSyncSkillTargets: vi.fn(),
-  mockListen: vi.fn(),
+      mockRunSkillsCommand: vi.fn(),
+      mockSearchOnlineSkills: vi.fn(),
+      mockSyncSkillTargets: vi.fn(),
+      mockResolveSystemLlm: vi.fn(),
+      mockEnrichSingleSkill: vi.fn(),
+      mockListen: vi.fn(),
   mockLoadPersistedJson: vi.fn(),
   mockSavePersistedJson: vi.fn(),
   mockToast: vi.fn(),
@@ -67,6 +74,8 @@ vi.mock('../../api', () => ({
   runSkillsCommand: mockRunSkillsCommand,
   searchOnlineSkills: mockSearchOnlineSkills,
   syncSkillTargets: mockSyncSkillTargets,
+  resolveSystemLlm: mockResolveSystemLlm,
+  enrichSingleSkill: mockEnrichSingleSkill,
 }))
 
 vi.mock('../../lib/persistence', () => ({
@@ -139,6 +148,51 @@ function createCommandResult(
   }
 }
 
+function createSystemLlmSnapshot(
+  overrides: Partial<SystemLlmSnapshot> = {},
+): SystemLlmSnapshot {
+  return {
+    current: {
+      toolId: 'codex',
+      label: 'Codex',
+      sourcePath: '/Users/test/.codex/config.toml',
+      baseUrl: 'https://llm.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-5.4',
+      requestKind: 'openai-responses',
+      protocols: ['openai'],
+      updatedAt: Date.now(),
+    },
+    profiles: [],
+    ...overrides,
+  }
+}
+
+function createEnrichmentRecord(
+  overrides: Partial<SkillEnrichmentRecord> = {},
+): SkillEnrichmentRecord {
+  return {
+    skillDir: 'demo-skill',
+    skillPath: '/Users/test/.agents/skills/demo-skill',
+    sourceUpdatedAt: Date.now(),
+    sourceDescription: 'demo description',
+    localizedDescription: '这是一个中文技能简介',
+    fullDescription: '这是一个用于测试的完整中文技能介绍。',
+    contentSummary: '内容摘要',
+    usage: '用法说明',
+    scenarios: '使用场景说明',
+    tags: ['自动化', '工具链'],
+    status: 'success',
+    providerLabel: 'Codex',
+    model: 'gpt-5.4',
+    requestKind: 'openai-responses',
+    rawResponse: '{}',
+    errorMessage: null,
+    enrichedAt: Date.now(),
+    ...overrides,
+  }
+}
+
 const builtinTargets: SkillTargetConfig[] = [
   {
     id: 'codex',
@@ -177,18 +231,42 @@ const builtinStatuses: SkillTargetStatus[] = [
   },
 ]
 
-async function renderSkillsPage() {
-  render(<SkillsPage onDirtyChange={vi.fn()} />)
+async function renderSkillsPage(
+  props: Partial<ComponentProps<typeof SkillsPage>> = {},
+) {
+  render(<SkillsPage onDirtyChange={vi.fn()} {...props} />)
   await screen.findByText('本地技能')
 }
 
 beforeEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   mockHomeDir.mockResolvedValue('/Users/test')
-  mockLoadPersistedJson
-    .mockResolvedValueOnce(builtinTargets)
-    .mockResolvedValueOnce({})
-    .mockResolvedValueOnce(createCatalog([createDemoSkill(), createDocxSkill()]))
+  mockLoadPersistedJson.mockImplementation(
+    async (dbKey: string, _legacyKey: string, fallback: unknown) => {
+      if (dbKey === 'skill_targets') return builtinTargets
+      if (dbKey === 'skills_sources') return {}
+      if (dbKey === 'skills_catalog') {
+        return createCatalog([createDemoSkill(), createDocxSkill()])
+      }
+      if (dbKey === 'skill_enrichments') return {}
+      if (dbKey === 'model_configs') {
+        return [
+          {
+            id: 'model-config-1',
+            baseUrl: 'https://llm.example.com/v1',
+            apiKey: 'sk-test',
+            model: 'gpt-5.4',
+            lastTestAt: Date.now(),
+            lastTestResult: {
+              supported_protocols: ['openai'],
+            },
+          },
+        ]
+      }
+      return fallback
+    },
+  )
   mockScanLocalSkills.mockResolvedValue(createCatalog([createDemoSkill(), createDocxSkill()]))
   mockInspectSkillTargets.mockResolvedValue(builtinStatuses)
   mockSearchOnlineSkills.mockResolvedValue({
@@ -199,9 +277,15 @@ beforeEach(() => {
     durationMs: 0,
   })
   mockSyncSkillTargets.mockResolvedValue([])
+  mockResolveSystemLlm.mockResolvedValue(createSystemLlmSnapshot())
+  mockEnrichSingleSkill.mockResolvedValue(createEnrichmentRecord())
   mockRunSkillsCommand.mockResolvedValue(createCommandResult())
   mockListen.mockResolvedValue(() => {})
   mockSavePersistedJson.mockResolvedValue(undefined)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('SkillsPage', () => {
@@ -226,6 +310,114 @@ describe('SkillsPage', () => {
       await screen.findByText(/command:\s*npx -y skills update -g -y/i),
     ).toBeInTheDocument()
   })
+
+  it('shows enriched chinese description and tooltip details', async () => {
+    mockLoadPersistedJson.mockReset()
+    mockLoadPersistedJson.mockImplementation(
+      async (dbKey: string, _legacyKey: string, fallback: unknown) => {
+        if (dbKey === 'skill_targets') return builtinTargets
+        if (dbKey === 'skills_sources') return {}
+        if (dbKey === 'skills_catalog') return createCatalog([createDemoSkill()])
+        if (dbKey === 'skill_enrichments') {
+          return {
+            'demo-skill': createEnrichmentRecord(),
+          }
+        }
+        if (dbKey === 'model_configs') {
+          return [
+            {
+              id: 'model-config-1',
+              baseUrl: 'https://llm.example.com/v1',
+              apiKey: 'sk-test',
+              model: 'gpt-5.4',
+              lastTestAt: Date.now(),
+              lastTestResult: {
+                supported_protocols: ['openai'],
+              },
+            },
+          ]
+        }
+        return fallback
+      },
+    )
+
+    await renderSkillsPage()
+
+    expect(
+      await screen.findByRole('button', { name: '查看 demo-skill 的技能详情' }),
+    ).toHaveTextContent('这是一个中文技能简介')
+
+    await userEvent.hover(
+      screen.getByRole('button', { name: '查看 demo-skill 的技能详情' }),
+    )
+
+    expect(await screen.findByText('完整介绍')).toBeInTheDocument()
+    expect(
+      await screen.findByText('这是一个用于测试的完整中文技能介绍。'),
+    ).toBeInTheDocument()
+  })
+
+  it(
+    'enriches skills strictly one by one with 5 second spacing',
+    async () => {
+    const user = userEvent.setup()
+    const first = createEnrichmentRecord({
+      skillDir: 'demo-skill',
+      skillPath: '/Users/test/.agents/skills/demo-skill',
+    })
+    const second = createEnrichmentRecord({
+      skillDir: 'docx',
+      skillPath: '/Users/test/.agents/skills/docx',
+      localizedDescription: '第二个技能简介',
+    })
+
+    let firstResolved = false
+    mockEnrichSingleSkill
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              firstResolved = true
+              resolve(first)
+            }, 10)
+          }),
+      )
+      .mockResolvedValueOnce(second)
+
+    await renderSkillsPage({
+      enrichmentDelayMs: 200,
+    })
+
+    await user.click(
+      screen.getByRole('button', { name: '技能注解' }),
+    )
+    await user.click(
+      screen.getByRole('button', {
+        name: /全量注解.*全部重新处理一次/,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 15))
+    })
+    expect(firstResolved).toBe(true)
+    expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 15))
+    })
+    expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(1)
+
+    await waitFor(() => {
+      expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(2)
+    })
+    },
+    15000,
+  )
 
   it('shows progress immediately when running global update', async () => {
     const user = userEvent.setup()
@@ -275,7 +467,9 @@ describe('SkillsPage', () => {
     await user.click(screen.getByRole('button', { name: '更新全部技能' }))
 
     expect(
-      await screen.findByText(/stderr 摘要：包含 2 条 npm 配置告警，已折叠。/),
+      await screen.findByText((content) =>
+        content.includes('stderr 摘要：包含 2 条 npm 配置告警'),
+      ),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/示例：npm warn Unknown user config "python"/),
