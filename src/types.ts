@@ -74,6 +74,12 @@ export interface ProtocolTestResult {
   latency_ms: number | null;
   error: string | null;
   response_text?: string | null;
+  request_url?: string | null;
+  request_method?: string | null;
+  request_headers?: Record<string, string> | null;
+  request_body?: string | null;
+  response_status?: number | null;
+  response_headers?: Record<string, string> | null;
 }
 
 export interface ProviderLastResult {

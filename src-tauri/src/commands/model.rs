@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 use crate::providers::router;
 
@@ -9,6 +10,12 @@ pub struct ProtocolTestResult {
     pub latency_ms: Option<u64>,
     pub error: Option<String>,
     pub response_text: Option<String>,
+    pub request_url: Option<String>,
+    pub request_method: Option<String>,
+    pub request_headers: Option<BTreeMap<String, String>>,
+    pub request_body: Option<String>,
+    pub response_status: Option<u16>,
+    pub response_headers: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Serialize, Clone)]

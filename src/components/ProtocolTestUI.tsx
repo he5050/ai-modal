@@ -71,6 +71,30 @@ export function getProtocolResultDetails(item: ProtocolTestResult) {
   return item.response_text?.trim() || item.error || "—";
 }
 
+function formatDebugMap(value?: Record<string, string> | null) {
+  if (!value || Object.keys(value).length === 0) return "—";
+  return JSON.stringify(value, null, 2);
+}
+
+function DebugBlock({
+  title,
+  value,
+}: {
+  title: string;
+  value?: string | number | null;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-800 bg-black/20 p-3">
+      <p className="mb-2 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+        {title}
+      </p>
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-gray-300">
+        {value == null || value === "" ? "—" : String(value)}
+      </pre>
+    </div>
+  );
+}
+
 export function getProtocolSupportState(
   result: ModelResult,
   protocol: ModelTestProtocol,
@@ -282,11 +306,41 @@ export function ProtocolResultDetailDialog({
                       ? `${protocolResult.latency_ms} ms`
                       : "—"}
                   </span>
+                  <span className="text-gray-500">
+                    {protocolResult.response_status != null
+                      ? `HTTP ${protocolResult.response_status}`
+                      : "HTTP —"}
+                  </span>
                 </div>
-                <div className="mt-3 rounded-lg border border-gray-800 bg-black/20 p-3">
-                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-gray-300">
-                    {detail}
-                  </pre>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <DebugBlock
+                    title="Request URL"
+                    value={protocolResult.request_url}
+                  />
+                  <DebugBlock
+                    title="Request Method"
+                    value={protocolResult.request_method}
+                  />
+                  <DebugBlock
+                    title="Request Headers"
+                    value={formatDebugMap(protocolResult.request_headers)}
+                  />
+                  <DebugBlock
+                    title="Response Headers"
+                    value={formatDebugMap(protocolResult.response_headers)}
+                  />
+                  <div className="md:col-span-2">
+                    <DebugBlock
+                      title="Request Body"
+                      value={protocolResult.request_body}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <DebugBlock title="Response Body" value={detail} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <DebugBlock title="Error" value={protocolResult.error} />
+                  </div>
                 </div>
               </div>
             );

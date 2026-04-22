@@ -1,5 +1,6 @@
 use reqwest::{Client, RequestBuilder};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
@@ -9,6 +10,64 @@ use crate::commands::model::{ModelResult, ProtocolTestResult};
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const OPENROUTER_TITLE: &str = "AIModal";
 const TEST_PROMPT: &str = "现在的梵蒂冈的教皇是谁,你能为我做什么,别都叫你啥?我打算去洗车,我这边有两家一家离我有50米,另外一家离我200米,我是否应该开车去";
+
+fn mask_secret(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.len() <= 4 {
+        return "*".repeat(trimmed.len());
+    }
+    format!("{}******{}", &trimmed[..2], &trimmed[trimmed.len() - 2..])
+}
+
+fn build_debug_request_headers(
+    protocol: ModelProtocol,
+    api_key: &str,
+) -> BTreeMap<String, String> {
+    let mut headers = BTreeMap::new();
+    headers.insert("Accept".to_string(), "application/json".to_string());
+
+    match protocol {
+        ModelProtocol::OpenAi => {
+            headers.insert(
+                "Authorization".to_string(),
+                format!("Bearer {}", mask_secret(api_key)),
+            );
+        }
+        ModelProtocol::OpenRouter => {
+            headers.insert(
+                "Authorization".to_string(),
+                format!("Bearer {}", mask_secret(api_key)),
+            );
+            headers.insert("X-Title".to_string(), OPENROUTER_TITLE.to_string());
+        }
+        ModelProtocol::Claude => {
+            headers.insert("x-api-key".to_string(), mask_secret(api_key));
+            headers.insert(
+                "anthropic-version".to_string(),
+                ANTHROPIC_VERSION.to_string(),
+            );
+        }
+        ModelProtocol::Gemini => {
+            headers.insert("x-goog-api-key".to_string(), mask_secret(api_key));
+        }
+    }
+
+    headers
+}
+
+fn collect_response_headers(headers: &reqwest::header::HeaderMap) -> BTreeMap<String, String> {
+    let mut collected = BTreeMap::new();
+    for (key, value) in headers.iter() {
+        collected.insert(
+            key.as_str().to_string(),
+            value.to_str().unwrap_or("<non-utf8>").to_string(),
+        );
+    }
+    collected
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelProtocol {
@@ -156,6 +215,10 @@ async fn test_single_model_with_client(
     for protocol in protocols {
         let url = build_test_url(base_url, protocol, model);
         let body = build_test_body(protocol, model);
+        let request_method = "POST".to_string();
+        let request_headers = build_debug_request_headers(protocol, api_key);
+        let request_body = serde_json::to_string_pretty(&body)
+            .unwrap_or_else(|_| body.to_string());
         let start = Instant::now();
 
         let resp = match apply_auth(client.post(&url), protocol, api_key)
@@ -174,6 +237,12 @@ async fn test_single_model_with_client(
                     latency_ms: None,
                     error: Some(err_msg),
                     response_text: Some(e.to_string()),
+                    request_url: Some(url.clone()),
+                    request_method: Some(request_method.clone()),
+                    request_headers: Some(request_headers.clone()),
+                    request_body: Some(request_body.clone()),
+                    response_status: None,
+                    response_headers: None,
                 });
                 continue;
             }
@@ -182,6 +251,7 @@ async fn test_single_model_with_client(
         let latency_ms = start.elapsed().as_millis() as u64;
         total_latency_ms += latency_ms;
         let status = resp.status().as_u16();
+        let response_headers = collect_response_headers(resp.headers());
 
         // 尝试读取响应文本，如果失败则使用空字符串
         let response_text = match resp.text().await {
@@ -199,6 +269,12 @@ async fn test_single_model_with_client(
                 latency_ms: Some(latency_ms),
                 error: None,
                 response_text: Some(response_text),
+                request_url: Some(url.clone()),
+                request_method: Some(request_method.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(request_body.clone()),
+                response_status: Some(status),
+                response_headers: Some(response_headers.clone()),
             });
             // 继续测试下一个协议，不提前返回
         } else {
@@ -212,6 +288,12 @@ async fn test_single_model_with_client(
                 latency_ms: Some(latency_ms),
                 error: Some(err_msg),
                 response_text: last_response_text.clone(),
+                request_url: Some(url.clone()),
+                request_method: Some(request_method.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(request_body.clone()),
+                response_status: Some(status),
+                response_headers: Some(response_headers),
             });
             // 401/403 表示当前 key/鉴权方式不可用；429 表示当前 provider 已触发限流。
             // 这三类错误继续尝试后续协议的价值很低，直接终止本次模型检测。
@@ -762,12 +844,21 @@ mod tests {
         .await
         .expect("test single model");
 
+        let expected_url = format!("{}/v1/chat/completions", server.base_url());
         let requests = server.requests();
         server.join();
 
         assert!(!result.available);
         assert_eq!(result.supported_protocols, Vec::<String>::new());
         assert_eq!(result.protocol_results.len(), 1);
+        assert_eq!(
+            result.protocol_results[0].request_url.as_deref(),
+            Some(expected_url.as_str())
+        );
+        assert_eq!(
+            result.protocol_results[0].request_method.as_deref(),
+            Some("POST")
+        );
         assert_eq!(requests.len(), 1);
         assert!(requests[0].starts_with("POST /v1/chat/completions "));
     }
@@ -797,11 +888,16 @@ mod tests {
         .await
         .expect("test single model");
 
+        let expected_url = format!("{}/v1/chat/completions", server.base_url());
         let requests = server.requests();
         server.join();
 
         assert!(!result.available);
         assert_eq!(result.protocol_results.len(), 1);
+        assert_eq!(
+            result.protocol_results[0].request_url.as_deref(),
+            Some(expected_url.as_str())
+        );
         assert_eq!(requests.len(), 1);
         assert!(requests[0].starts_with("POST /v1/chat/completions "));
     }
