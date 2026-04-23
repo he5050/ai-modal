@@ -23,10 +23,7 @@ fn mask_secret(value: &str) -> String {
     format!("{}******{}", &trimmed[..2], &trimmed[trimmed.len() - 2..])
 }
 
-fn build_debug_request_headers(
-    protocol: ModelProtocol,
-    api_key: &str,
-) -> BTreeMap<String, String> {
+fn build_debug_request_headers(protocol: ModelProtocol, api_key: &str) -> BTreeMap<String, String> {
     let mut headers = BTreeMap::new();
     headers.insert("Accept".to_string(), "application/json".to_string());
 
@@ -246,8 +243,7 @@ async fn test_single_model_with_client(
         let body = build_test_body(protocol, model);
         let request_method = "POST".to_string();
         let request_headers = build_debug_request_headers(protocol, api_key);
-        let request_body = serde_json::to_string_pretty(&body)
-            .unwrap_or_else(|_| body.to_string());
+        let request_body = serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string());
         let start = Instant::now();
 
         let resp = match apply_auth(client.post(&url), protocol, api_key)
@@ -756,7 +752,10 @@ fn parse_models_response(protocol: ModelProtocol, body: &str) -> Result<Vec<Stri
     let value: Value = serde_json::from_str(body).map_err(|e| format!("解析响应失败：{}", e))?;
 
     match protocol {
-        ModelProtocol::OpenAi | ModelProtocol::OpenRouter | ModelProtocol::OpenAiResponses | ModelProtocol::Claude => {
+        ModelProtocol::OpenAi
+        | ModelProtocol::OpenRouter
+        | ModelProtocol::OpenAiResponses
+        | ModelProtocol::Claude => {
             let data = value
                 .get("data")
                 .and_then(|items| items.as_array())
@@ -801,10 +800,7 @@ fn extract_error_detail(msg: &str) -> Option<String> {
             }
         }
 
-        if let Some(detail) = value
-            .get("message")
-            .and_then(|message| message.as_str())
-        {
+        if let Some(detail) = value.get("message").and_then(|message| message.as_str()) {
             let detail = detail.trim();
             if !detail.is_empty() {
                 return Some(detail.to_string());
@@ -1121,7 +1117,10 @@ mod tests {
     fn openai_body_uses_chat_completions_fields() {
         let body = build_test_body(ModelProtocol::OpenAi, "gpt-4.1-mini");
 
-        assert_eq!(body.get("model").and_then(|v| v.as_str()), Some("gpt-4.1-mini"));
+        assert_eq!(
+            body.get("model").and_then(|v| v.as_str()),
+            Some("gpt-4.1-mini")
+        );
         assert_eq!(
             body.get("messages")
                 .and_then(|v| v.as_array())
@@ -1145,6 +1144,9 @@ mod tests {
             r#"{"error":{"message":"Invalid proxy server token passed.","code":"400"}}"#,
         );
 
-        assert_eq!(message, "请求无效（400）：Invalid proxy server token passed.");
+        assert_eq!(
+            message,
+            "请求无效（400）：Invalid proxy server token passed."
+        );
     }
 }

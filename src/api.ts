@@ -4,6 +4,7 @@ import type {
   SkillEnrichmentJobRequest,
   SkillEnrichmentJobSnapshot,
   ModelResult,
+  OnlineSkillDetail,
   OnlineSearchResponse,
   SkillEnrichmentRecord,
   SkillTargetConfig,
@@ -98,6 +99,16 @@ export async function searchOnlineSkills(
     query,
     limit,
     source: source ?? null,
+  });
+}
+
+export async function inspectOnlineSkill(
+  skillId: string,
+  source: string,
+): Promise<OnlineSkillDetail> {
+  return invoke("inspect_online_skill", {
+    skillId,
+    source,
   });
 }
 

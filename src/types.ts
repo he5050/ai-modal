@@ -320,6 +320,17 @@ export interface OnlineSkill {
   source: string;
 }
 
+export interface OnlineSkillDetail {
+  id: string;
+  skillId: string;
+  source: string;
+  pageUrl: string;
+  installCommand: string;
+  summary: string;
+  usageHints: string[];
+  skillDoc: string;
+}
+
 export interface OnlineSearchResponse {
   query: string;
   searchType: string;

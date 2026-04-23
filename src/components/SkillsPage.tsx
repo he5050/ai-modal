@@ -5,6 +5,7 @@ import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   getSkillEnrichmentJobStatus,
+  inspectOnlineSkill,
   inspectSkillTargets,
   runSkillsCommand,
   scanLocalSkills,
@@ -46,6 +47,7 @@ import { Tooltip } from "./Tooltip";
 import type {
   LlmRequestKind,
   InstalledSkillSnapshot,
+  OnlineSkillDetail,
   OnlineSkill,
   Provider,
   SkillAnnotationMode,
@@ -119,6 +121,13 @@ function formatInstalls(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+function splitDetailLines(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 const BUILTIN_TARGETS: BuiltinSkillTarget[] = [
@@ -292,13 +301,16 @@ function extractNpmConfigWarnings(stderr: string) {
 }
 
 function summarizeCommandFailure(result: SkillsCommandResult) {
-  const { remainingLines, warningLines } = extractNpmConfigWarnings(result.stderr);
-  const sourceLines = remainingLines.length > 0
-    ? remainingLines
-    : result.stdout
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
+  const { remainingLines, warningLines } = extractNpmConfigWarnings(
+    result.stderr,
+  );
+  const sourceLines =
+    remainingLines.length > 0
+      ? remainingLines
+      : result.stdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
   const detail = sourceLines[0] ?? warningLines[0] ?? "无 stderr/stdout 详情";
   return `退出码 ${result.code ?? "未知"}，${detail}`;
 }
@@ -392,6 +404,14 @@ export function SkillsPage({
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searchDuration, setSearchDuration] = useState<number | null>(null);
   const [searched, setSearched] = useState(false);
+  const [expandedOnlineSkillIds, setExpandedOnlineSkillIds] = useState<
+    Set<string>
+  >(new Set());
+  const [loadingOnlineSkillDetailIds, setLoadingOnlineSkillDetailIds] =
+    useState<Set<string>>(new Set());
+  const [onlineSkillDetails, setOnlineSkillDetails] = useState<
+    Record<string, OnlineSkillDetail>
+  >({});
 
   // Command log collapsed state
   const [commandLogExpanded, setCommandLogExpanded] = useState(false);
@@ -502,7 +522,9 @@ export function SkillsPage({
         }));
         setInstalledSkillSnapshots((current) => {
           const next = { ...current };
-          for (const [skillDir, enrichment] of Object.entries(snapshot.records)) {
+          for (const [skillDir, enrichment] of Object.entries(
+            snapshot.records,
+          )) {
             const skill = (catalog?.skills ?? []).find(
               (item) => item.dir === skillDir,
             );
@@ -558,8 +580,7 @@ export function SkillsPage({
           storedEnrichments,
           storedInstalledSkillSnapshots,
           storedModelConfig,
-        ] =
-          await Promise.all([
+        ] = await Promise.all([
           homeDir().catch(() => ""),
           loadPersistedJson<unknown[]>(
             SKILL_TARGETS_DB_KEY,
@@ -627,7 +648,10 @@ export function SkillsPage({
         setCatalog(bootCatalog);
         setInstalledSkillSnapshots({
           ...storedInstalledSkillSnapshots,
-          ...buildInstalledSkillSnapshots(bootCatalog.skills, storedEnrichments),
+          ...buildInstalledSkillSnapshots(
+            bootCatalog.skills,
+            storedEnrichments,
+          ),
         });
       } catch (error) {
         console.error("Failed to bootstrap skill targets", error);
@@ -750,11 +774,9 @@ export function SkillsPage({
   async function refreshLlmProfiles() {
     setLoadingLlmProfiles(true);
     try {
-      const storedModelConfigs = await loadPersistedJson<PersistedModelConfig[]>(
-        MODEL_CONFIG_DB_KEY,
-        MODEL_CONFIG_KEY,
-        [],
-      );
+      const storedModelConfigs = await loadPersistedJson<
+        PersistedModelConfig[]
+      >(MODEL_CONFIG_DB_KEY, MODEL_CONFIG_KEY, []);
       if (Array.isArray(storedModelConfigs)) {
         setModelConfigs(storedModelConfigs);
       } else if (
@@ -848,7 +870,9 @@ export function SkillsPage({
   }, [modelConfigs]);
 
   const selectedLlmProfile =
-    availableLlmProfiles.find((profile) => profile.toolId === selectedLlmProfileId) ??
+    availableLlmProfiles.find(
+      (profile) => profile.toolId === selectedLlmProfileId,
+    ) ??
     availableLlmProfiles[0] ??
     null;
 
@@ -870,13 +894,14 @@ export function SkillsPage({
     }
   }
 
-  async function handleRunEnrichmentQueue(
-    mode: SkillAnnotationMode = "full",
-  ) {
+  async function handleRunEnrichmentQueue(mode: SkillAnnotationMode = "full") {
     const targetSkills =
       mode === "incremental" ? incrementalAnnotationSkills : filteredSkills;
     if (!selectedLlmProfile) {
-      toast("未解析到 AIModal 内可用的 LLM 参数，请先在配置管理中写入并保存", "warning");
+      toast(
+        "未解析到 AIModal 内可用的 LLM 参数，请先在配置管理中写入并保存",
+        "warning",
+      );
       return;
     }
     if (targetSkills.length === 0) {
@@ -1381,6 +1406,64 @@ export function SkillsPage({
     }
   }
 
+  async function handleToggleOnlineSkillDetails(skill: OnlineSkill) {
+    const skillKey = skill.id;
+    const isExpanded = expandedOnlineSkillIds.has(skillKey);
+
+    if (isExpanded) {
+      setExpandedOnlineSkillIds((prev) => {
+        const next = new Set(prev);
+        next.delete(skillKey);
+        return next;
+      });
+      return;
+    }
+
+    setExpandedOnlineSkillIds((prev) => {
+      const next = new Set(prev);
+      next.add(skillKey);
+      return next;
+    });
+
+    if (
+      onlineSkillDetails[skillKey] ||
+      loadingOnlineSkillDetailIds.has(skillKey)
+    ) {
+      return;
+    }
+
+    setLoadingOnlineSkillDetailIds((prev) => {
+      const next = new Set(prev);
+      next.add(skillKey);
+      return next;
+    });
+
+    try {
+      const detail = await inspectOnlineSkill(skill.skillId, skill.source);
+      setOnlineSkillDetails((prev) => ({
+        ...prev,
+        [skillKey]: detail,
+      }));
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `[技能查询] 加载在线技能详情失败: ${skill.name} - ${errorMsg}`,
+      );
+      toast(`加载 ${skill.name} 详情失败`, "error");
+      setExpandedOnlineSkillIds((prev) => {
+        const next = new Set(prev);
+        next.delete(skillKey);
+        return next;
+      });
+    } finally {
+      setLoadingOnlineSkillDetailIds((prev) => {
+        const next = new Set(prev);
+        next.delete(skillKey);
+        return next;
+      });
+    }
+  }
+
   async function handleSyncEnabledTargets() {
     if (enabledTargets.length === 0) {
       toast("请先启用至少一个同步目标", "warning");
@@ -1702,11 +1785,14 @@ export function SkillsPage({
                         ? ` · ${nextEnrichmentSeconds}s 后继续`
                         : ""}
                     </div>
-                    {(enrichmentQueueError || failedEnrichmentRecords.length > 0) && (
+                    {(enrichmentQueueError ||
+                      failedEnrichmentRecords.length > 0) && (
                       <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-3 text-red-100">
                         {enrichmentQueueError && (
                           <>
-                            <div className="font-medium text-red-200">失败摘要</div>
+                            <div className="font-medium text-red-200">
+                              失败摘要
+                            </div>
                             <div className="mt-1 whitespace-pre-wrap break-words text-red-100/90">
                               {enrichmentQueueError}
                             </div>
@@ -1789,10 +1875,21 @@ export function SkillsPage({
                             </div>
                             <div className="max-h-[420px] space-y-4 overflow-y-auto px-4 py-4 text-sm">
                               {[
-                                ["完整介绍", enrichment?.fullDescription || skill.description || "暂无说明"],
-                                ["内容摘要", enrichment?.contentSummary || "暂无摘要"],
+                                [
+                                  "完整介绍",
+                                  enrichment?.fullDescription ||
+                                    skill.description ||
+                                    "暂无说明",
+                                ],
+                                [
+                                  "内容摘要",
+                                  enrichment?.contentSummary || "暂无摘要",
+                                ],
                                 ["用法", enrichment?.usage || "暂无用法说明"],
-                                ["使用场景", enrichment?.scenarios || "暂无场景说明"],
+                                [
+                                  "使用场景",
+                                  enrichment?.scenarios || "暂无场景说明",
+                                ],
                               ].map(([label, content]) => (
                                 <div key={label}>
                                   <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
@@ -1818,7 +1915,9 @@ export function SkillsPage({
                                       </span>
                                     ))
                                   ) : (
-                                    <span className="text-gray-500">暂无标签</span>
+                                    <span className="text-gray-500">
+                                      暂无标签
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -1838,94 +1937,95 @@ export function SkillsPage({
 
                         return (
                           <>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-gray-100">
-                            {skill.name}
-                          </p>
-                          <p className="mt-1 truncate text-[11px] text-gray-500">
-                            {skill.dir}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => void openPath(skill.path)}
-                            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                            title="打开技能目录"
-                            aria-label={`打开 ${skill.name} 目录`}
-                          >
-                            <FolderOpen className="h-3.5 w-3.5" />
-                            打开
-                          </button>
-                          <button
-                            onClick={() => confirmRemoveSkill(skill.name)}
-                            disabled={commandRunning}
-                            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                            title="移除技能"
-                            aria-label={`移除 ${skill.name}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {skill.version && (
-                          <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200">
-                            v{skill.version}
-                          </span>
-                        )}
-                        {skill.internal && (
-                          <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-gray-400">
-                            internal
-                          </span>
-                        )}
-                        {displayTags.slice(0, 4).map((category) => (
-                          <span
-                            key={category}
-                            className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400"
-                          >
-                            {category}
-                          </span>
-                        ))}
-                        {displayTags.length > 4 && (
-                          <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-500">
-                            +{displayTags.length - 4}
-                          </span>
-                        )}
-                        {enrichment?.status && enrichment.status !== "success" && (
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] ${
-                              enrichment.status === "error"
-                                ? "border border-red-500/30 bg-red-500/10 text-red-200"
-                                : enrichment.status === "running"
-                                  ? "border border-indigo-500/30 bg-indigo-500/10 text-indigo-200"
-                                  : "border border-gray-700 bg-gray-950 text-gray-400"
-                            }`}
-                          >
-                            {enrichment.status === "running"
-                              ? "处理中"
-                              : enrichment.status === "error"
-                                ? "失败"
-                                : enrichment.status}
-                          </span>
-                        )}
-                      </div>
-                      <Tooltip
-                        placement="bottom"
-                        interactive
-                        contentClassName="w-[560px] max-w-[560px] rounded-2xl border-gray-700 bg-gray-900/98 p-0 shadow-2xl"
-                        content={tooltipContent}
-                      >
-                        <button
-                          type="button"
-                          className="mt-3 line-clamp-3 w-full text-left text-xs leading-5 text-gray-400 transition-colors hover:text-gray-200"
-                          aria-label={`查看 ${skill.name} 的技能详情`}
-                        >
-                          {displayDescription}
-                        </button>
-                      </Tooltip>
-                      </>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-gray-100">
+                                  {skill.name}
+                                </p>
+                                <p className="mt-1 truncate text-[11px] text-gray-500">
+                                  {skill.dir}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => void openPath(skill.path)}
+                                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                                  title="打开技能目录"
+                                  aria-label={`打开 ${skill.name} 目录`}
+                                >
+                                  <FolderOpen className="h-3.5 w-3.5" />
+                                  打开
+                                </button>
+                                <button
+                                  onClick={() => confirmRemoveSkill(skill.name)}
+                                  disabled={commandRunning}
+                                  className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                                  title="移除技能"
+                                  aria-label={`移除 ${skill.name}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  删除
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {skill.version && (
+                                <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200">
+                                  v{skill.version}
+                                </span>
+                              )}
+                              {skill.internal && (
+                                <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-gray-400">
+                                  internal
+                                </span>
+                              )}
+                              {displayTags.slice(0, 4).map((category) => (
+                                <span
+                                  key={category}
+                                  className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400"
+                                >
+                                  {category}
+                                </span>
+                              ))}
+                              {displayTags.length > 4 && (
+                                <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-500">
+                                  +{displayTags.length - 4}
+                                </span>
+                              )}
+                              {enrichment?.status &&
+                                enrichment.status !== "success" && (
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] ${
+                                      enrichment.status === "error"
+                                        ? "border border-red-500/30 bg-red-500/10 text-red-200"
+                                        : enrichment.status === "running"
+                                          ? "border border-indigo-500/30 bg-indigo-500/10 text-indigo-200"
+                                          : "border border-gray-700 bg-gray-950 text-gray-400"
+                                    }`}
+                                  >
+                                    {enrichment.status === "running"
+                                      ? "处理中"
+                                      : enrichment.status === "error"
+                                        ? "失败"
+                                        : enrichment.status}
+                                  </span>
+                                )}
+                            </div>
+                            <Tooltip
+                              placement="bottom"
+                              interactive
+                              contentClassName="w-[560px] max-w-[560px] rounded-2xl border-gray-700 bg-gray-900/98 p-0 shadow-2xl"
+                              content={tooltipContent}
+                            >
+                              <button
+                                type="button"
+                                className="mt-3 line-clamp-3 w-full text-left text-xs leading-5 text-gray-400 transition-colors hover:text-gray-200"
+                                aria-label={`查看 ${skill.name} 的技能详情`}
+                              >
+                                {displayDescription}
+                              </button>
+                            </Tooltip>
+                          </>
                         );
                       })()}
                     </div>
@@ -2291,7 +2391,7 @@ export function SkillsPage({
                     )}
 
                     {!loadingSearch && searched && searchResults.length > 0 && (
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                         {searchResults.map((skill) => (
                           <div
                             key={skill.id}
@@ -2321,6 +2421,29 @@ export function SkillsPage({
 
                               {/* Action buttons on the right */}
                               <div className="flex flex-shrink-0 flex-col gap-1">
+                                <button
+                                  onClick={() =>
+                                    void handleToggleOnlineSkillDetails(skill)
+                                  }
+                                  disabled={loadingOnlineSkillDetailIds.has(
+                                    skill.id,
+                                  )}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                  aria-label={`${expandedOnlineSkillIds.has(skill.id) ? "收起" : "查看"} ${skill.name} 详情`}
+                                >
+                                  {loadingOnlineSkillDetailIds.has(skill.id) ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : expandedOnlineSkillIds.has(skill.id) ? (
+                                    <ChevronUp className="h-3 w-3" />
+                                  ) : (
+                                    <ChevronDown className="h-3 w-3" />
+                                  )}
+                                  {loadingOnlineSkillDetailIds.has(skill.id)
+                                    ? "加载中"
+                                    : expandedOnlineSkillIds.has(skill.id)
+                                      ? "收起详情"
+                                      : "查看详情"}
+                                </button>
                                 {isOnlineSkillInstalled(skill) ? (
                                   <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-300">
                                     <Check className="h-3 w-3" />
@@ -2378,6 +2501,111 @@ export function SkillsPage({
                                 )}
                               </div>
                             </div>
+
+                            {expandedOnlineSkillIds.has(skill.id) && (
+                              <div className="mt-3 space-y-3 rounded-xl border border-gray-800/80 bg-gray-950/70 p-3">
+                                {loadingOnlineSkillDetailIds.has(skill.id) ? (
+                                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    正在从 skills.sh 拉取详细介绍与用法...
+                                  </div>
+                                ) : onlineSkillDetails[skill.id] ? (
+                                  <>
+                                    <div className="space-y-1">
+                                      <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
+                                        详细介绍
+                                      </p>
+                                      <div className="space-y-1 text-xs leading-5 text-gray-300">
+                                        {splitDetailLines(
+                                          onlineSkillDetails[skill.id].summary,
+                                        ).map((line) => (
+                                          <p
+                                            key={`${skill.id}-summary-${line}`}
+                                            className="whitespace-pre-wrap"
+                                          >
+                                            {line}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                      <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
+                                        用法
+                                      </p>
+                                      <div className="space-y-1 text-xs leading-5 text-gray-300">
+                                        {onlineSkillDetails[
+                                          skill.id
+                                        ].usageHints.map((hint) => (
+                                          <p
+                                            key={`${skill.id}-usage-${hint}`}
+                                            className="whitespace-pre-wrap"
+                                          >
+                                            {hint}
+                                          </p>
+                                        ))}
+                                      </div>
+                                      <div className="rounded-lg border border-gray-800 bg-black/30 px-2.5 py-2 font-mono text-[11px] leading-5 text-gray-300">
+                                        {
+                                          onlineSkillDetails[skill.id]
+                                            .installCommand
+                                        }
+                                      </div>
+                                      <div className="flex flex-wrap gap-2">
+                                        <button
+                                          onClick={() =>
+                                            void navigator.clipboard
+                                              .writeText(
+                                                onlineSkillDetails[skill.id]
+                                                  .installCommand,
+                                              )
+                                              .then(
+                                                () => {
+                                                  toast(
+                                                    "命令已复制到剪贴板",
+                                                    "success",
+                                                  );
+                                                },
+                                                () => {
+                                                  toast(
+                                                    "复制命令失败",
+                                                    "error",
+                                                  );
+                                                },
+                                              )
+                                          }
+                                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                                        >
+                                          <Copy className="h-3.5 w-3.5" />
+                                          复制详情命令
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            void openPath(
+                                              onlineSkillDetails[skill.id]
+                                                .pageUrl,
+                                            )
+                                          }
+                                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                                        >
+                                          <Link2 className="h-3.5 w-3.5" />
+                                          打开详情页
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <details className="group rounded-lg border border-gray-800 bg-black/20 px-3 py-2">
+                                      <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.14em] text-gray-500 group-open:text-gray-300">
+                                        SKILL.md 原文
+                                      </summary>
+                                      <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-gray-800 bg-black/30 p-3 text-[11px] leading-5 text-gray-300">
+                                        {onlineSkillDetails[skill.id].skillDoc}
+                                      </pre>
+                                    </details>
+                                  </>
+                                ) : null}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -2598,7 +2826,9 @@ export function SkillsPage({
                     {commandWarnings.warningLines.length > 0 && (
                       <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200/90">
                         <div>
-                          stderr 摘要：包含 {commandWarnings.warningLines.length} 条 npm 配置告警，已折叠。
+                          stderr 摘要：包含{" "}
+                          {commandWarnings.warningLines.length} 条 npm
+                          配置告警，已折叠。
                         </div>
                         <div className="mt-1 truncate text-amber-200/70">
                           示例：{commandWarnings.warningLines[0]}
@@ -2669,7 +2899,8 @@ export function SkillsPage({
               <div>
                 <h3 className="text-base font-semibold text-white">技能注解</h3>
                 <p className="mt-2 text-sm leading-6 text-gray-400">
-                  使用系统配置里已保存的 LLM 参数，对当前筛选范围内的技能做一次中文注解处理。
+                  使用系统配置里已保存的 LLM
+                  参数，对当前筛选范围内的技能做一次中文注解处理。
                 </p>
               </div>
               <button
@@ -2700,7 +2931,8 @@ export function SkillsPage({
                     </select>
                   ) : (
                     <span className="font-medium text-gray-100">
-                      {selectedLlmProfile.model} · {selectedLlmProfile.requestKind}
+                      {selectedLlmProfile.model} ·{" "}
+                      {selectedLlmProfile.requestKind}
                     </span>
                   )
                 ) : (
@@ -2795,7 +3027,8 @@ export function SkillsPage({
                   全量注解
                 </div>
                 <p className="mt-2 text-xs leading-6 text-gray-400">
-                  对当前筛选结果里的 {filteredSkills.length} 个技能全部重新处理一次。
+                  对当前筛选结果里的 {filteredSkills.length}{" "}
+                  个技能全部重新处理一次。
                 </p>
               </button>
 

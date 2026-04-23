@@ -129,6 +129,19 @@ pub struct SearchOnlineResult {
     pub skills: Vec<OnlineSkill>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineSkillDetail {
+    pub id: String,
+    pub skill_id: String,
+    pub source: String,
+    pub page_url: String,
+    pub install_command: String,
+    pub summary: String,
+    pub usage_hints: Vec<String>,
+    pub skill_doc: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct ApiSkill {
     id: String,
@@ -157,6 +170,175 @@ impl ApiSkill {
             source: self.source,
         }
     }
+}
+
+fn online_skill_page_url(source: &str, skill_id: &str) -> String {
+    format!(
+        "https://skills.sh/{}/{}",
+        source.trim_matches('/'),
+        skill_id.trim_matches('/')
+    )
+}
+
+fn online_skill_install_command(source: &str, skill_id: &str) -> String {
+    format!(
+        "npx skills add https://github.com/{} --skill {}",
+        source.trim_matches('/'),
+        skill_id.trim()
+    )
+}
+
+fn extract_between<'a>(text: &'a str, start_marker: &str, end_marker: &str) -> Option<&'a str> {
+    let start = text.find(start_marker)? + start_marker.len();
+    let tail = &text[start..];
+    let end = tail.find(end_marker)?;
+    Some(&tail[..end])
+}
+
+fn decode_html_entities(value: &str) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    let mut result = String::with_capacity(value.len());
+    let mut index = 0;
+
+    while index < chars.len() {
+        if chars[index] == '&' {
+            if let Some(relative_end) = chars[index + 1..]
+                .iter()
+                .position(|ch| *ch == ';')
+                .filter(|pos| *pos <= 10)
+            {
+                let end = index + 1 + relative_end;
+                let entity: String = chars[index + 1..end].iter().collect();
+                let decoded = match entity.as_str() {
+                    "amp" => Some('&'),
+                    "lt" => Some('<'),
+                    "gt" => Some('>'),
+                    "quot" => Some('"'),
+                    "apos" => Some('\''),
+                    "nbsp" => Some(' '),
+                    "#39" | "#x27" | "#X27" => Some('\''),
+                    "#47" | "#x2F" | "#x2f" => Some('/'),
+                    _ if entity.starts_with("#x") || entity.starts_with("#X") => {
+                        u32::from_str_radix(&entity[2..], 16)
+                            .ok()
+                            .and_then(char::from_u32)
+                    }
+                    _ if entity.starts_with('#') => {
+                        entity[1..].parse::<u32>().ok().and_then(char::from_u32)
+                    }
+                    _ => None,
+                };
+
+                if let Some(decoded_char) = decoded {
+                    result.push(decoded_char);
+                    index = end + 1;
+                    continue;
+                }
+            }
+        }
+
+        result.push(chars[index]);
+        index += 1;
+    }
+
+    result
+}
+
+fn html_fragment_to_text(fragment: &str) -> String {
+    let chars: Vec<char> = fragment.chars().collect();
+    let mut result = String::with_capacity(fragment.len());
+    let mut index = 0;
+
+    while index < chars.len() {
+        if chars[index] == '<' {
+            let Some(relative_end) = chars[index + 1..].iter().position(|ch| *ch == '>') else {
+                break;
+            };
+            let end = index + 1 + relative_end;
+            let raw_tag: String = chars[index + 1..end].iter().collect();
+            let trimmed = raw_tag.trim();
+            let is_closing = trimmed.starts_with('/');
+            let name = trimmed
+                .trim_start_matches('/')
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+
+            match name.as_str() {
+                "br" => result.push('\n'),
+                "p" | "div" | "section" | "ul" | "ol" | "h1" | "h2" | "h3" | "h4" | "pre"
+                    if is_closing =>
+                {
+                    result.push('\n');
+                }
+                "li" if !is_closing => {
+                    if !result.ends_with('\n') {
+                        result.push('\n');
+                    }
+                    result.push_str("- ");
+                }
+                "li" => result.push('\n'),
+                _ => {}
+            }
+
+            index = end + 1;
+            continue;
+        }
+
+        result.push(chars[index]);
+        index += 1;
+    }
+
+    let decoded = decode_html_entities(&result);
+    decoded
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn extract_usage_hints(summary: &str, skill_doc: &str) -> Vec<String> {
+    let mut hints = Vec::new();
+    let trigger_keywords = [
+        "use this skill when",
+        "use when",
+        "triggers",
+        "trigger when",
+        "use for",
+        "user asks",
+    ];
+
+    for line in skill_doc
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        let lower = line.to_ascii_lowercase();
+        if trigger_keywords
+            .iter()
+            .any(|keyword| lower.contains(keyword))
+        {
+            hints.push(line.to_string());
+        }
+        if hints.len() >= 4 {
+            break;
+        }
+    }
+
+    if hints.is_empty() {
+        hints.extend(
+            summary
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .take(3)
+                .map(ToString::to_string),
+        );
+    }
+
+    hints
 }
 
 fn home_dir() -> Result<PathBuf, String> {
@@ -306,7 +488,10 @@ fn source_needs_wildcard(source: &str, home: &Path) -> bool {
     false
 }
 
-fn build_skills_command(request: &SkillsCommandRequest, home: &Path) -> Result<Vec<String>, String> {
+fn build_skills_command(
+    request: &SkillsCommandRequest,
+    home: &Path,
+) -> Result<Vec<String>, String> {
     let mut command = vec!["npx".to_string(), "-y".to_string(), "skills".to_string()];
 
     match request.action {
@@ -990,9 +1175,7 @@ pub async fn run_skills_command(
                             SkillsCommandProgressEvent {
                                 action: stdout_action.clone(),
                                 stage: "checking".to_string(),
-                                message: format!(
-                                    "正在检查 {current} / {total}：{skill_name}"
-                                ),
+                                message: format!("正在检查 {current} / {total}：{skill_name}"),
                                 current: Some(current),
                                 total: Some(total),
                                 skill_name: Some(skill_name),
@@ -1224,10 +1407,21 @@ mod tests {
         let multi_dir = temp.path().join("bundle");
         fs::create_dir_all(multi_dir.join("skill-a")).unwrap();
         fs::create_dir_all(multi_dir.join("skill-b")).unwrap();
-        fs::write(multi_dir.join("skill-a").join("SKILL.md"), "---\nname: A\n---\n").unwrap();
-        fs::write(multi_dir.join("skill-b").join("SKILL.md"), "---\nname: B\n---\n").unwrap();
+        fs::write(
+            multi_dir.join("skill-a").join("SKILL.md"),
+            "---\nname: A\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            multi_dir.join("skill-b").join("SKILL.md"),
+            "---\nname: B\n---\n",
+        )
+        .unwrap();
 
-        assert!(source_needs_wildcard(multi_dir.to_string_lossy().as_ref(), Path::new("/Users/test")));
+        assert!(source_needs_wildcard(
+            multi_dir.to_string_lossy().as_ref(),
+            Path::new("/Users/test")
+        ));
         assert!(!source_is_single_skill(
             multi_dir.to_string_lossy().as_ref(),
             Path::new("/Users/test")
@@ -1268,6 +1462,42 @@ mod tests {
         assert_eq!(parsed.2, Some("1.2.3".to_string()));
         assert_eq!(parsed.3, vec!["local".to_string(), "tools".to_string()]);
         assert!(!parsed.4);
+    }
+
+    #[test]
+    fn html_fragment_to_text_preserves_summary_lines() {
+        let fragment = r#"
+        <div class="prose">
+          <p><strong>Distinctive interfaces.</strong></p>
+          <ul>
+            <li>Bold typography</li>
+            <li>Memorable motion</li>
+          </ul>
+        </div>
+        "#;
+
+        let parsed = html_fragment_to_text(fragment);
+
+        assert_eq!(
+            parsed,
+            "Distinctive interfaces.\n- Bold typography\n- Memorable motion"
+        );
+    }
+
+    #[test]
+    fn extract_usage_hints_prefers_trigger_lines() {
+        let hints = extract_usage_hints(
+            "Summary line",
+            "Intro\nUse this skill when building production interfaces.\nTriggers: landing pages, dashboards\nOther line",
+        );
+
+        assert_eq!(
+            hints,
+            vec![
+                "Use this skill when building production interfaces.".to_string(),
+                "Triggers: landing pages, dashboards".to_string()
+            ]
+        );
     }
 }
 
@@ -1328,5 +1558,57 @@ pub async fn search_online_skills(
             .collect(),
         count: api_resp.count,
         duration_ms: api_resp.duration_ms,
+    })
+}
+
+#[tauri::command]
+pub async fn inspect_online_skill(
+    skill_id: String,
+    source: String,
+) -> Result<OnlineSkillDetail, String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP client 创建失败：{e}"))?;
+
+    let page_url = online_skill_page_url(&source, &skill_id);
+    let resp = client
+        .get(&page_url)
+        .header("Accept", "text/html")
+        .send()
+        .await
+        .map_err(|e| format!("skills.sh 详情页请求失败：{e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("skills.sh 详情页返回错误：{}", resp.status()));
+    }
+
+    let html = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取 skills.sh 详情页失败：{e}"))?;
+
+    let summary_fragment = extract_between(&html, ">Summary</div>", ">SKILL.md</span></div>")
+        .ok_or_else(|| "无法解析 skills.sh 详情页中的 Summary".to_string())?;
+    let skill_doc_fragment = extract_between(&html, ">SKILL.md</span></div>", ">Weekly Installs<")
+        .ok_or_else(|| "无法解析 skills.sh 详情页中的 SKILL.md".to_string())?;
+
+    let summary = html_fragment_to_text(summary_fragment);
+    let skill_doc = html_fragment_to_text(skill_doc_fragment);
+    let usage_hints = extract_usage_hints(&summary, &skill_doc);
+
+    Ok(OnlineSkillDetail {
+        id: format!(
+            "{}/{}",
+            source.trim_matches('/'),
+            skill_id.trim_matches('/')
+        ),
+        skill_id: skill_id.clone(),
+        source: source.clone(),
+        page_url,
+        install_command: online_skill_install_command(&source, &skill_id),
+        summary,
+        usage_hints,
+        skill_doc,
     })
 }

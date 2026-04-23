@@ -14,8 +14,8 @@ use commands::skill_enrichment_job::{
     SkillEnrichmentJobManager,
 };
 use commands::skills::{
-    inspect_skill_targets, run_skills_command, scan_local_skills, search_online_skills,
-    sync_skill_targets,
+    inspect_online_skill, inspect_skill_targets, run_skills_command, scan_local_skills,
+    search_online_skills, sync_skill_targets,
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -69,6 +69,7 @@ pub fn run() {
             sync_skill_targets,
             run_skills_command,
             search_online_skills,
+            inspect_online_skill,
             resolve_system_llm,
             enrich_single_skill,
             start_skill_enrichment_job,
