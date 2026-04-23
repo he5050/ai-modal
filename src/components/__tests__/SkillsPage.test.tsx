@@ -435,7 +435,7 @@ describe('SkillsPage', () => {
     })
   })
 
-  it('stops annotation immediately and shows failure reason when one skill fails', async () => {
+  it('keeps the queue running and surfaces failure reason when one skill fails', async () => {
     const user = userEvent.setup()
     let enrichmentHandler:
       | ((event: { payload: SkillEnrichmentJobSnapshot }) => void)
@@ -469,8 +469,9 @@ describe('SkillsPage', () => {
     await act(async () => {
       enrichmentHandler?.({
         payload: createJobSnapshot({
-          status: 'error',
-          message: '技能 demo-skill 注解失败',
+          status: 'running',
+          completed: 1,
+          message: '技能 demo-skill 注解失败，继续处理后续技能',
           errorMessage: 'provider timeout',
           currentSkillDir: 'demo-skill',
           currentSkillName: 'demo-skill',
@@ -491,11 +492,214 @@ describe('SkillsPage', () => {
     })
 
     expect(
-      (await screen.findAllByText('技能 demo-skill 注解失败')).length,
+      (
+        await screen.findAllByText('技能 demo-skill 注解失败，继续处理后续技能')
+      ).length,
     ).toBeGreaterThan(0)
-    expect(await screen.findByText('失败原因')).toBeInTheDocument()
-    expect(await screen.findByText('provider timeout')).toBeInTheDocument()
-    expect(screen.getByText('error')).toBeInTheDocument()
+    expect((await screen.findAllByText('失败摘要')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('provider timeout')).length).toBeGreaterThan(0)
+    expect(screen.getByText('running')).toBeInTheDocument()
+
+    await act(async () => {
+      enrichmentHandler?.({
+        payload: createJobSnapshot({
+          status: 'done',
+          completed: 2,
+          message: '技能注解队列已完成，失败 1 个',
+          errorMessage: '技能注解队列已完成，失败 1 个',
+          records: {
+            'demo-skill': createEnrichmentRecord({
+              status: 'error',
+              errorMessage: 'provider timeout',
+              localizedDescription: '',
+              fullDescription: '',
+              contentSummary: '',
+              usage: '',
+              scenarios: '',
+              rawResponse: null,
+            }),
+          },
+        }),
+      })
+    })
+
+    expect(
+      (await screen.findAllByText('技能注解队列已完成，失败 1 个')).length,
+    ).toBeGreaterThan(0)
+    expect(screen.getByText('done')).toBeInTheDocument()
+  })
+
+  it('keeps failed skill details visible after the annotation dialog closes', async () => {
+    const user = userEvent.setup()
+    let enrichmentHandler:
+      | ((event: { payload: SkillEnrichmentJobSnapshot }) => void)
+      | null = null
+
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === 'skill-enrichment-progress') {
+        enrichmentHandler = handler as (event: { payload: SkillEnrichmentJobSnapshot }) => void
+      }
+      return () => {}
+    })
+    mockStartSkillEnrichmentJob.mockResolvedValueOnce(
+      createJobSnapshot({
+        message: '正在注解 demo-skill',
+        currentSkillDir: 'demo-skill',
+        currentSkillName: 'demo-skill',
+      }),
+    )
+
+    await renderSkillsPage({
+      enrichmentDelayMs: 10,
+    })
+
+    await user.click(screen.getByRole('button', { name: '技能注解' }))
+    await user.click(
+      screen.getByRole('button', {
+        name: /全量注解.*全部重新处理一次/,
+      }),
+    )
+
+    await act(async () => {
+      enrichmentHandler?.({
+        payload: createJobSnapshot({
+          status: 'done',
+          completed: 2,
+          message: '技能注解队列已完成，失败 1 个',
+          errorMessage: '技能注解队列已完成，失败 1 个',
+          records: {
+            'demo-skill': createEnrichmentRecord({
+              status: 'error',
+              errorMessage: 'provider timeout',
+              localizedDescription: '',
+              fullDescription: '',
+              contentSummary: '',
+              usage: '',
+              scenarios: '',
+              rawResponse: null,
+            }),
+          },
+        }),
+      })
+    })
+
+    await user.click(screen.getByRole('button', { name: '关闭技能注解弹窗' }))
+
+    expect(
+      await screen.findByText('失败技能列表（1）'),
+    ).toBeInTheDocument()
+    expect((await screen.findAllByText('demo-skill')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('provider timeout')).length).toBeGreaterThan(0)
+  })
+
+  it('updates installed skill snapshots from annotation records for local search', async () => {
+    const user = userEvent.setup()
+    let enrichmentHandler:
+      | ((event: { payload: SkillEnrichmentJobSnapshot }) => void)
+      | null = null
+
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === 'skill-enrichment-progress') {
+        enrichmentHandler = handler as (event: { payload: SkillEnrichmentJobSnapshot }) => void
+      }
+      return () => {}
+    })
+
+    await renderSkillsPage({
+      enrichmentDelayMs: 10,
+    })
+
+    expect(screen.getAllByText('demo-skill').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('docx').length).toBeGreaterThan(0)
+
+    await act(async () => {
+      enrichmentHandler?.({
+        payload: createJobSnapshot({
+          status: 'running',
+          completed: 1,
+          message: '正在注解 demo-skill（2 并发）',
+          currentSkillDir: 'demo-skill',
+          records: {
+            'demo-skill': createEnrichmentRecord({
+              contentSummary: '截图图像处理与像素清理快照',
+              usage: '通过图像快照搜索触发',
+              scenarios: '适合图像编辑工作流',
+              tags: ['图像处理', '快照检索'],
+            }),
+          },
+        }),
+      })
+    })
+
+    await user.type(
+      screen.getByPlaceholderText('搜索技能名、目录名或注解快照'),
+      '像素清理',
+    )
+
+    expect((await screen.findAllByText('demo-skill')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('docx')).not.toBeInTheDocument()
+    expect(mockSavePersistedJson).toHaveBeenCalledWith(
+      'installed_skill_snapshots',
+      expect.objectContaining({
+        'demo-skill': expect.objectContaining({
+          searchText: expect.stringContaining('像素清理'),
+          tags: ['图像处理', '快照检索'],
+        }),
+      }),
+      'ai-modal-installed-skill-snapshots',
+    )
+  })
+
+  it('shows all currently running skills during concurrent annotation', async () => {
+    let enrichmentHandler:
+      | ((event: { payload: SkillEnrichmentJobSnapshot }) => void)
+      | null = null
+
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === 'skill-enrichment-progress') {
+        enrichmentHandler = handler as (event: { payload: SkillEnrichmentJobSnapshot }) => void
+      }
+      return () => {}
+    })
+
+    await renderSkillsPage({
+      enrichmentDelayMs: 10,
+    })
+
+    await act(async () => {
+      enrichmentHandler?.({
+        payload: createJobSnapshot({
+          status: 'running',
+          message: '正在注解 demo-skill（2 并发）',
+          currentSkillDir: 'demo-skill',
+          records: {
+            'demo-skill': createEnrichmentRecord({
+              status: 'running',
+            }),
+            docx: createEnrichmentRecord({
+              skillDir: 'docx',
+              skillPath: '/Users/test/.agents/skills/docx',
+              sourceDescription: 'docx description',
+              status: 'running',
+            }),
+          },
+        }),
+      })
+    })
+
+    expect(
+      await screen.findByText(/当前 2 个：demo-skill、docx/),
+    ).toBeInTheDocument()
+  })
+
+  it('does not render category filter tags below the local search input', async () => {
+    await renderSkillsPage()
+
+    expect(
+      screen.getByPlaceholderText('搜索技能名、目录名或注解快照'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'tools' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'docs' })).not.toBeInTheDocument()
   })
 
   it('allows closing the annotation dialog while the queue keeps running and reopens progress', async () => {
@@ -561,7 +765,12 @@ describe('SkillsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getAllByText('技能注解队列已完成').length).toBeGreaterThan(0)
+      expect(
+        screen.queryByText('技能注解队列已完成'),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('progressbar', { name: '技能注解进度' }),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -582,7 +791,7 @@ describe('SkillsPage', () => {
     await user.click(screen.getByRole('button', { name: '更新全部技能' }))
 
     expect(
-      await screen.findByText('开始执行：更新全部全局技能'),
+      await screen.findByText('开始更新全部：更新全部全局技能'),
     ).toBeInTheDocument()
 
     resolveCommand?.(createCommandResult())
@@ -620,6 +829,30 @@ describe('SkillsPage', () => {
     expect(
       screen.getByText(/示例：npm warn Unknown user config "python"/),
     ).toBeInTheDocument()
+  })
+
+  it('writes a concise failure log with exit code and first stderr line', async () => {
+    const user = userEvent.setup()
+    mockRunSkillsCommand.mockResolvedValueOnce(
+      createCommandResult({
+        success: false,
+        code: 1,
+        stdout: '',
+        stderr: 'permission denied\nstack trace line 2',
+      }),
+    )
+
+    await renderSkillsPage()
+
+    await user.click(screen.getByRole('button', { name: '同步与安装' }))
+    await user.click(screen.getByRole('button', { name: '更新全部' }))
+    await user.click(screen.getByRole('button', { name: '更新全部技能' }))
+
+    await waitFor(() => {
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        '[技能] 更新全部失败：更新全部全局技能；退出码 1，permission denied',
+      )
+    })
   })
 
   it('updates visible progress from skills-command-progress events', async () => {
@@ -709,6 +942,7 @@ describe('SkillsPage', () => {
     const user = userEvent.setup()
     await renderSkillsPage()
     await user.click(screen.getByRole('button', { name: '同步与安装' }))
+    await user.click(screen.getByRole('button', { name: /同步目标/ }))
 
     expect(screen.getAllByText('Snow').length).toBeGreaterThan(0)
     await user.selectOptions(screen.getByRole('combobox'), 'snow')

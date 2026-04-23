@@ -77,6 +77,20 @@ struct EnrichmentPayload {
     tags: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct MarkdownSection {
+    heading: String,
+    content: String,
+}
+
+#[derive(Debug, Clone)]
+struct SemanticSection {
+    role: &'static str,
+    score: usize,
+    signals: Vec<&'static str>,
+    section: MarkdownSection,
+}
+
 fn home_dir() -> Result<PathBuf, String> {
     std::env::var("HOME")
         .map(PathBuf::from)
@@ -122,7 +136,10 @@ fn normalize_tags(tags: &[String], fallback: &[String]) -> Vec<String> {
         if next.is_empty() {
             continue;
         }
-        if !normalized.iter().any(|item: &String| item.eq_ignore_ascii_case(next)) {
+        if !normalized
+            .iter()
+            .any(|item: &String| item.eq_ignore_ascii_case(next))
+        {
             normalized.push(next.to_string());
         }
         if normalized.len() >= 10 {
@@ -136,7 +153,10 @@ fn normalize_tags(tags: &[String], fallback: &[String]) -> Vec<String> {
             if next.is_empty() {
                 continue;
             }
-            if !normalized.iter().any(|item: &String| item.eq_ignore_ascii_case(next)) {
+            if !normalized
+                .iter()
+                .any(|item: &String| item.eq_ignore_ascii_case(next))
+            {
                 normalized.push(next.to_string());
             }
             if normalized.len() >= 10 {
@@ -220,6 +240,384 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
         return value.to_string();
     }
     value.chars().take(max_chars).collect::<String>()
+}
+
+fn split_frontmatter(content: &str) -> (Option<String>, String) {
+    let normalized = content.replace("\r\n", "\n");
+    if !normalized.starts_with("---\n") {
+        return (None, normalized);
+    }
+
+    let remainder = &normalized[4..];
+    if let Some(end) = remainder.find("\n---\n") {
+        let frontmatter = remainder[..end].trim().to_string();
+        let body = remainder[end + 5..].to_string();
+        let frontmatter = if frontmatter.is_empty() {
+            None
+        } else {
+            Some(frontmatter)
+        };
+        return (frontmatter, body);
+    }
+
+    (None, normalized)
+}
+
+fn normalize_block(content: &str) -> String {
+    content
+        .lines()
+        .map(|line| line.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn extract_intro(body: &str, max_chars: usize) -> String {
+    let mut paragraphs = Vec::new();
+    let mut current = Vec::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !current.is_empty() {
+                paragraphs.push(current.join("\n"));
+                current.clear();
+            }
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            break;
+        }
+        current.push(trimmed.to_string());
+    }
+
+    if !current.is_empty() {
+        paragraphs.push(current.join("\n"));
+    }
+
+    truncate_chars(&paragraphs.join("\n\n"), max_chars)
+}
+
+fn parse_markdown_sections(body: &str) -> Vec<MarkdownSection> {
+    let mut sections = Vec::new();
+    let mut current_heading: Option<String> = None;
+    let mut current_lines: Vec<String> = Vec::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        let is_heading = trimmed.starts_with('#');
+        if is_heading {
+            if let Some(heading) = current_heading.take() {
+                let content = normalize_block(&current_lines.join("\n"));
+                if !content.is_empty() {
+                    sections.push(MarkdownSection { heading, content });
+                }
+            }
+            current_heading = Some(trimmed.trim_start_matches('#').trim().to_string());
+            current_lines.clear();
+            continue;
+        }
+
+        if current_heading.is_some() {
+            current_lines.push(line.to_string());
+        }
+    }
+
+    if let Some(heading) = current_heading.take() {
+        let content = normalize_block(&current_lines.join("\n"));
+        if !content.is_empty() {
+            sections.push(MarkdownSection { heading, content });
+        }
+    }
+
+    sections
+}
+
+fn semantic_profiles() -> Vec<(&'static str, Vec<&'static str>)> {
+    vec![
+        (
+            "触发与适用",
+            vec![
+                "trigger",
+                "triggers",
+                "use when",
+                "when to use",
+                "should use",
+                "invoke",
+                "route",
+                "适用",
+                "触发",
+                "入口",
+                "调用",
+                "路由",
+                "使用时机",
+            ],
+        ),
+        (
+            "用法与执行",
+            vec![
+                "usage",
+                "how to use",
+                "workflow",
+                "process",
+                "steps",
+                "run",
+                "execute",
+                "command",
+                "用法",
+                "执行",
+                "步骤",
+                "流程",
+                "命令",
+                "如何使用",
+            ],
+        ),
+        (
+            "场景与边界",
+            vec![
+                "scenario",
+                "scenarios",
+                "do not use",
+                "don't use",
+                "when not",
+                "not use",
+                "anti-pattern",
+                "scope",
+                "limitation",
+                "constraint",
+                "场景",
+                "边界",
+                "限制",
+                "不适用",
+                "不要",
+                "约束",
+            ],
+        ),
+        (
+            "示例",
+            vec![
+                "example", "examples", "sample", "demo", "input", "output", "示例", "样例", "演示",
+                "输入", "输出",
+            ],
+        ),
+        (
+            "实现细节",
+            vec![
+                "script",
+                "scripts",
+                "template",
+                "templates",
+                "asset",
+                "assets",
+                "reference",
+                "references",
+                "file",
+                "path",
+                "脚本",
+                "模板",
+                "素材",
+                "参考",
+                "文件",
+                "路径",
+            ],
+        ),
+    ]
+}
+
+fn semantic_score(
+    section: &MarkdownSection,
+    role: &'static str,
+    keywords: &[&'static str],
+) -> SemanticSection {
+    let heading = section.heading.to_ascii_lowercase();
+    let content = section.content.to_ascii_lowercase();
+    let mut score = 0usize;
+    let mut signals = Vec::new();
+
+    for keyword in keywords {
+        let normalized = keyword.to_ascii_lowercase();
+        let in_heading = heading.contains(&normalized);
+        let in_content = content.contains(&normalized);
+        if in_heading {
+            score += 3;
+        }
+        if in_content {
+            score += 1;
+        }
+        if in_heading || in_content {
+            signals.push(*keyword);
+        }
+    }
+
+    SemanticSection {
+        role,
+        score,
+        signals,
+        section: section.clone(),
+    }
+}
+
+fn semantic_sections(sections: &[MarkdownSection]) -> Vec<SemanticSection> {
+    let profiles = semantic_profiles();
+    sections
+        .iter()
+        .filter_map(|section| {
+            profiles
+                .iter()
+                .map(|(role, keywords)| semantic_score(section, role, keywords))
+                .max_by(|left, right| {
+                    left.score
+                        .cmp(&right.score)
+                        .then_with(|| right.section.heading.cmp(&left.section.heading))
+                })
+                .filter(|scored| scored.score > 0)
+        })
+        .collect()
+}
+
+fn pick_priority_sections(sections: &[MarkdownSection]) -> Vec<MarkdownSection> {
+    let mut selected = Vec::new();
+    let mut used_headings = std::collections::BTreeSet::new();
+    let mut scored = semantic_sections(sections);
+    scored.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.role.cmp(right.role))
+            .then_with(|| left.section.heading.cmp(&right.section.heading))
+    });
+
+    for scored_section in scored {
+        if used_headings.insert(scored_section.section.heading.clone()) {
+            selected.push(scored_section.section);
+        }
+        if selected.len() >= 6 {
+            break;
+        }
+    }
+
+    if selected.len() < 3 {
+        for section in sections.iter() {
+            if used_headings.contains(&section.heading) {
+                continue;
+            }
+            selected.push(section.clone());
+            used_headings.insert(section.heading.clone());
+            if selected.len() >= 3 {
+                break;
+            }
+        }
+    }
+
+    selected
+}
+
+fn build_semantic_summary(sections: &[MarkdownSection], max_chars: usize) -> String {
+    let mut scored = semantic_sections(sections);
+    scored.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.role.cmp(right.role))
+            .then_with(|| left.section.heading.cmp(&right.section.heading))
+    });
+
+    let summary = scored
+        .into_iter()
+        .take(8)
+        .map(|item| {
+            let signals = item.signals.join(", ");
+            format!(
+                "- {} | 角色: {} | 分数: {} | 信号: {}",
+                item.section.heading, item.role, item.score, signals
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    truncate_chars(&summary, max_chars)
+}
+
+fn section_to_prompt_block(section: &MarkdownSection, max_chars: usize) -> String {
+    format!(
+        "## {}\n{}",
+        section.heading,
+        truncate_chars(&section.content, max_chars)
+    )
+}
+
+fn build_supplemental_excerpt(
+    body: &str,
+    sections: &[MarkdownSection],
+    selected_sections: &[MarkdownSection],
+    max_chars: usize,
+) -> String {
+    let selected_headings = selected_sections
+        .iter()
+        .map(|section| section.heading.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let mut parts = Vec::new();
+    for section in sections {
+        if selected_headings.contains(&section.heading) {
+            continue;
+        }
+        let block = section_to_prompt_block(section, 1_600);
+        if !block.is_empty() {
+            parts.push(block);
+        }
+        if parts.join("\n\n").chars().count() >= max_chars {
+            break;
+        }
+    }
+
+    if parts.is_empty() {
+        return truncate_chars(body.trim(), max_chars);
+    }
+
+    truncate_chars(&parts.join("\n\n"), max_chars)
+}
+
+fn build_structured_skill_source(skill_markdown: &str) -> String {
+    let (frontmatter, body) = split_frontmatter(skill_markdown);
+    let intro = extract_intro(&body, 2_000);
+    let sections = parse_markdown_sections(&body);
+    let selected_sections = pick_priority_sections(&sections);
+    let semantic_summary = build_semantic_summary(&sections, 2_000);
+    let supplemental = build_supplemental_excerpt(&body, &sections, &selected_sections, 6_000);
+
+    let mut parts = Vec::new();
+
+    if let Some(frontmatter) = frontmatter {
+        parts.push(format!(
+            "[Frontmatter]\n{}",
+            truncate_chars(&frontmatter, 3_000)
+        ));
+    }
+
+    if !intro.is_empty() {
+        parts.push(format!("[简介摘录]\n{}", intro));
+    }
+
+    if !selected_sections.is_empty() {
+        let selected = selected_sections
+            .iter()
+            .map(|section| section_to_prompt_block(section, 2_400))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        parts.push(format!("[重点章节]\n{}", selected));
+    }
+
+    if !semantic_summary.is_empty() {
+        parts.push(format!("[语义信号摘要]\n{}", semantic_summary));
+    }
+
+    if !supplemental.trim().is_empty() {
+        parts.push(format!("[补充正文摘录]\n{}", supplemental));
+    }
+
+    truncate_chars(&parts.join("\n\n"), 18_000)
 }
 
 fn parse_env_file(content: &str) -> std::collections::BTreeMap<String, String> {
@@ -317,7 +715,8 @@ fn parse_claude_profile(home: &Path) -> Option<SystemLlmProfile> {
         model,
         request_kind: LlmRequestKind::Claude,
         protocols: vec!["claude".to_string()],
-        updated_at: file_updated_at(&local_settings_path).or_else(|| file_updated_at(&settings_path)),
+        updated_at: file_updated_at(&local_settings_path)
+            .or_else(|| file_updated_at(&settings_path)),
     })
 }
 
@@ -395,10 +794,7 @@ fn parse_snow_profile(home: &Path) -> Option<SystemLlmProfile> {
         "anthropic" => (LlmRequestKind::Claude, vec!["claude".to_string()]),
         "gemini" => (LlmRequestKind::Gemini, vec!["gemini".to_string()]),
         "chat" => (LlmRequestKind::OpenAiChat, vec!["openai".to_string()]),
-        _ => (
-            LlmRequestKind::OpenAiResponses,
-            vec!["openai".to_string()],
-        ),
+        _ => (LlmRequestKind::OpenAiResponses, vec!["openai".to_string()]),
     };
 
     Some(SystemLlmProfile {
@@ -483,12 +879,10 @@ pub async fn resolve_system_llm() -> Result<SystemLlmSnapshot, String> {
     })
 }
 
-fn build_skill_prompt(
-    request: &EnrichSkillRequest,
-    skill_markdown: &str,
-) -> String {
+fn build_skill_prompt(request: &EnrichSkillRequest, skill_markdown: &str) -> String {
+    let structured_source = build_structured_skill_source(skill_markdown);
     format!(
-        "你是一个本地 AI 助手工具的技能信息整理器。请根据我提供的 skill 元信息与 SKILL.md 内容，只输出一个 JSON 对象，不要输出 Markdown 代码块，不要解释。\n\n\
+        "你是一个本地 AI 助手工具的技能信息整理器。请根据我提供的 skill 元信息与结构化摘录后的 SKILL.md 内容，只输出一个 JSON 对象，不要输出 Markdown 代码块，不要解释。\n\n\
 输出字段要求：\n\
 - localizedDescription: 用 1 到 2 句话写中文短描述，适合列表卡片，40 到 90 个中文字符\n\
 - fullDescription: 对 skill 的完整中文介绍，120 到 260 个中文字符\n\
@@ -501,11 +895,12 @@ fn build_skill_prompt(
 - 保留原 skill 的真实用途，不要夸大\n\
 - 如果原描述已经是中文，也要重写得更自然\n\
 - tags 不要出现版本号、文件名、仓库名、纯品牌名；优先写功能维度\n\
+- 优先依据 frontmatter、触发条件、用法、场景、示例、限制来总结，不要被冗长背景说明带偏\n\
 - JSON 必须合法\n\n\
 Skill 目录名: {skill_dir}\n\
 现有描述: {description}\n\
 现有分类: {categories}\n\n\
-SKILL.md 全文:\n{skill_markdown}",
+SKILL.md 结构化摘录:\n{structured_source}",
         skill_dir = request.skill_dir,
         description = request.description,
         categories = if request.categories.is_empty() {
@@ -513,7 +908,7 @@ SKILL.md 全文:\n{skill_markdown}",
         } else {
             request.categories.join(", ")
         },
-        skill_markdown = truncate_chars(skill_markdown, 20_000),
+        structured_source = structured_source,
     )
 }
 
@@ -564,4 +959,65 @@ pub async fn enrich_single_skill(
                 .unwrap_or(0),
         ),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_skill_prompt, build_structured_skill_source, EnrichSkillRequest};
+    use crate::providers::router::LlmRequestKind;
+
+    fn request() -> EnrichSkillRequest {
+        EnrichSkillRequest {
+            base_url: "https://api.example.com".to_string(),
+            api_key: "sk-test".to_string(),
+            model: "gpt-5.4".to_string(),
+            request_kind: LlmRequestKind::OpenAiChat,
+            skill_dir: "demo-skill".to_string(),
+            skill_path: "/tmp/demo-skill/SKILL.md".to_string(),
+            description: "demo".to_string(),
+            categories: vec!["tools".to_string()],
+            updated_at: Some(1),
+            provider_label: Some("Test".to_string()),
+        }
+    }
+
+    #[test]
+    fn structured_source_keeps_late_priority_sections() {
+        let long_prefix = "背景说明".repeat(12_000);
+        let markdown = format!(
+            "---\nname: Demo Skill\ndescription: useful\n---\n\n{}\n\n## Trigger\nUse when you need exact context routing.\n\n## Usage\nRun the worker with local inputs.\n\n## Scenarios\nUse for precision-first recommendation.\n",
+            long_prefix
+        );
+
+        let source = build_structured_skill_source(&markdown);
+        assert!(source.contains("[Frontmatter]"));
+        assert!(source.contains("## Trigger"));
+        assert!(source.contains("exact context routing"));
+        assert!(source.contains("## Usage"));
+        assert!(source.contains("precision-first recommendation"));
+    }
+
+    #[test]
+    fn prompt_uses_structured_excerpt_not_full_markdown_label() {
+        let markdown = "---\nname: Demo Skill\n---\n\n## Usage\nUse this skill.\n";
+        let prompt = build_skill_prompt(&request(), markdown);
+
+        assert!(prompt.contains("SKILL.md 结构化摘录"));
+        assert!(!prompt.contains("SKILL.md 全文"));
+        assert!(prompt.contains("[Frontmatter]"));
+        assert!(prompt.contains("## Usage"));
+    }
+
+    #[test]
+    fn semantic_summary_detects_roles_from_section_content() {
+        let markdown = "---\nname: Demo Skill\n---\n\n## Notes\nUse when the task needs repository search.\n\n## Guardrails\nDo not use for destructive shell commands.\n\n## Checklist\nSteps:\n1. inspect files\n2. run command\n3. verify output\n";
+        let source = build_structured_skill_source(markdown);
+
+        assert!(source.contains("[语义信号摘要]"));
+        assert!(source.contains("Notes | 角色: 触发与适用"));
+        assert!(source.contains("Guardrails | 角色: 场景与边界"));
+        assert!(source.contains("Checklist | 角色: 用法与执行"));
+        assert!(source.contains("do not use"));
+        assert!(source.contains("steps"));
+    }
 }

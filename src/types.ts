@@ -222,6 +222,23 @@ export interface SkillEnrichmentJobSnapshot {
   records: Record<string, SkillEnrichmentRecord>;
 }
 
+export interface InstalledSkillSnapshot {
+  skillDir: string;
+  skillName: string;
+  skillPath: string;
+  sourceDescription: string;
+  displayDescription: string;
+  fullDescription: string;
+  contentSummary: string;
+  usage: string;
+  scenarios: string;
+  tags: string[];
+  searchText: string;
+  updatedAt?: number | null;
+  enrichedAt?: number | null;
+  status: SkillEnrichmentStatus;
+}
+
 export type SkillSourceType = "github" | "npx" | "local" | "manual" | "unknown";
 
 export interface SkillsCatalogSnapshot {

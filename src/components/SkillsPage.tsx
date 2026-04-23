@@ -21,6 +21,8 @@ import {
 } from "../lib/formStyles";
 import { logger } from "../lib/devlog";
 import {
+  buildInstalledSkillSnapshot,
+  buildInstalledSkillSnapshots,
   getSkillDescription,
   getSkillEnrichment,
   getSkillTags,
@@ -43,6 +45,7 @@ import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import type {
   LlmRequestKind,
+  InstalledSkillSnapshot,
   OnlineSkill,
   Provider,
   SkillAnnotationMode,
@@ -87,6 +90,8 @@ const SKILL_SOURCES_KEY = "ai-modal-skill-sources";
 const SKILL_SOURCES_DB_KEY = "skills_sources";
 const SKILL_ENRICHMENTS_KEY = "ai-modal-skill-enrichments";
 const SKILL_ENRICHMENTS_DB_KEY = "skill_enrichments";
+const INSTALLED_SKILL_SNAPSHOTS_KEY = "ai-modal-installed-skill-snapshots";
+const INSTALLED_SKILL_SNAPSHOTS_DB_KEY = "installed_skill_snapshots";
 const MODEL_CONFIG_KEY = "ai-modal-model-config";
 const MODEL_CONFIG_DB_KEY = "model_config";
 
@@ -264,6 +269,12 @@ function describeSkillsCommand(request: SkillsCommandRequest) {
   return "更新全部全局技能";
 }
 
+function getSkillsCommandActionLabel(action: SkillsCommandAction) {
+  if (action === "add") return "安装";
+  if (action === "remove") return "移除";
+  return "更新全部";
+}
+
 function extractNpmConfigWarnings(stderr: string) {
   const lines = stderr
     .split("\n")
@@ -278,6 +289,18 @@ function extractNpmConfigWarnings(stderr: string) {
       (line) => !/^npm warn Unknown (env|user) config\b/i.test(line),
     ),
   };
+}
+
+function summarizeCommandFailure(result: SkillsCommandResult) {
+  const { remainingLines, warningLines } = extractNpmConfigWarnings(result.stderr);
+  const sourceLines = remainingLines.length > 0
+    ? remainingLines
+    : result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+  const detail = sourceLines[0] ?? warningLines[0] ?? "无 stderr/stdout 详情";
+  return `退出码 ${result.code ?? "未知"}，${detail}`;
 }
 
 export function SkillsPage({
@@ -302,6 +325,9 @@ export function SkillsPage({
   const [skillEnrichments, setSkillEnrichments] = useState<
     Record<string, SkillEnrichmentRecord>
   >({});
+  const [installedSkillSnapshots, setInstalledSkillSnapshots] = useState<
+    Record<string, InstalledSkillSnapshot>
+  >({});
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [loadingLlmProfiles, setLoadingLlmProfiles] = useState(false);
   const [modelConfigs, setModelConfigs] = useState<PersistedModelConfig[]>([]);
@@ -315,6 +341,9 @@ export function SkillsPage({
   const [currentEnrichmentSkillDir, setCurrentEnrichmentSkillDir] = useState<
     string | null
   >(null);
+  const [activeEnrichmentSkillDirs, setActiveEnrichmentSkillDirs] = useState<
+    string[]
+  >([]);
   const [nextEnrichmentRunAt, setNextEnrichmentRunAt] = useState<number | null>(
     null,
   );
@@ -322,6 +351,9 @@ export function SkillsPage({
   const [enrichmentQueueError, setEnrichmentQueueError] = useState<
     string | null
   >(null);
+  const [enrichmentQueueRecords, setEnrichmentQueueRecords] = useState<
+    Record<string, SkillEnrichmentRecord>
+  >({});
   const [queueNow, setQueueNow] = useState(Date.now());
   const [annotationModalOpen, setAnnotationModalOpen] = useState(false);
   const [checkingTargets, setCheckingTargets] = useState(false);
@@ -341,13 +373,13 @@ export function SkillsPage({
   const [commandResult, setCommandResult] =
     useState<SkillsCommandResult | null>(null);
   const [query, setQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("全部");
   const [selectedTab, setSelectedTab] = useState<SkillsTab>("list");
   const [installMode, setInstallMode] = useState<InstallMode>("search");
   const [githubSource, setGithubSource] = useState("");
   const [localSource, setLocalSource] = useState("");
   const [removeNames, setRemoveNames] = useState("");
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const [syncTargetsExpanded, setSyncTargetsExpanded] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
   const [selectedTargetId, setSelectedTargetId] = useState("");
@@ -401,11 +433,18 @@ export function SkillsPage({
         setEnrichmentQueueTotal(0);
         setEnrichmentQueueCompleted(0);
         setCurrentEnrichmentSkillDir(null);
+        setActiveEnrichmentSkillDirs([]);
         setNextEnrichmentRunAt(null);
         setEnrichmentQueueMessage("");
         setEnrichmentQueueError(null);
+        setEnrichmentQueueRecords({});
         return;
       }
+
+      const activeSkillDirs = Object.values(snapshot.records)
+        .filter((record) => record.status === "running")
+        .map((record) => record.skillDir)
+        .sort((a, b) => a.localeCompare(b));
 
       const logKey = [
         snapshot.runId,
@@ -413,13 +452,18 @@ export function SkillsPage({
         snapshot.completed,
         snapshot.total,
         snapshot.currentSkillDir ?? "",
+        activeSkillDirs.join(","),
         snapshot.message,
         snapshot.errorMessage ?? "",
       ].join("|");
       if (lastEnrichmentLogKeyRef.current !== logKey) {
         const suffix = [
           `${snapshot.completed}/${snapshot.total}`,
-          snapshot.currentSkillDir ? `当前=${snapshot.currentSkillDir}` : "",
+          activeSkillDirs.length > 0
+            ? `处理中=${activeSkillDirs.join("、")}`
+            : snapshot.currentSkillDir
+              ? `当前=${snapshot.currentSkillDir}`
+              : "",
           snapshot.errorMessage ? `错误=${snapshot.errorMessage}` : "",
         ]
           .filter(Boolean)
@@ -427,6 +471,8 @@ export function SkillsPage({
         const text = `[技能注解] ${snapshot.message}${suffix ? ` | ${suffix}` : ""}`;
         if (snapshot.status === "error") {
           logger.error(text);
+        } else if (snapshot.status === "done" && snapshot.errorMessage) {
+          logger.warn(text);
         } else if (snapshot.status === "done") {
           logger.success(text);
         } else if (snapshot.status === "stopped") {
@@ -444,17 +490,31 @@ export function SkillsPage({
       setEnrichmentQueueTotal(snapshot.total);
       setEnrichmentQueueCompleted(snapshot.completed);
       setCurrentEnrichmentSkillDir(snapshot.currentSkillDir ?? null);
+      setActiveEnrichmentSkillDirs(activeSkillDirs);
       setNextEnrichmentRunAt(snapshot.nextRunAt ?? null);
       setEnrichmentQueueMessage(snapshot.message);
       setEnrichmentQueueError(snapshot.errorMessage ?? null);
+      setEnrichmentQueueRecords(snapshot.records);
       if (Object.keys(snapshot.records).length > 0) {
         setSkillEnrichments((current) => ({
           ...current,
           ...snapshot.records,
         }));
+        setInstalledSkillSnapshots((current) => {
+          const next = { ...current };
+          for (const [skillDir, enrichment] of Object.entries(snapshot.records)) {
+            const skill = (catalog?.skills ?? []).find(
+              (item) => item.dir === skillDir,
+            );
+            if (skill) {
+              next[skillDir] = buildInstalledSkillSnapshot(skill, enrichment);
+            }
+          }
+          return next;
+        });
       }
     },
-    [],
+    [catalog?.skills],
   );
 
   useEffect(() => {
@@ -496,6 +556,7 @@ export function SkillsPage({
           storedSources,
           storedCatalog,
           storedEnrichments,
+          storedInstalledSkillSnapshots,
           storedModelConfig,
         ] =
           await Promise.all([
@@ -518,6 +579,11 @@ export function SkillsPage({
           loadPersistedJson<Record<string, SkillEnrichmentRecord>>(
             SKILL_ENRICHMENTS_DB_KEY,
             SKILL_ENRICHMENTS_KEY,
+            {},
+          ),
+          loadPersistedJson<Record<string, InstalledSkillSnapshot>>(
+            INSTALLED_SKILL_SNAPSHOTS_DB_KEY,
+            INSTALLED_SKILL_SNAPSHOTS_KEY,
             {},
           ),
           loadPersistedJson<PersistedModelConfig | null>(
@@ -552,13 +618,17 @@ export function SkillsPage({
             ? [storedModelConfig]
             : [],
         );
-        setCatalog(
+        const bootCatalog =
           storedCatalog && storedCatalog.sourceDir
             ? mergeCatalogWithSources(storedCatalog, storedSources)
             : createEmptyCatalog(
                 home ? `${home}/.agents/skills` : "~/.agents/skills",
-              ),
-        );
+              );
+        setCatalog(bootCatalog);
+        setInstalledSkillSnapshots({
+          ...storedInstalledSkillSnapshots,
+          ...buildInstalledSkillSnapshots(bootCatalog.skills, storedEnrichments),
+        });
       } catch (error) {
         console.error("Failed to bootstrap skill targets", error);
         toast("读取技能目标失败", "error");
@@ -606,6 +676,17 @@ export function SkillsPage({
     });
   }, [skillEnrichments, targetsReady]);
 
+  useEffect(() => {
+    if (!targetsReady) return;
+    void savePersistedJson(
+      INSTALLED_SKILL_SNAPSHOTS_DB_KEY,
+      installedSkillSnapshots,
+      INSTALLED_SKILL_SNAPSHOTS_KEY,
+    ).catch((error) => {
+      console.error("Failed to persist installed skill snapshots", error);
+    });
+  }, [installedSkillSnapshots, targetsReady]);
+
   async function refreshCatalog(nextSources?: Record<string, SkillSourceMeta>) {
     setLoadingCatalog(true);
     try {
@@ -613,6 +694,9 @@ export function SkillsPage({
       const mergedSources = nextSources ?? skillSources;
       const mergedCatalog = mergeCatalogWithSources(next, mergedSources);
       setCatalog(mergedCatalog);
+      setInstalledSkillSnapshots(
+        buildInstalledSkillSnapshots(mergedCatalog.skills, skillEnrichments),
+      );
       await savePersistedJson(
         SKILLS_CATALOG_DB_KEY,
         mergedCatalog,
@@ -717,31 +801,17 @@ export function SkillsPage({
   }, [selectedTargetId, targets]);
 
   const localSkills = catalog?.skills ?? [];
-  const categories = useMemo(() => {
-    const values = new Set<string>();
-    localSkills.forEach((skill) => {
-      getSkillTags(skill, skillEnrichments).forEach((category) =>
-        values.add(category),
-      );
-    });
-    return ["全部", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
-  }, [localSkills, skillEnrichments]);
-
   const filteredSkills = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
     return localSkills.filter((skill) => {
+      const skillSnapshot =
+        installedSkillSnapshots[skill.dir] ??
+        buildInstalledSkillSnapshot(skill, skillEnrichments[skill.dir] ?? null);
       const matchesQuery =
-        !query.trim() ||
-        skill.name.toLowerCase().includes(query.trim().toLowerCase()) ||
-        getSkillDescription(skill, skillEnrichments)
-          .toLowerCase()
-          .includes(query.trim().toLowerCase()) ||
-        skill.dir.toLowerCase().includes(query.trim().toLowerCase());
-      const displayTags = getSkillTags(skill, skillEnrichments);
-      const matchesCategory =
-        selectedCategory === "全部" || displayTags.includes(selectedCategory);
-      return matchesQuery && matchesCategory;
+        !normalizedQuery || skillSnapshot.searchText.includes(normalizedQuery);
+      return matchesQuery;
     });
-  }, [localSkills, query, selectedCategory, skillEnrichments]);
+  }, [installedSkillSnapshots, localSkills, query, skillEnrichments]);
   const incrementalAnnotationSkills = useMemo(
     () =>
       filteredSkills.filter((skill) =>
@@ -879,6 +949,12 @@ export function SkillsPage({
   const nextEnrichmentSeconds = nextEnrichmentRunAt
     ? Math.max(0, Math.ceil((nextEnrichmentRunAt - queueNow) / 1000))
     : null;
+  const enrichmentActiveSummary =
+    activeEnrichmentSkillDirs.length > 0
+      ? ` · 当前 ${activeEnrichmentSkillDirs.length} 个：${activeEnrichmentSkillDirs.join("、")}`
+      : currentEnrichmentSkillDir
+        ? ` · 当前 ${currentEnrichmentSkillDir}`
+        : "";
   const enrichmentProgressPercent =
     enrichmentQueueTotal > 0
       ? Math.max(
@@ -889,6 +965,16 @@ export function SkillsPage({
           ),
         )
       : 0;
+  const failedEnrichmentRecords = Object.values(enrichmentQueueRecords)
+    .filter((record) => record.status === "error")
+    .sort((left, right) => left.skillDir.localeCompare(right.skillDir));
+  const shouldShowEnrichmentQueue =
+    enrichmentQueuePhase !== "idle" &&
+    !(
+      enrichmentQueuePhase === "done" &&
+      !enrichmentQueueError &&
+      failedEnrichmentRecords.length === 0
+    );
 
   function setTargetEnabled(id: string, enabled: boolean) {
     setTargets((prev) =>
@@ -1348,11 +1434,11 @@ export function SkillsPage({
     },
   ) {
     setCommandRunning(true);
-    setCommandProgress(`开始执行：${describeSkillsCommand(request)}`);
+    const actionLabel = getSkillsCommandActionLabel(request.action);
+    const commandLabel = describeSkillsCommand(request);
+    setCommandProgress(`开始${actionLabel}：${commandLabel}`);
     setCommandProgressStage("starting");
-    logger.info(
-      `[技能] 开始执行 ${request.action}，${describeSkillsCommand(request)}`,
-    );
+    logger.info(`[技能] ${actionLabel}开始：${commandLabel}`);
     try {
       const previousDirs = new Set(
         (catalog?.skills ?? []).map((skill) => skill.dir),
@@ -1365,14 +1451,14 @@ export function SkillsPage({
         result.stderr,
       );
       if (result.success) {
-        logger.success(
-          `[技能] ${request.action} 执行成功：${describeSkillsCommand(request)}`,
-        );
+        logger.success(`[技能] ${actionLabel}完成：${commandLabel}`);
         if (result.stdout.trim()) {
           logger.debug(`[技能] stdout: ${result.stdout.trim()}`);
         }
         if (remainingLines.length > 0) {
-          logger.warn(`[技能] stderr: ${remainingLines.join("\n")}`);
+          logger.warn(
+            `[技能] ${actionLabel}附加输出：${remainingLines.join("\n")}`,
+          );
         } else if (warningLines.length > 0) {
           logger.info(
             `[技能] stderr 含 ${warningLines.length} 条 npm 配置告警，已折叠显示；示例：${warningLines[0]}；原文可在“最近命令结果”查看`,
@@ -1380,7 +1466,7 @@ export function SkillsPage({
         }
       } else {
         logger.error(
-          `[技能] ${request.action} 执行失败：${describeSkillsCommand(request)}`,
+          `[技能] ${actionLabel}失败：${commandLabel}；${summarizeCommandFailure(result)}`,
         );
         if (result.stderr.trim()) {
           logger.error(`[技能] stderr: ${result.stderr.trim()}`);
@@ -1394,7 +1480,7 @@ export function SkillsPage({
         setCommandProgress("正在刷新本地技能目录...");
         setCommandProgressStage("refreshing");
       } else {
-        setCommandProgress(`执行失败：${describeSkillsCommand(request)}`);
+        setCommandProgress(`失败：${commandLabel}`);
         setCommandProgressStage("failed");
       }
       if (result.success && request.action === "add" && sourceMeta) {
@@ -1440,17 +1526,17 @@ export function SkillsPage({
       }
       await refreshTargetStatuses();
       if (result.success) {
-        setCommandProgress(`已完成：${describeSkillsCommand(request)}`);
+        setCommandProgress(`已完成：${commandLabel}`);
         setCommandProgressStage("done");
       }
     } catch (error) {
       console.error("Failed to run skills command", error);
       logger.error(
-        `[技能] ${request.action} 执行异常：${
+        `[技能] ${actionLabel}异常：${commandLabel}；${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      setCommandProgress(`执行异常：${describeSkillsCommand(request)}`);
+      setCommandProgress(`异常：${commandLabel}`);
       setCommandProgressStage("failed");
       toast("技能命令执行失败", "error");
     } finally {
@@ -1530,7 +1616,7 @@ export function SkillsPage({
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         {selectedTab === "list" && (
           <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-sm font-medium text-gray-100">
@@ -1542,113 +1628,122 @@ export function SkillsPage({
                   {catalog?.sourceDir || "~/.agents/skills"}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <div className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2 text-xs text-gray-300">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">当前请求 LLM</span>
-                    {loadingLlmProfiles && (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-500" />
-                    )}
-                  </div>
-                  {selectedLlmProfile ? (
-                    <div className="mt-1">
-                      {availableLlmProfiles.length > 1 ? (
-                        <select
-                          value={selectedLlmProfile.toolId}
-                          onChange={(e) => setSelectedLlmProfileId(e.target.value)}
-                          className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200 outline-none focus:border-indigo-500"
-                        >
-                          {availableLlmProfiles.map((profile) => (
-                            <option key={profile.toolId} value={profile.toolId}>
-                              {profile.model} ({profile.requestKind})
-                            </option>
-                          ))}
-                        </select>
+              <div className="flex min-w-0 flex-col gap-3 2xl:items-end">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="shrink-0 rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs text-gray-300">
+                    {catalog?.totalSkills ?? 0} 个技能
+                  </span>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <button
+                      onClick={() => void refreshCatalog()}
+                      disabled={loadingCatalog}
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      {loadingCatalog ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <div className="font-medium text-gray-100">
-                          {selectedLlmProfile.model} · {selectedLlmProfile.requestKind}
-                        </div>
+                        <RefreshCcw className="h-4 w-4" />
                       )}
-                    </div>
-                  ) : (
-                    <div className="mt-1 text-[11px] text-amber-300">
-                      未识别到系统配置中已保存的 LLM 配置
-                    </div>
-                  )}
+                      刷新
+                    </button>
+                    <button
+                      onClick={() =>
+                        void openPath(
+                          catalog?.sourceDir || `${homePath}/.agents/skills`,
+                        )
+                      }
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      打开目录
+                    </button>
+                    <button
+                      onClick={() => void refreshLlmProfiles()}
+                      disabled={loadingLlmProfiles}
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      {loadingLlmProfiles ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      刷新 LLM
+                    </button>
+                    <button
+                      onClick={() => setAnnotationModalOpen(true)}
+                      disabled={!selectedLlmProfile}
+                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      {enrichmentQueueRunning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <WandSparkles className="h-4 w-4" />
+                      )}
+                      技能注解
+                    </button>
+                    <button
+                      onClick={stopEnrichmentQueue}
+                      disabled={!enrichmentQueueRunning}
+                      className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      <X className="h-4 w-4" />
+                      停止
+                    </button>
+                  </div>
                 </div>
-                <span className="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs text-gray-300">
-                  {catalog?.totalSkills ?? 0} 个技能
-                </span>
-                {enrichmentQueuePhase !== "idle" && (
-                  <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-100">
+                {shouldShowEnrichmentQueue && (
+                  <div className="w-full rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-100 2xl:max-w-[720px]">
                     <div>{enrichmentQueueMessage || "技能富化队列运行中"}</div>
                     <div className="mt-1 text-indigo-200/70">
                       {enrichmentQueueCompleted}/{enrichmentQueueTotal}
-                      {currentEnrichmentSkillDir
-                        ? ` · 当前 ${currentEnrichmentSkillDir}`
-                        : ""}
+                      {enrichmentActiveSummary}
                       {enrichmentQueuePhase === "waiting" &&
                       nextEnrichmentSeconds != null
                         ? ` · ${nextEnrichmentSeconds}s 后继续`
                         : ""}
                     </div>
+                    {(enrichmentQueueError || failedEnrichmentRecords.length > 0) && (
+                      <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-3 text-red-100">
+                        {enrichmentQueueError && (
+                          <>
+                            <div className="font-medium text-red-200">失败摘要</div>
+                            <div className="mt-1 whitespace-pre-wrap break-words text-red-100/90">
+                              {enrichmentQueueError}
+                            </div>
+                          </>
+                        )}
+                        {failedEnrichmentRecords.length > 0 && (
+                          <div
+                            className={
+                              enrichmentQueueError
+                                ? "mt-3 border-t border-red-400/15 pt-3"
+                                : ""
+                            }
+                          >
+                            <div className="font-medium text-red-200">
+                              失败技能列表（{failedEnrichmentRecords.length}）
+                            </div>
+                            <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+                              {failedEnrichmentRecords.map((record) => (
+                                <div
+                                  key={`queue-inline-${record.skillDir}`}
+                                  className="rounded-lg border border-red-400/10 bg-black/10 px-3 py-2"
+                                >
+                                  <div className="font-medium text-red-100">
+                                    {record.skillDir}
+                                  </div>
+                                  <div className="mt-1 whitespace-pre-wrap break-words text-red-100/85">
+                                    {record.errorMessage || "未知失败原因"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-                <button
-                  onClick={() => void refreshCatalog()}
-                  disabled={loadingCatalog}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  {loadingCatalog ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCcw className="h-4 w-4" />
-                  )}
-                  刷新
-                </button>
-                <button
-                  onClick={() =>
-                    void openPath(
-                      catalog?.sourceDir || `${homePath}/.agents/skills`,
-                    )
-                  }
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  打开目录
-                </button>
-                <button
-                  onClick={() => void refreshLlmProfiles()}
-                  disabled={loadingLlmProfiles}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  {loadingLlmProfiles ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCcw className="h-4 w-4" />
-                  )}
-                  刷新 LLM
-                </button>
-                <button
-                  onClick={() => setAnnotationModalOpen(true)}
-                  disabled={!selectedLlmProfile}
-                  className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  {enrichmentQueueRunning ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <WandSparkles className="h-4 w-4" />
-                  )}
-                  技能注解
-                </button>
-                <button
-                  onClick={stopEnrichmentQueue}
-                  disabled={!enrichmentQueueRunning}
-                  className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <X className="h-4 w-4" />
-                  停止
-                </button>
               </div>
             </div>
 
@@ -1656,24 +1751,9 @@ export function SkillsPage({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索技能名、目录名或说明"
+                placeholder="搜索技能名、目录名或注解快照"
                 className={`${FIELD_INPUT_CLASS} min-w-[220px] flex-1`}
               />
-              <div className="flex flex-wrap gap-2">
-                {categories.map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => setSelectedCategory(category)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-                      selectedCategory === category
-                        ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-100"
-                        : "border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200"
-                    }`}
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
             </div>
 
             <div className="mt-4 grid max-h-[540px] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-4">
@@ -1876,7 +1956,12 @@ export function SkillsPage({
         {selectedTab === "manage" && (
           <div className="space-y-4">
             <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
-              <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setSyncTargetsExpanded((current) => !current)}
+                aria-label="同步目标"
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
                 <div>
                   <div className="flex items-center gap-1.5">
                     <h3 className="text-sm font-medium text-gray-100">
@@ -1885,7 +1970,14 @@ export function SkillsPage({
                     <HintTooltip content="本地技能统一留在 ~/.agents/skills，选中的目标目录通过软连接分发；冲突目录会先备份再替换。" />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                {syncTargetsExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-gray-500" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                )}
+              </button>
+              {syncTargetsExpanded && (
+                <div className="mt-4 flex items-center justify-end gap-2">
                   <button
                     onClick={() => void refreshTargetStatuses()}
                     disabled={checkingTargets}
@@ -1911,10 +2003,9 @@ export function SkillsPage({
                     同步已启用目标
                   </button>
                 </div>
-              </div>
+              )}
 
-              {/* Target overview cards */}
-              {targets.length > 0 && (
+              {syncTargetsExpanded && targets.length > 0 && (
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                   {targets.map((target) => {
                     const status = targetStatuses[target.id];
@@ -1969,8 +2060,7 @@ export function SkillsPage({
                 </div>
               )}
 
-              {/* Edit target inline */}
-              {selectedTarget && (
+              {syncTargetsExpanded && selectedTarget && (
                 <div className="mt-4 space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <select
@@ -2032,71 +2122,73 @@ export function SkillsPage({
                 </div>
               )}
 
-              <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-200">
-                    自定义目标
-                  </p>
-                  {!showCustomForm ? (
-                    <button
-                      onClick={() => setShowCustomForm(true)}
-                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} h-8 px-3 text-sm`}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      新增
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setShowCustomForm(false);
-                        setCustomLabel("");
-                        setCustomPath("");
-                      }}
-                      className={`${BUTTON_SECONDARY_CLASS} h-8 px-3 text-sm`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                      取消
-                    </button>
+              {syncTargetsExpanded && (
+                <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-200">
+                      自定义目标
+                    </p>
+                    {!showCustomForm ? (
+                      <button
+                        onClick={() => setShowCustomForm(true)}
+                        className={`${BUTTON_ACCENT_OUTLINE_CLASS} h-8 px-3 text-sm`}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        新增
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowCustomForm(false);
+                          setCustomLabel("");
+                          setCustomPath("");
+                        }}
+                        className={`${BUTTON_SECONDARY_CLASS} h-8 px-3 text-sm`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        取消
+                      </button>
+                    )}
+                  </div>
+                  {showCustomForm && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                      <input
+                        value={customLabel}
+                        onChange={(event) => setCustomLabel(event.target.value)}
+                        placeholder="目标名称"
+                        className={`${FIELD_INPUT_CLASS} w-40`}
+                      />
+                      <input
+                        value={customPath}
+                        onChange={(event) => setCustomPath(event.target.value)}
+                        placeholder="~/custom-tool/skills"
+                        className={`${FIELD_MONO_INPUT_CLASS} min-w-[260px] flex-1`}
+                      />
+                      <button
+                        onClick={async () => {
+                          const selected = await pickPath({
+                            directory: true,
+                            defaultPath: homePath || undefined,
+                          });
+                          if (typeof selected === "string")
+                            setCustomPath(selected);
+                        }}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                        选择目录
+                      </button>
+                      <button
+                        onClick={() => void handleAddCustomTarget()}
+                        className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                      >
+                        <FilePenLine className="h-4 w-4" />
+                        保存
+                      </button>
+                    </div>
                   )}
                 </div>
-                {showCustomForm && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2.5">
-                    <input
-                      value={customLabel}
-                      onChange={(event) => setCustomLabel(event.target.value)}
-                      placeholder="目标名称"
-                      className={`${FIELD_INPUT_CLASS} w-40`}
-                    />
-                    <input
-                      value={customPath}
-                      onChange={(event) => setCustomPath(event.target.value)}
-                      placeholder="~/custom-tool/skills"
-                      className={`${FIELD_MONO_INPUT_CLASS} min-w-[260px] flex-1`}
-                    />
-                    <button
-                      onClick={async () => {
-                        const selected = await pickPath({
-                          directory: true,
-                          defaultPath: homePath || undefined,
-                        });
-                        if (typeof selected === "string")
-                          setCustomPath(selected);
-                      }}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700 px-3 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
-                    >
-                      <FolderOpen className="h-4 w-4" />
-                      选择目录
-                    </button>
-                    <button
-                      onClick={() => void handleAddCustomTarget()}
-                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                    >
-                      <FilePenLine className="h-4 w-4" />
-                      保存
-                    </button>
-                  </div>
-                )}
-              </div>
+              )}
             </section>
             <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
               <div className="flex items-center gap-1.5">
@@ -2620,7 +2712,7 @@ export function SkillsPage({
               </div>
             </div>
 
-            {enrichmentQueuePhase !== "idle" && (
+            {shouldShowEnrichmentQueue && (
               <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -2629,9 +2721,7 @@ export function SkillsPage({
                     </div>
                     <div className="mt-1 text-xs text-indigo-200/75">
                       {enrichmentQueueCompleted}/{enrichmentQueueTotal}
-                      {currentEnrichmentSkillDir
-                        ? ` · 当前 ${currentEnrichmentSkillDir}`
-                        : ""}
+                      {enrichmentActiveSummary}
                       {enrichmentQueuePhase === "waiting" &&
                       nextEnrichmentSeconds != null
                         ? ` · ${nextEnrichmentSeconds}s 后继续`
@@ -2659,10 +2749,32 @@ export function SkillsPage({
 
                 {enrichmentQueueError && (
                   <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-3 text-xs leading-6 text-red-100">
-                    <div className="font-medium text-red-200">失败原因</div>
+                    <div className="font-medium text-red-200">失败摘要</div>
                     <div className="mt-1 whitespace-pre-wrap break-words text-red-100/90">
                       {enrichmentQueueError}
                     </div>
+                    {failedEnrichmentRecords.length > 0 && (
+                      <div className="mt-3 border-t border-red-400/15 pt-3">
+                        <div className="font-medium text-red-200">
+                          失败技能列表（{failedEnrichmentRecords.length}）
+                        </div>
+                        <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
+                          {failedEnrichmentRecords.map((record) => (
+                            <div
+                              key={record.skillDir}
+                              className="rounded-lg border border-red-400/10 bg-black/10 px-3 py-2"
+                            >
+                              <div className="font-medium text-red-100">
+                                {record.skillDir}
+                              </div>
+                              <div className="mt-1 whitespace-pre-wrap break-words text-red-100/85">
+                                {record.errorMessage || "未知失败原因"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

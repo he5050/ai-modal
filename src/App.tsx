@@ -606,6 +606,10 @@ export default function App() {
         lastSkillEnrichmentNoticeRef.current = noticeKey;
 
         if (snapshot.status === "done") {
+          if (snapshot.errorMessage) {
+            toast(snapshot.errorMessage, "warning");
+            return;
+          }
           toast("技能注解完成", "success");
           return;
         }

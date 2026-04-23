@@ -1,4 +1,6 @@
-use crate::commands::skill_enrichment::{enrich_single_skill, EnrichSkillRequest, SkillEnrichmentRecord};
+use crate::commands::skill_enrichment::{
+    enrich_single_skill, EnrichSkillRequest, SkillEnrichmentRecord,
+};
 use crate::providers::router::LlmRequestKind;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -6,8 +8,11 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 
 const SKILL_ENRICHMENT_EVENT: &str = "skill-enrichment-progress";
+const SKILL_ENRICHMENT_CONCURRENCY: usize = 2;
+const SKILL_ENRICHMENT_RETRY_DELAYS_MS: [u64; 2] = [1_500, 4_000];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -113,7 +118,9 @@ fn build_running_record(
         content_summary: previous
             .map(|record| record.content_summary.clone())
             .unwrap_or_default(),
-        usage: previous.map(|record| record.usage.clone()).unwrap_or_default(),
+        usage: previous
+            .map(|record| record.usage.clone())
+            .unwrap_or_default(),
         scenarios: previous
             .map(|record| record.scenarios.clone())
             .unwrap_or_default(),
@@ -156,16 +163,94 @@ fn build_error_record(
     }
 }
 
+fn is_retryable_enrichment_error(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    normalized.contains("error sending request")
+        || normalized.contains("connection")
+        || normalized.contains("connect")
+        || normalized.contains("dns")
+        || normalized.contains("timed out")
+        || normalized.contains("timeout")
+        || error.contains("请求超时")
+        || error.contains("请求过于频繁")
+        || error.contains("服务端错误")
+}
+
+fn count_failed_records(records: &BTreeMap<String, SkillEnrichmentRecord>) -> usize {
+    records
+        .values()
+        .filter(|record| record.status == "error")
+        .count()
+}
+
+fn completion_message(failed_count: usize) -> (String, Option<String>) {
+    if failed_count == 0 {
+        return ("技能注解队列已完成".to_string(), None);
+    }
+
+    let summary = format!("技能注解队列已完成，失败 {} 个", failed_count);
+    (summary.clone(), Some(summary))
+}
+
+async fn enrich_single_skill_with_retry(
+    app: &AppHandle,
+    manager: &Arc<Mutex<SkillEnrichmentJobRuntime>>,
+    run_id: u64,
+    item: &SkillEnrichmentJobItem,
+    item_request: EnrichSkillRequest,
+) -> Result<SkillEnrichmentRecord, String> {
+    let mut attempt = 0usize;
+
+    loop {
+        match enrich_single_skill(item_request.clone()).await {
+            Ok(record) => return Ok(record),
+            Err(error) => {
+                if attempt >= SKILL_ENRICHMENT_RETRY_DELAYS_MS.len()
+                    || !is_retryable_enrichment_error(&error)
+                {
+                    return Err(error);
+                }
+
+                let delay_ms = SKILL_ENRICHMENT_RETRY_DELAYS_MS[attempt];
+                attempt += 1;
+                let _ = update_snapshot(app, manager, run_id, |snapshot| {
+                    snapshot.status = SkillEnrichmentJobStatus::Running;
+                    snapshot.message = format!(
+                        "技能 {} 注解请求失败，{}s 后重试第 {} 次",
+                        item.skill_dir,
+                        ((delay_ms as f64) / 1000.0).ceil() as u64,
+                        attempt
+                    );
+                    snapshot.error_message = Some(error.clone());
+                    snapshot.current_skill_dir = Some(item.skill_dir.clone());
+                    snapshot.current_skill_name = Some(item.skill_dir.clone());
+                    snapshot.next_run_at = None;
+                })
+                .await;
+
+                let retry_at = now_ms().saturating_add(delay_ms);
+                while now_ms() < retry_at {
+                    if stop_requested(manager, run_id).await {
+                        return Err("技能注解已中断".to_string());
+                    }
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+
+                if stop_requested(manager, run_id).await {
+                    return Err("技能注解已中断".to_string());
+                }
+            }
+        }
+    }
+}
+
 async fn current_snapshot(
     manager: &Arc<Mutex<SkillEnrichmentJobRuntime>>,
 ) -> Option<SkillEnrichmentJobSnapshot> {
     manager.lock().await.snapshot.clone()
 }
 
-async fn stop_requested(
-    manager: &Arc<Mutex<SkillEnrichmentJobRuntime>>,
-    run_id: u64,
-) -> bool {
+async fn stop_requested(manager: &Arc<Mutex<SkillEnrichmentJobRuntime>>, run_id: u64) -> bool {
     let runtime = manager.lock().await;
     runtime.active_run_id != Some(run_id) || runtime.stop_requested
 }
@@ -231,126 +316,158 @@ async fn run_skill_enrichment_job(
     run_id: u64,
 ) {
     let delay_ms = request.delay_ms.unwrap_or(5_000);
+    let skills = Arc::new(request.skills.clone());
+    let next_index = Arc::new(Mutex::new(0usize));
+    let worker_count = SKILL_ENRICHMENT_CONCURRENCY.min(skills.len());
+    let mut workers = JoinSet::new();
 
-    for (index, item) in request.skills.iter().enumerate() {
-        if stop_requested(&manager, run_id).await {
-            let _ = finish_snapshot(
-                &app,
-                &manager,
-                run_id,
-                SkillEnrichmentJobStatus::Stopped,
-                "技能注解已中断".to_string(),
-                None,
-                None,
-                None,
-            )
-            .await;
-            return;
-        }
+    for _ in 0..worker_count {
+        let app = app.clone();
+        let manager = manager.clone();
+        let request = request.clone();
+        let skills = skills.clone();
+        let next_index = next_index.clone();
 
-        let item_name = item.skill_dir.clone();
-        let _ = update_snapshot(&app, &manager, run_id, |snapshot| {
-            let previous = snapshot.records.get(&item.skill_dir).cloned();
-            snapshot.status = SkillEnrichmentJobStatus::Running;
-            snapshot.message = format!("正在注解 {}", item_name);
-            snapshot.error_message = None;
-            snapshot.current_skill_dir = Some(item.skill_dir.clone());
-            snapshot.current_skill_name = Some(item_name.clone());
-            snapshot.next_run_at = None;
-            snapshot.records.insert(
-                item.skill_dir.clone(),
-                build_running_record(item, &request, previous.as_ref()),
-            );
-        })
-        .await;
+        workers.spawn(async move {
+            loop {
+                if stop_requested(&manager, run_id).await {
+                    return;
+                }
 
-        let item_request = EnrichSkillRequest {
-            base_url: request.base_url.clone(),
-            api_key: request.api_key.clone(),
-            model: request.model.clone(),
-            request_kind: request.request_kind,
-            skill_dir: item.skill_dir.clone(),
-            skill_path: item.skill_path.clone(),
-            description: item.description.clone(),
-            categories: item.categories.clone(),
-            updated_at: item.updated_at,
-            provider_label: request.provider_label.clone(),
-        };
+                let claimed = {
+                    let mut cursor = next_index.lock().await;
+                    if *cursor >= skills.len() {
+                        None
+                    } else {
+                        let current = *cursor;
+                        *cursor += 1;
+                        Some(current)
+                    }
+                };
 
-        match enrich_single_skill(item_request).await {
-            Ok(record) => {
+                let Some(index) = claimed else {
+                    return;
+                };
+                let item = &skills[index];
+                let item_name = item.skill_dir.clone();
+
                 let _ = update_snapshot(&app, &manager, run_id, |snapshot| {
-                    snapshot.completed = index + 1;
-                    snapshot.records.insert(item.skill_dir.clone(), record);
+                    let previous = snapshot.records.get(&item.skill_dir).cloned();
+                    snapshot.status = SkillEnrichmentJobStatus::Running;
+                    snapshot.message = format!(
+                        "正在注解 {}（{} 并发）",
+                        item_name, SKILL_ENRICHMENT_CONCURRENCY
+                    );
+                    snapshot.error_message = None;
+                    snapshot.current_skill_dir = Some(item.skill_dir.clone());
+                    snapshot.current_skill_name = Some(item_name.clone());
+                    snapshot.next_run_at = None;
+                    snapshot.records.insert(
+                        item.skill_dir.clone(),
+                        build_running_record(item, &request, previous.as_ref()),
+                    );
                 })
                 .await;
-            }
-            Err(error) => {
-                let message = format!("技能 {} 注解失败", item.skill_dir);
-                let error_record = build_error_record(item, &request, &error);
-                let snapshot = {
-                    let mut runtime = manager.lock().await;
-                    if runtime.active_run_id != Some(run_id) {
-                        return;
-                    }
-                    runtime.stop_requested = false;
-                    runtime.active_run_id = None;
-                    let Some(snapshot) = runtime.snapshot.as_mut() else {
-                        return;
-                    };
-                    snapshot.status = SkillEnrichmentJobStatus::Error;
-                    snapshot.message = message;
-                    snapshot.error_message = Some(error.clone());
-                    snapshot.current_skill_dir = Some(item.skill_dir.clone());
-                    snapshot.current_skill_name = Some(item.skill_dir.clone());
-                    snapshot.next_run_at = None;
-                    snapshot.records.insert(item.skill_dir.clone(), error_record);
-                    snapshot.updated_at = now_ms();
-                    snapshot.clone()
+
+                let item_request = EnrichSkillRequest {
+                    base_url: request.base_url.clone(),
+                    api_key: request.api_key.clone(),
+                    model: request.model.clone(),
+                    request_kind: request.request_kind,
+                    skill_dir: item.skill_dir.clone(),
+                    skill_path: item.skill_path.clone(),
+                    description: item.description.clone(),
+                    categories: item.categories.clone(),
+                    updated_at: item.updated_at,
+                    provider_label: request.provider_label.clone(),
                 };
-                emit_snapshot(&app, &snapshot);
-                return;
+
+                match enrich_single_skill_with_retry(&app, &manager, run_id, item, item_request)
+                    .await
+                {
+                    Ok(record) => {
+                        let _ = update_snapshot(&app, &manager, run_id, |snapshot| {
+                            snapshot.completed += 1;
+                            snapshot.error_message = None;
+                            snapshot.records.insert(item.skill_dir.clone(), record);
+                        })
+                        .await;
+                    }
+                    Err(error) => {
+                        if error == "技能注解已中断" {
+                            return;
+                        }
+
+                        let message = format!("技能 {} 注解失败，继续处理后续技能", item.skill_dir);
+                        let error_record = build_error_record(item, &request, &error);
+                        let _ = update_snapshot(&app, &manager, run_id, |snapshot| {
+                            snapshot.completed += 1;
+                            snapshot.status = SkillEnrichmentJobStatus::Running;
+                            snapshot.message = message;
+                            snapshot.error_message = Some(error.clone());
+                            snapshot.current_skill_dir = Some(item.skill_dir.clone());
+                            snapshot.current_skill_name = Some(item.skill_dir.clone());
+                            snapshot.next_run_at = None;
+                            snapshot
+                                .records
+                                .insert(item.skill_dir.clone(), error_record);
+                        })
+                        .await;
+                    }
+                }
+
+                let has_more = {
+                    let cursor = next_index.lock().await;
+                    *cursor < skills.len()
+                };
+
+                if !has_more || delay_ms == 0 {
+                    continue;
+                }
+
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             }
-        }
+        });
+    }
 
-        if index >= request.skills.len().saturating_sub(1) {
-            continue;
-        }
-
-        let next_run_at = now_ms().saturating_add(delay_ms);
-        let _ = update_snapshot(&app, &manager, run_id, |snapshot| {
-            snapshot.status = SkillEnrichmentJobStatus::Waiting;
-            snapshot.message = format!("等待后继续处理下一个技能");
-            snapshot.next_run_at = Some(next_run_at);
-        })
-        .await;
-
-        while now_ms() < next_run_at {
-            if stop_requested(&manager, run_id).await {
-                let _ = finish_snapshot(
-                    &app,
-                    &manager,
-                    run_id,
-                    SkillEnrichmentJobStatus::Stopped,
-                    "技能注解已中断".to_string(),
-                    None,
-                    None,
-                    None,
-                )
-                .await;
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+    while let Some(join_result) = workers.join_next().await {
+        if join_result.is_err() {
+            let _ = update_snapshot(&app, &manager, run_id, |snapshot| {
+                snapshot.status = SkillEnrichmentJobStatus::Running;
+                snapshot.message = "技能注解 worker 异常退出，继续收尾".to_string();
+            })
+            .await;
         }
     }
+
+    if stop_requested(&manager, run_id).await {
+        let _ = finish_snapshot(
+            &app,
+            &manager,
+            run_id,
+            SkillEnrichmentJobStatus::Stopped,
+            "技能注解已中断".to_string(),
+            None,
+            None,
+            None,
+        )
+        .await;
+        return;
+    }
+
+    let failed_count = current_snapshot(&manager)
+        .await
+        .map(|snapshot| count_failed_records(&snapshot.records))
+        .unwrap_or(0);
+    let (message, error_message) = completion_message(failed_count);
 
     let _ = finish_snapshot(
         &app,
         &manager,
         run_id,
         SkillEnrichmentJobStatus::Done,
-        "技能注解队列已完成".to_string(),
-        None,
+        message,
+        error_message,
         None,
         None,
     )
@@ -453,4 +570,83 @@ pub async fn stop_skill_enrichment_job(
     }
 
     Ok(snapshot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_error_record, completion_message, count_failed_records,
+        is_retryable_enrichment_error, SkillAnnotationMode, SkillEnrichmentJobItem,
+        SkillEnrichmentJobRequest, SKILL_ENRICHMENT_CONCURRENCY,
+    };
+    use crate::providers::router::LlmRequestKind;
+    use std::collections::BTreeMap;
+
+    fn request() -> SkillEnrichmentJobRequest {
+        SkillEnrichmentJobRequest {
+            base_url: "https://api.example.com".to_string(),
+            api_key: "test-key".to_string(),
+            model: "test-model".to_string(),
+            request_kind: LlmRequestKind::OpenAiChat,
+            provider_label: Some("Test".to_string()),
+            mode: SkillAnnotationMode::Full,
+            delay_ms: Some(10),
+            skills: Vec::new(),
+        }
+    }
+
+    fn item(skill_dir: &str) -> SkillEnrichmentJobItem {
+        SkillEnrichmentJobItem {
+            skill_dir: skill_dir.to_string(),
+            skill_path: format!("/tmp/{skill_dir}/SKILL.md"),
+            description: "test skill".to_string(),
+            categories: vec!["test".to_string()],
+            updated_at: Some(1),
+        }
+    }
+
+    #[test]
+    fn detects_retryable_network_errors() {
+        assert!(is_retryable_enrichment_error(
+            "未知错误：error sending request for url (https://api.example.com/v1/chat/completions)"
+        ));
+        assert!(is_retryable_enrichment_error("请求超时（>10s）"));
+        assert!(is_retryable_enrichment_error("服务端错误（502）"));
+        assert!(!is_retryable_enrichment_error(
+            "解析富化 JSON 失败：EOF while parsing"
+        ));
+    }
+
+    #[test]
+    fn builds_completion_summary_from_failed_records() {
+        let req = request();
+        let mut records = BTreeMap::new();
+        records.insert(
+            "shader-dev".to_string(),
+            build_error_record(&item("shader-dev"), &req, "provider timeout"),
+        );
+
+        let failed_count = count_failed_records(&records);
+        let (message, error_message) = completion_message(failed_count);
+
+        assert_eq!(failed_count, 1);
+        assert_eq!(message, "技能注解队列已完成，失败 1 个");
+        assert_eq!(
+            error_message.as_deref(),
+            Some("技能注解队列已完成，失败 1 个")
+        );
+    }
+
+    #[test]
+    fn clean_completion_has_no_error_summary() {
+        let (message, error_message) = completion_message(0);
+
+        assert_eq!(message, "技能注解队列已完成");
+        assert!(error_message.is_none());
+    }
+
+    #[test]
+    fn uses_fixed_two_worker_concurrency() {
+        assert_eq!(SKILL_ENRICHMENT_CONCURRENCY, 2);
+    }
 }
