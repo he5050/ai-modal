@@ -250,19 +250,16 @@ beforeEach(() => {
         return createCatalog([createDemoSkill(), createDocxSkill()])
       }
       if (dbKey === 'skill_enrichments') return {}
-      if (dbKey === 'model_configs') {
-        return [
-          {
-            id: 'model-config-1',
-            baseUrl: 'https://llm.example.com/v1',
-            apiKey: 'sk-test',
-            model: 'gpt-5.4',
-            lastTestAt: Date.now(),
-            lastTestResult: {
-              supported_protocols: ['openai'],
-            },
+      if (dbKey === 'model_config') {
+        return {
+          baseUrl: 'https://llm.example.com/v1',
+          apiKey: 'sk-test',
+          model: 'gpt-5.4',
+          lastTestAt: Date.now(),
+          lastTestResult: {
+            supported_protocols: ['openai'],
           },
-        ]
+        }
       }
       return fallback
     },
@@ -323,19 +320,16 @@ describe('SkillsPage', () => {
             'demo-skill': createEnrichmentRecord(),
           }
         }
-        if (dbKey === 'model_configs') {
-          return [
-            {
-              id: 'model-config-1',
-              baseUrl: 'https://llm.example.com/v1',
-              apiKey: 'sk-test',
-              model: 'gpt-5.4',
-              lastTestAt: Date.now(),
-              lastTestResult: {
-                supported_protocols: ['openai'],
-              },
+        if (dbKey === 'model_config') {
+          return {
+            baseUrl: 'https://llm.example.com/v1',
+            apiKey: 'sk-test',
+            model: 'gpt-5.4',
+            lastTestAt: Date.now(),
+            lastTestResult: {
+              supported_protocols: ['openai'],
             },
-          ]
+          }
         }
         return fallback
       },

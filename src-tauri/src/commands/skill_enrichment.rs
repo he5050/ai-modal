@@ -34,7 +34,6 @@ pub struct EnrichSkillRequest {
     pub api_key: String,
     pub model: String,
     pub request_kind: LlmRequestKind,
-    pub protocols: Option<Vec<String>>,
     pub skill_dir: String,
     pub skill_path: String,
     pub description: String,
@@ -164,8 +163,40 @@ fn extract_json_object(raw: &str) -> Option<String> {
         .replace("```JSON", "")
         .replace("```", "");
     let start = fenced.find('{')?;
-    let end = fenced.rfind('}')?;
-    (end > start).then(|| fenced[start..=end].to_string())
+
+    // Walk from the opening '{' using a depth counter to find the matching '}'.
+    // This correctly handles nested braces inside string values or nested objects.
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape_next = false;
+    let bytes = fenced.as_bytes();
+    for i in start..bytes.len() {
+        let ch = bytes[i];
+        if escape_next {
+            escape_next = false;
+            continue;
+        }
+        if ch == b'\\' && in_string {
+            escape_next = true;
+            continue;
+        }
+        if ch == b'"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        if ch == b'{' {
+            depth += 1;
+        } else if ch == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(fenced[start..=i].to_string());
+            }
+        }
+    }
+    None
 }
 
 fn trim_text(value: String, fallback: &str) -> String {

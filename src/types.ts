@@ -166,7 +166,6 @@ export interface EnrichSkillRequest {
   apiKey: string;
   model: string;
   requestKind: LlmRequestKind;
-  protocols?: string[] | null;
   skillDir: string;
   skillPath: string;
   description: string;

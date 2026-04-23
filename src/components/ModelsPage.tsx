@@ -558,11 +558,12 @@ function getSelectableModels(provider: Provider) {
 }
 
 type QuickTestProtocol = "openai" | "claude" | "gemini";
-type ModelTestProtocol = "openApi" | "claude" | "gemini";
+type ModelTestProtocol = "openApi" | "openai-responses" | "claude" | "gemini";
 const QUICK_TEST_PROMPT =
   "现在的梵蒂冈的教皇是谁,你能为我做什么,别都叫你啥?我打算去洗车,我这边有两家一家离我有50米,另外一家离我200米,我是否应该开车去";
 const MODEL_TEST_PROTOCOLS: ModelTestProtocol[] = [
   "openApi",
+  "openai-responses",
   "claude",
   "gemini",
 ];
@@ -597,6 +598,7 @@ function getQuickTestProtocolLabel(protocol: QuickTestProtocol) {
 function normalizeSupportedProtocolTag(protocol: string) {
   const normalized = protocol.trim().toLowerCase();
   if (normalized === "openapi" || normalized === "openai") return "openApi";
+  if (normalized === "openai-responses" || normalized === "responses") return "openai-responses";
   if (normalized === "claude") return "claude";
   if (normalized === "gemini") return "gemini";
   if (normalized === "openrouter") return "openrouter";
@@ -606,6 +608,7 @@ function normalizeSupportedProtocolTag(protocol: string) {
 function getModelProtocolLabel(protocol: string) {
   const normalized = normalizeSupportedProtocolTag(protocol);
   if (normalized === "openApi") return "openApi";
+  if (normalized === "openai-responses") return "openai-responses";
   if (normalized === "claude") return "claude";
   if (normalized === "gemini") return "gemini";
   if (normalized === "openrouter") return "openrouter";
@@ -909,10 +912,12 @@ function ModelProtocolDialog({
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
                     {protocol === "openApi"
-                      ? "走 OpenAI-compatible 请求格式"
-                      : protocol === "claude"
-                        ? "走 Claude messages 请求格式"
-                        : "走 Gemini generateContent 请求格式"}
+                      ? "走 OpenAI Chat Completions 请求格式"
+                      : protocol === "openai-responses"
+                        ? "走 OpenAI Responses 请求格式"
+                        : protocol === "claude"
+                          ? "走 Claude messages 请求格式"
+                          : "走 Gemini generateContent 请求格式"}
                   </p>
                 </div>
                 <SelectionCheckbox
@@ -1104,6 +1109,7 @@ export function DetailRow({
         .filter(
           (protocol): protocol is ModelTestProtocol =>
             protocol === "openApi" ||
+            protocol === "openai-responses" ||
             protocol === "claude" ||
             protocol === "gemini",
         ) ?? [];
@@ -1374,10 +1380,10 @@ export function ModelsPage({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [sortKey, setSortKey] = useState<SortKey>(
-    () => (localStorage.getItem("ai-modal-sort-key") as SortKey) ?? null,
+    () => (localStorage.getItem("ai-modal-sort-key") as SortKey) ?? "time",
   );
   const [sortDir, setSortDir] = useState<SortDir>(
-    () => (localStorage.getItem("ai-modal-sort-dir") as SortDir) ?? "asc",
+    () => (localStorage.getItem("ai-modal-sort-dir") as SortDir) ?? "desc",
   );
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

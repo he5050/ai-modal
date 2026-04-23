@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -14,6 +14,7 @@ import {
   exists,
   mkdir,
   readTextFile,
+  watch,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
@@ -396,6 +397,7 @@ export function RulesPage({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [homePath, setHomePath] = useState("");
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -475,6 +477,10 @@ export function RulesPage({
           : (selectedTool?.path ?? ""),
       );
 
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
   async function refreshCurrent(tool = selectedTool, targetPath?: string) {
     if (!tool || !homePath) return;
     const path = normalizeText(
@@ -521,6 +527,39 @@ export function RulesPage({
     setPathDraft(toDisplayPath(selectedTool.path, homePath));
     void refreshCurrent(selectedTool, selectedTool.path);
   }, [homePath, selectedTool?.id, selectedTool?.path]);
+
+  useEffect(() => {
+    if (!selectedTool || !homePath || selectedTool.kind === "directory") {
+      return;
+    }
+
+    const watchedPath = normalizeText(
+      toAbsolutePath(selectedTool.path, homePath),
+    );
+    if (!watchedPath) return;
+
+    let disposed = false;
+    let unwatch: (() => void) | null = null;
+
+    async function bindWatcher() {
+      try {
+        unwatch = await watch(watchedPath, async () => {
+          if (disposed || dirtyRef.current) return;
+          await refreshCurrent(selectedTool, watchedPath);
+        });
+      } catch (error) {
+        console.error("Failed to watch rule file", error);
+        toast("规则文件监听失败，当前预览不会自动刷新", "warning");
+      }
+    }
+
+    void bindWatcher();
+
+    return () => {
+      disposed = true;
+      unwatch?.();
+    };
+  }, [homePath, selectedTool?.id, selectedTool?.path, selectedTool?.kind]);
 
   useEffect(() => {
     if (!selectedTool && tools.length > 0) {

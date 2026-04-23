@@ -36,12 +36,11 @@ import {
   ModelProtocolDialog,
   ProtocolResultDetailDialog,
   RetestScopeDialog,
+  TestedProtocolBadges,
   type ModelTestProtocol,
   formatProtocolSupportSummary,
   getModelProtocolLabel,
   getProtocolResultDetails,
-  getProtocolSupportChipClass,
-  getProtocolSupportState,
   normalizeSupportedProtocolTag,
 } from "./ProtocolTestUI";
 
@@ -526,6 +525,7 @@ export function DetectPage({
         .filter(
           (protocol): protocol is ModelTestProtocol =>
             protocol === "openApi" ||
+            protocol === "openai-responses" ||
             protocol === "claude" ||
             protocol === "gemini",
         ) ?? [];
@@ -1236,30 +1236,7 @@ export function DetectPage({
                           ""
                         ) : (
                           <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {MODEL_TEST_PROTOCOLS.map((protocol) => {
-                                const state = getProtocolSupportState(
-                                  r,
-                                  protocol,
-                                );
-                                return (
-                                  <span
-                                    key={protocol}
-                                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${getProtocolSupportChipClass(
-                                      protocol,
-                                      state,
-                                    )}`}
-                                  >
-                                    <span>{protocol}</span>
-                                    <span>
-                                      {state === "supported"
-                                        ? "支持"
-                                        : "不支持"}
-                                    </span>
-                                  </span>
-                                );
-                              })}
-                            </div>
+                            <TestedProtocolBadges result={r} />
                             {(r.protocol_results ?? []).length > 0 ? (
                               <div className="flex items-center gap-2">
                                 <button

@@ -41,6 +41,7 @@ import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import type {
   EnrichSkillRequest,
+  LlmRequestKind,
   OnlineSkill,
   Provider,
   SkillEnrichmentRecord,
@@ -83,17 +84,17 @@ const SKILL_SOURCES_KEY = "ai-modal-skill-sources";
 const SKILL_SOURCES_DB_KEY = "skills_sources";
 const SKILL_ENRICHMENTS_KEY = "ai-modal-skill-enrichments";
 const SKILL_ENRICHMENTS_DB_KEY = "skill_enrichments";
-const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
-const MODEL_CONFIGS_DB_KEY = "model_configs";
+const MODEL_CONFIG_KEY = "ai-modal-model-config";
+const MODEL_CONFIG_DB_KEY = "model_config";
 
 type InstallMode = "search" | "github" | "local" | "update" | "remove";
 type SkillsTab = "list" | "manage";
 type SkillAnnotationMode = "full" | "incremental";
 type PersistedModelConfig = {
-  id: string;
   baseUrl: string;
   apiKey: string;
   model: string;
+  requestKind?: LlmRequestKind;
   lastTestAt?: number | null;
   lastTestResult?: {
     supported_protocols?: string[];
@@ -406,7 +407,7 @@ export function SkillsPage({
           storedSources,
           storedCatalog,
           storedEnrichments,
-          storedModelConfigs,
+          storedModelConfig,
         ] =
           await Promise.all([
           homeDir().catch(() => ""),
@@ -430,10 +431,10 @@ export function SkillsPage({
             SKILL_ENRICHMENTS_KEY,
             {},
           ),
-          loadPersistedJson<PersistedModelConfig[]>(
-            MODEL_CONFIGS_DB_KEY,
-            MODEL_CONFIGS_KEY,
-            [],
+          loadPersistedJson<PersistedModelConfig | null>(
+            MODEL_CONFIG_DB_KEY,
+            MODEL_CONFIG_KEY,
+            null,
           ),
         ]);
         if (!active) return;
@@ -456,7 +457,11 @@ export function SkillsPage({
         setSkillSources(storedSources);
         setSkillEnrichments(storedEnrichments);
         setModelConfigs(
-          Array.isArray(storedModelConfigs) ? storedModelConfigs : [],
+          storedModelConfig &&
+            typeof storedModelConfig === "object" &&
+            typeof storedModelConfig.baseUrl === "string"
+            ? [storedModelConfig]
+            : [],
         );
         setCatalog(
           storedCatalog && storedCatalog.sourceDir
@@ -573,11 +578,21 @@ export function SkillsPage({
     setLoadingLlmProfiles(true);
     try {
       const storedModelConfigs = await loadPersistedJson<PersistedModelConfig[]>(
-        MODEL_CONFIGS_DB_KEY,
-        MODEL_CONFIGS_KEY,
+        MODEL_CONFIG_DB_KEY,
+        MODEL_CONFIG_KEY,
         [],
       );
-      setModelConfigs(Array.isArray(storedModelConfigs) ? storedModelConfigs : []);
+      if (Array.isArray(storedModelConfigs)) {
+        setModelConfigs(storedModelConfigs);
+      } else if (
+        storedModelConfigs &&
+        typeof storedModelConfigs === "object" &&
+        typeof storedModelConfigs.baseUrl === "string"
+      ) {
+        setModelConfigs([storedModelConfigs]);
+      } else {
+        setModelConfigs([]);
+      }
     } catch (error) {
       console.error("Failed to refresh ai-modal llm profiles", error);
     } finally {
@@ -655,13 +670,13 @@ export function SkillsPage({
           config.model?.trim(),
       )
       .map((config) => ({
-        toolId: `aimodal:model-config:${config.id}`,
+        toolId: `aimodal:model-config:${config.model}`,
         label: "AIModal 模型配置",
-        sourcePath: "ai-modal:model_configs",
+        sourcePath: "ai-modal:model_config",
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         model: config.model,
-        requestKind: "openai-chat" as const,
+        requestKind: config.requestKind ?? "openai-chat",
         protocols: config.lastTestResult?.supported_protocols ?? ["openai"],
         updatedAt: config.lastTestAt ?? 0,
       }));
@@ -805,7 +820,6 @@ export function SkillsPage({
           apiKey: selectedLlmProfile.apiKey,
           model: selectedLlmProfile.model,
           requestKind: selectedLlmProfile.requestKind,
-          protocols: selectedLlmProfile.protocols,
           skillDir: skill.dir,
           skillPath: skill.path,
           description: skill.description,
@@ -1543,12 +1557,23 @@ export function SkillsPage({
                   </div>
                   {selectedLlmProfile ? (
                     <div className="mt-1">
-                      <div className="font-medium text-gray-100">
-                        {selectedLlmProfile.label} · {selectedLlmProfile.model}
-                      </div>
-                      <div className="mt-1 text-[11px] text-gray-500">
-                        来源：系统配置 / LLM 配置
-                      </div>
+                      {availableLlmProfiles.length > 1 ? (
+                        <select
+                          value={selectedLlmProfile.toolId}
+                          onChange={(e) => setSelectedLlmProfileId(e.target.value)}
+                          className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200 outline-none focus:border-indigo-500"
+                        >
+                          {availableLlmProfiles.map((profile) => (
+                            <option key={profile.toolId} value={profile.toolId}>
+                              {profile.model} ({profile.requestKind})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="font-medium text-gray-100">
+                          {selectedLlmProfile.model} · {selectedLlmProfile.requestKind}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="mt-1 text-[11px] text-amber-300">
@@ -2572,13 +2597,30 @@ export function SkillsPage({
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-800 bg-black/10 px-4 py-3 text-sm text-gray-300">
-              <div>
-                当前 LLM：
-                <span className="ml-1 font-medium text-gray-100">
-                  {selectedLlmProfile
-                    ? `${selectedLlmProfile.label} · ${selectedLlmProfile.model}`
-                    : "未识别"}
-                </span>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">当前 LLM：</span>
+                {selectedLlmProfile ? (
+                  availableLlmProfiles.length > 1 ? (
+                    <select
+                      value={selectedLlmProfile.toolId}
+                      onChange={(e) => setSelectedLlmProfileId(e.target.value)}
+                      disabled={enrichmentQueueRunning}
+                      className="rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200 outline-none focus:border-indigo-500 disabled:opacity-50"
+                    >
+                      {availableLlmProfiles.map((profile) => (
+                        <option key={profile.toolId} value={profile.toolId}>
+                          {profile.model} ({profile.requestKind})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="font-medium text-gray-100">
+                      {selectedLlmProfile.model} · {selectedLlmProfile.requestKind}
+                    </span>
+                  )
+                ) : (
+                  <span className="text-amber-300">未识别</span>
+                )}
               </div>
               <div className="mt-1 text-xs text-gray-500">
                 当前筛选技能：{filteredSkills.length} 个

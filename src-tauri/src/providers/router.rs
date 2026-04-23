@@ -31,7 +31,7 @@ fn build_debug_request_headers(
     headers.insert("Accept".to_string(), "application/json".to_string());
 
     match protocol {
-        ModelProtocol::OpenAi => {
+        ModelProtocol::OpenAi | ModelProtocol::OpenAiResponses => {
             headers.insert(
                 "Authorization".to_string(),
                 format!("Bearer {}", mask_secret(api_key)),
@@ -74,6 +74,7 @@ fn collect_response_headers(headers: &reqwest::header::HeaderMap) -> BTreeMap<St
 pub enum ModelProtocol {
     OpenAi,
     OpenRouter,
+    OpenAiResponses,
     Claude,
     Gemini,
 }
@@ -106,6 +107,9 @@ pub async fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, S
     parse_models_response(protocol, &body)
 }
 
+/// 批量检测模型可用性。
+/// 为避免触发限流，统一只走 OpenAI Chat Completions 协议（最通用的格式），
+/// 不测 fallback。如需精确探测协议支持情况，请使用单模型测试。
 pub async fn test_models(
     base_url: &str,
     api_key: &str,
@@ -116,15 +120,19 @@ pub async fn test_models(
     let base_url = Arc::new(base_url.to_string());
     let api_key = Arc::new(api_key.to_string());
 
+    // 批量检测固定只测 OpenAI Chat，避免每个模型 fallback 多次请求触发限流
+    let batch_protocols: Vec<ModelProtocol> = vec![ModelProtocol::OpenAi];
+
     let mut handles = Vec::new();
     for model_id in models {
         let client = client.clone();
         let sem = semaphore.clone();
         let base = base_url.clone();
         let key = api_key.clone();
+        let protocols = batch_protocols.clone();
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
-            test_single_model_with_client(&client, &base, &key, &model_id, None).await
+            test_single_model_with_client(&client, &base, &key, &model_id, Some(&protocols)).await
         }));
     }
 
@@ -344,6 +352,7 @@ fn protocol_to_string(protocol: ModelProtocol) -> String {
     match protocol {
         ModelProtocol::OpenAi => "openApi".to_string(),
         ModelProtocol::OpenRouter => "openrouter".to_string(),
+        ModelProtocol::OpenAiResponses => "openai-responses".to_string(),
         ModelProtocol::Claude => "claude".to_string(),
         ModelProtocol::Gemini => "gemini".to_string(),
     }
@@ -356,6 +365,7 @@ fn parse_requested_protocols(protocols: &[String]) -> Vec<ModelProtocol> {
         let normalized = protocol.trim().to_ascii_lowercase();
         let next = match normalized.as_str() {
             "openapi" | "openai" => Some(ModelProtocol::OpenAi),
+            "openai-responses" | "responses" => Some(ModelProtocol::OpenAiResponses),
             "claude" => Some(ModelProtocol::Claude),
             "gemini" => Some(ModelProtocol::Gemini),
             "openrouter" => Some(ModelProtocol::OpenRouter),
@@ -403,13 +413,17 @@ fn determine_test_protocols(base_url: &str, model: &str) -> Vec<ModelProtocol> {
             }
         }
         // 通用 OpenAI 兼容地址：按模型名推断优先，然后 fallback 其他协议
-        ModelProtocol::OpenAi => {
+        ModelProtocol::OpenAi | ModelProtocol::OpenAiResponses => {
             let mut protocols = Vec::new();
             // 优先使用模型推断的协议
             protocols.push(model_protocol);
-            // 然后尝试 OpenAI
+            // 然后尝试 OpenAI Chat
             if !protocols.contains(&ModelProtocol::OpenAi) {
                 protocols.push(ModelProtocol::OpenAi);
+            }
+            // 再尝试 OpenAI Responses
+            if !protocols.contains(&ModelProtocol::OpenAiResponses) {
+                protocols.push(ModelProtocol::OpenAiResponses);
             }
             // 再尝试 Claude 和 Gemini
             if !protocols.contains(&ModelProtocol::Claude) {
@@ -426,7 +440,7 @@ fn determine_test_protocols(base_url: &str, model: &str) -> Vec<ModelProtocol> {
 fn apply_auth(builder: RequestBuilder, protocol: ModelProtocol, api_key: &str) -> RequestBuilder {
     let builder = builder.header("Accept", "application/json");
     match protocol {
-        ModelProtocol::OpenAi => builder.bearer_auth(api_key),
+        ModelProtocol::OpenAi | ModelProtocol::OpenAiResponses => builder.bearer_auth(api_key),
         ModelProtocol::OpenRouter => builder
             .bearer_auth(api_key)
             .header("X-Title", OPENROUTER_TITLE),
@@ -439,7 +453,7 @@ fn apply_auth(builder: RequestBuilder, protocol: ModelProtocol, api_key: &str) -
 
 fn build_models_url(base_url: &str, protocol: ModelProtocol) -> String {
     match protocol {
-        ModelProtocol::OpenAi | ModelProtocol::OpenRouter => {
+        ModelProtocol::OpenAi | ModelProtocol::OpenRouter | ModelProtocol::OpenAiResponses => {
             build_openai_style_url(base_url, "models")
         }
         ModelProtocol::Claude => build_claude_url(base_url, "models"),
@@ -455,6 +469,7 @@ fn build_test_url(base_url: &str, protocol: ModelProtocol, model: &str) -> Strin
         ModelProtocol::OpenAi | ModelProtocol::OpenRouter => {
             build_openai_style_url(base_url, "chat/completions")
         }
+        ModelProtocol::OpenAiResponses => build_openai_style_url(base_url, "responses"),
         ModelProtocol::Claude => build_claude_url(base_url, "messages"),
         ModelProtocol::Gemini => {
             let base = normalize_gemini_base(base_url);
@@ -538,6 +553,11 @@ fn build_test_body(protocol: ModelProtocol, model: &str) -> Value {
             "messages": [{"role": "user", "content": TEST_PROMPT}],
             "max_completion_tokens": 1,
             "stream": false
+        }),
+        ModelProtocol::OpenAiResponses => json!({
+            "model": model,
+            "input": TEST_PROMPT,
+            "max_output_tokens": 1
         }),
         ModelProtocol::Claude => json!({
             "model": model,
@@ -733,7 +753,7 @@ fn parse_models_response(protocol: ModelProtocol, body: &str) -> Result<Vec<Stri
     let value: Value = serde_json::from_str(body).map_err(|e| format!("解析响应失败：{}", e))?;
 
     match protocol {
-        ModelProtocol::OpenAi | ModelProtocol::OpenRouter | ModelProtocol::Claude => {
+        ModelProtocol::OpenAi | ModelProtocol::OpenRouter | ModelProtocol::OpenAiResponses | ModelProtocol::Claude => {
             let data = value
                 .get("data")
                 .and_then(|items| items.as_array())

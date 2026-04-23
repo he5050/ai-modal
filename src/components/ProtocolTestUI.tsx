@@ -1,4 +1,5 @@
-import { Check, Save, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronDown, ChevronRight, Save, X } from "lucide-react";
 import type { ModelResult, ProtocolTestResult } from "../types";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
@@ -7,12 +8,12 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
 } from "../lib/buttonStyles";
-import { CopyButton } from "./CopyButton";
 
-export type ModelTestProtocol = "openApi" | "claude" | "gemini";
+export type ModelTestProtocol = "openApi" | "openai-responses" | "claude" | "gemini";
 
 export const MODEL_TEST_PROTOCOLS: ModelTestProtocol[] = [
   "openApi",
+  "openai-responses",
   "claude",
   "gemini",
 ];
@@ -20,6 +21,7 @@ export const MODEL_TEST_PROTOCOLS: ModelTestProtocol[] = [
 export function normalizeSupportedProtocolTag(protocol: string) {
   const normalized = protocol.trim().toLowerCase();
   if (normalized === "openapi" || normalized === "openai") return "openApi";
+  if (normalized === "openai-responses" || normalized === "responses") return "openai-responses";
   if (normalized === "claude") return "claude";
   if (normalized === "gemini") return "gemini";
   if (normalized === "openrouter") return "openrouter";
@@ -29,6 +31,7 @@ export function normalizeSupportedProtocolTag(protocol: string) {
 export function getModelProtocolLabel(protocol: string) {
   const normalized = normalizeSupportedProtocolTag(protocol);
   if (normalized === "openApi") return "openApi";
+  if (normalized === "openai-responses") return "openai-responses";
   if (normalized === "claude") return "claude";
   if (normalized === "gemini") return "gemini";
   if (normalized === "openrouter") return "openrouter";
@@ -39,6 +42,9 @@ export function getModelProtocolBadgeClass(protocol: string) {
   const normalized = normalizeSupportedProtocolTag(protocol);
   if (normalized === "openApi") {
     return "bg-blue-500/15 text-blue-400";
+  }
+  if (normalized === "openai-responses") {
+    return "bg-cyan-500/15 text-cyan-400";
   }
   if (normalized === "claude") {
     return "bg-purple-500/15 text-purple-400";
@@ -76,25 +82,6 @@ function formatDebugMap(value?: Record<string, string> | null) {
   return JSON.stringify(value, null, 2);
 }
 
-function DebugBlock({
-  title,
-  value,
-}: {
-  title: string;
-  value?: string | number | null;
-}) {
-  return (
-    <div className="rounded-lg border border-gray-800 bg-black/20 p-3">
-      <p className="mb-2 text-[11px] uppercase tracking-[0.16em] text-gray-500">
-        {title}
-      </p>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-gray-300">
-        {value == null || value === "" ? "—" : String(value)}
-      </pre>
-    </div>
-  );
-}
-
 export function getProtocolSupportState(
   result: ModelResult,
   protocol: ModelTestProtocol,
@@ -104,6 +91,37 @@ export function getProtocolSupportState(
   );
   if (!match) return "untested" as const;
   return match.available ? ("supported" as const) : ("unsupported" as const);
+}
+
+/**
+ * 只渲染实际测试过的协议标签（从 protocol_results 中取），
+ * 批量测试时只有 openApi 一项，单模型多协议测试时会显示多项。
+ */
+export function TestedProtocolBadges({ result }: { result: ModelResult }) {
+  const protocolResults = result.protocol_results ?? [];
+  if (protocolResults.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {protocolResults.map((pr) => {
+        const normalized = normalizeSupportedProtocolTag(pr.protocol) as ModelTestProtocol;
+        const state = pr.available
+          ? ("supported" as const)
+          : ("unsupported" as const);
+        return (
+          <span
+            key={pr.protocol}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${getProtocolSupportChipClass(
+              normalized,
+              state,
+            )}`}
+          >
+            <span>{getModelProtocolLabel(pr.protocol)}</span>
+            <span>{state === "supported" ? "支持" : "不支持"}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 export function getProtocolSupportChipClass(
@@ -116,6 +134,11 @@ export function getProtocolSupportChipClass(
     return isSupported
       ? "border-blue-500/35 bg-blue-500/15 text-blue-300"
       : "border-blue-900/50 bg-blue-950/50 text-blue-500";
+  }
+  if (protocol === "openai-responses") {
+    return isSupported
+      ? "border-cyan-500/35 bg-cyan-500/15 text-cyan-300"
+      : "border-cyan-900/50 bg-cyan-950/50 text-cyan-500";
   }
   if (protocol === "claude") {
     return isSupported
@@ -209,10 +232,12 @@ export function ModelProtocolDialog({
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
                     {protocol === "openApi"
-                      ? "走 OpenAI-compatible 请求格式"
-                      : protocol === "claude"
-                        ? "走 Claude messages 请求格式"
-                        : "走 Gemini generateContent 请求格式"}
+                      ? "走 OpenAI Chat Completions 请求格式"
+                      : protocol === "openai-responses"
+                        ? "走 OpenAI Responses 请求格式"
+                        : protocol === "claude"
+                          ? "走 Claude messages 请求格式"
+                          : "走 Gemini generateContent 请求格式"}
                   </p>
                 </div>
                 <SelectionCheckbox
@@ -276,77 +301,148 @@ export function ProtocolResultDetailDialog({
           </button>
         </div>
 
-        <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          {results.map((protocolResult) => {
-            const detail = getProtocolResultDetails(protocolResult);
-            return (
-              <div
-                key={protocolResult.protocol}
-                className="rounded-xl border border-gray-800 bg-gray-950/70 p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span
-                    className={`rounded px-1.5 py-0.5 font-medium ${getModelProtocolBadgeClass(
-                      protocolResult.protocol,
-                    )}`}
-                  >
-                    {getModelProtocolLabel(protocolResult.protocol)}
-                  </span>
-                  <span
-                    className={
-                      protocolResult.available
-                        ? "text-emerald-400"
-                        : "text-red-400"
-                    }
-                  >
-                    {protocolResult.available ? "支持" : "不支持"}
-                  </span>
-                  <span className="text-gray-500">
-                    {protocolResult.latency_ms != null
-                      ? `${protocolResult.latency_ms} ms`
-                      : "—"}
-                  </span>
-                  <span className="text-gray-500">
-                    {protocolResult.response_status != null
-                      ? `HTTP ${protocolResult.response_status}`
-                      : "HTTP —"}
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <DebugBlock
-                    title="Request URL"
-                    value={protocolResult.request_url}
-                  />
-                  <DebugBlock
-                    title="Request Method"
-                    value={protocolResult.request_method}
-                  />
-                  <DebugBlock
-                    title="Request Headers"
-                    value={formatDebugMap(protocolResult.request_headers)}
-                  />
-                  <DebugBlock
-                    title="Response Headers"
-                    value={formatDebugMap(protocolResult.response_headers)}
-                  />
-                  <div className="md:col-span-2">
-                    <DebugBlock
-                      title="Request Body"
-                      value={protocolResult.request_body}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <DebugBlock title="Response Body" value={detail} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <DebugBlock title="Error" value={protocolResult.error} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="mt-5 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+          {results.map((protocolResult) => (
+            <ProtocolResultCard
+              key={protocolResult.protocol}
+              result={protocolResult}
+            />
+          ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProtocolResultCard({ result }: { result: ProtocolTestResult }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasError = !!result.error?.trim();
+  const detail = getProtocolResultDetails(result);
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-950/70 overflow-hidden">
+      {/* 折叠态：摘要行 */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-800/40"
+      >
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+        )}
+        <span
+          className={`rounded px-1.5 py-0.5 text-xs font-medium ${getModelProtocolBadgeClass(
+            result.protocol,
+          )}`}
+        >
+          {getModelProtocolLabel(result.protocol)}
+        </span>
+        <span
+          className={`text-xs font-medium ${result.available ? "text-emerald-400" : "text-red-400"}`}
+        >
+          {result.available ? "支持" : "不支持"}
+        </span>
+        <span className="text-xs text-gray-500">
+          {result.latency_ms != null ? `${result.latency_ms} ms` : "—"}
+        </span>
+        <span className="text-xs text-gray-500">
+          {result.response_status != null
+            ? `HTTP ${result.response_status}`
+            : ""}
+        </span>
+        {hasError && !expanded && (
+          <span className="flex-1 truncate text-xs text-red-400/70">
+            {result.error}
+          </span>
+        )}
+      </button>
+
+      {/* 展开态：详细信息 */}
+      {expanded && (
+        <div className="border-t border-gray-800/60 px-4 py-3 space-y-3">
+          {/* 关键信息 */}
+          <div className="grid gap-2 text-xs">
+            {result.request_url && (
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-gray-500 w-24">Request</span>
+                <span className="font-mono text-gray-300 break-all">
+                  {result.request_method ?? "—"} {result.request_url}
+                </span>
+              </div>
+            )}
+            {result.response_status != null && (
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-gray-500 w-24">HTTP Status</span>
+                <span className={`font-mono ${result.response_status < 400 ? "text-gray-300" : "text-red-400"}`}>
+                  {result.response_status}
+                </span>
+              </div>
+            )}
+            {result.latency_ms != null && (
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-gray-500 w-24">Latency</span>
+                <span className="font-mono text-gray-300">{result.latency_ms} ms</span>
+              </div>
+            )}
+            {hasError && (
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-gray-500 w-24">Error</span>
+                <span className="text-red-400 break-all">{result.error}</span>
+              </div>
+            )}
+            {detail && detail !== "—" && !hasError && (
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-gray-500 w-24">Response</span>
+                <span className="text-gray-400 break-all line-clamp-3">{detail}</span>
+              </div>
+            )}
+          </div>
+
+          {/* 可折叠的详细数据 */}
+          <CollapsibleDebugSection title="Request Body" value={result.request_body} />
+          <CollapsibleDebugSection title="Response Body" value={detail} />
+          <CollapsibleDebugSection title="Request Headers" value={formatDebugMap(result.request_headers)} />
+          <CollapsibleDebugSection title="Response Headers" value={formatDebugMap(result.response_headers)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollapsibleDebugSection({
+  title,
+  value,
+}: {
+  title: string;
+  value?: string | number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const isEmpty = value == null || value === "" || value === "—";
+  if (isEmpty) return null;
+
+  return (
+    <div className="rounded-lg border border-gray-800/60 bg-black/20">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-gray-800/30"
+      >
+        <span className="text-[11px] uppercase tracking-[0.12em] text-gray-500">{title}</span>
+        {open ? (
+          <ChevronDown className="h-3 w-3 text-gray-600" />
+        ) : (
+          <ChevronRight className="h-3 w-3 text-gray-600" />
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-gray-800/40 px-3 py-2">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs leading-5 text-gray-400">
+            {String(value)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
