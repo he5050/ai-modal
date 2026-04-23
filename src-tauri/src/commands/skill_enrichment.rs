@@ -100,6 +100,13 @@ fn read_if_exists(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok()
 }
 
+fn resolve_skill_markdown_path(path: &Path) -> PathBuf {
+    if path.is_dir() {
+        return path.join("SKILL.md");
+    }
+    path.to_path_buf()
+}
+
 fn normalize_json_string(value: Option<&Value>) -> Option<String> {
     value
         .and_then(|item| item.as_str())
@@ -514,7 +521,8 @@ SKILL.md 全文:\n{skill_markdown}",
 pub async fn enrich_single_skill(
     request: EnrichSkillRequest,
 ) -> Result<SkillEnrichmentRecord, String> {
-    let skill_markdown = fs::read_to_string(&request.skill_path)
+    let resolved_skill_path = resolve_skill_markdown_path(Path::new(&request.skill_path));
+    let skill_markdown = fs::read_to_string(&resolved_skill_path)
         .map_err(|error| format!("读取 SKILL.md 失败：{error}"))?;
     let prompt = build_skill_prompt(&request, &skill_markdown);
     let raw_response = router::generate_text(
@@ -534,7 +542,7 @@ pub async fn enrich_single_skill(
 
     Ok(SkillEnrichmentRecord {
         skill_dir: request.skill_dir,
-        skill_path: request.skill_path,
+        skill_path: resolved_skill_path.to_string_lossy().to_string(),
         source_updated_at: request.updated_at,
         source_description: request.description.clone(),
         localized_description: trim_text(payload.localized_description, &request.description),

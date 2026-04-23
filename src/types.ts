@@ -174,6 +174,54 @@ export interface EnrichSkillRequest {
   providerLabel?: string | null;
 }
 
+export type SkillAnnotationMode = "full" | "incremental";
+
+export interface SkillEnrichmentJobItem {
+  skillDir: string;
+  skillPath: string;
+  description: string;
+  categories: string[];
+  updatedAt?: number | null;
+}
+
+export type SkillEnrichmentJobStatus =
+  | "idle"
+  | "waiting"
+  | "running"
+  | "stopped"
+  | "done"
+  | "error";
+
+export interface SkillEnrichmentJobRequest {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  requestKind: LlmRequestKind;
+  providerLabel?: string | null;
+  mode: SkillAnnotationMode;
+  delayMs?: number | null;
+  skills: SkillEnrichmentJobItem[];
+}
+
+export interface SkillEnrichmentJobSnapshot {
+  runId: number;
+  mode: SkillAnnotationMode;
+  status: SkillEnrichmentJobStatus;
+  total: number;
+  completed: number;
+  currentSkillDir?: string | null;
+  currentSkillName?: string | null;
+  nextRunAt?: number | null;
+  message: string;
+  errorMessage?: string | null;
+  providerLabel?: string | null;
+  model: string;
+  requestKind: LlmRequestKind;
+  startedAt: number;
+  updatedAt: number;
+  records: Record<string, SkillEnrichmentRecord>;
+}
+
 export type SkillSourceType = "github" | "npx" | "local" | "manual" | "unknown";
 
 export interface SkillsCatalogSnapshot {

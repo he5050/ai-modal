@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   EnrichSkillRequest,
+  SkillEnrichmentJobRequest,
+  SkillEnrichmentJobSnapshot,
   ModelResult,
   OnlineSearchResponse,
   SkillEnrichmentRecord,
@@ -107,4 +109,18 @@ export async function enrichSingleSkill(
   request: EnrichSkillRequest,
 ): Promise<SkillEnrichmentRecord> {
   return invoke("enrich_single_skill", { request });
+}
+
+export async function startSkillEnrichmentJob(
+  request: SkillEnrichmentJobRequest,
+): Promise<SkillEnrichmentJobSnapshot> {
+  return invoke("start_skill_enrichment_job", { request });
+}
+
+export async function getSkillEnrichmentJobStatus(): Promise<SkillEnrichmentJobSnapshot | null> {
+  return invoke("get_skill_enrichment_job_status");
+}
+
+export async function stopSkillEnrichmentJob(): Promise<SkillEnrichmentJobSnapshot | null> {
+  return invoke("stop_skill_enrichment_job");
 }

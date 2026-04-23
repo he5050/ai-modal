@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { animate, spring } from "animejs";
 import { AlertTriangle } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
@@ -18,6 +19,7 @@ import { PromptDetailPage } from "./components/PromptDetailPage";
 import { SkillsPage } from "./components/SkillsPage";
 import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
 import { parsePromptCategories } from "./lib/promptStore";
+import { toast } from "./lib/toast";
 import type {
   AppPage,
   ConfigPath,
@@ -25,6 +27,7 @@ import type {
   Provider,
   ProviderLastResult,
   RulePath,
+  SkillEnrichmentJobSnapshot,
 } from "./types";
 
 const PROVIDERS_KEY = "ai-modal-providers";
@@ -571,6 +574,58 @@ export default function App() {
   const availableCount = providers.filter((p) =>
     p.lastResult?.results.some((r) => r.available),
   ).length;
+  const lastSkillEnrichmentNoticeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof (window as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ ===
+        "undefined"
+    ) {
+      return;
+    }
+
+    let unlisten: (() => void) | null = null;
+
+    void listen<SkillEnrichmentJobSnapshot>(
+      "skill-enrichment-progress",
+      (event) => {
+        const snapshot = event.payload;
+        if (
+          snapshot.status !== "done" &&
+          snapshot.status !== "error" &&
+          snapshot.status !== "stopped"
+        ) {
+          return;
+        }
+
+        const noticeKey = `${snapshot.runId}:${snapshot.status}`;
+        if (lastSkillEnrichmentNoticeRef.current === noticeKey) {
+          return;
+        }
+        lastSkillEnrichmentNoticeRef.current = noticeKey;
+
+        if (snapshot.status === "done") {
+          toast("技能注解完成", "success");
+          return;
+        }
+        if (snapshot.status === "error") {
+          toast(
+            `技能注解失败：${snapshot.errorMessage || snapshot.message}`,
+            "error",
+          );
+          return;
+        }
+        toast("技能注解已停止", "info");
+      },
+    ).then((dispose) => {
+      unlisten = dispose;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-200 overflow-hidden">

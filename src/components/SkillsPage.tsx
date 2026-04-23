@@ -4,11 +4,13 @@ import { listen } from "@tauri-apps/api/event";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
-  enrichSingleSkill,
+  getSkillEnrichmentJobStatus,
   inspectSkillTargets,
   runSkillsCommand,
   scanLocalSkills,
   searchOnlineSkills,
+  startSkillEnrichmentJob,
+  stopSkillEnrichmentJob,
   syncSkillTargets,
 } from "../api";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
@@ -40,11 +42,13 @@ import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
 import type {
-  EnrichSkillRequest,
   LlmRequestKind,
   OnlineSkill,
   Provider,
+  SkillAnnotationMode,
   SkillEnrichmentRecord,
+  SkillEnrichmentJobRequest,
+  SkillEnrichmentJobSnapshot,
   SkillRecord,
   SkillSourceMeta,
   SkillSourceType,
@@ -55,7 +59,6 @@ import type {
   SkillsCommandRequest,
   SkillsCommandProgressEvent,
   SkillsCommandResult,
-  SystemLlmProfile,
 } from "../types";
 import {
   Check,
@@ -89,7 +92,6 @@ const MODEL_CONFIG_DB_KEY = "model_config";
 
 type InstallMode = "search" | "github" | "local" | "update" | "remove";
 type SkillsTab = "list" | "manage";
-type SkillAnnotationMode = "full" | "incremental";
 type PersistedModelConfig = {
   baseUrl: string;
   apiKey: string;
@@ -306,7 +308,7 @@ export function SkillsPage({
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState("");
   const [enrichmentQueueRunning, setEnrichmentQueueRunning] = useState(false);
   const [enrichmentQueuePhase, setEnrichmentQueuePhase] = useState<
-    "idle" | "waiting" | "running" | "stopped" | "done"
+    "idle" | "waiting" | "running" | "stopped" | "done" | "error"
   >("idle");
   const [enrichmentQueueTotal, setEnrichmentQueueTotal] = useState(0);
   const [enrichmentQueueCompleted, setEnrichmentQueueCompleted] = useState(0);
@@ -317,6 +319,9 @@ export function SkillsPage({
     null,
   );
   const [enrichmentQueueMessage, setEnrichmentQueueMessage] = useState("");
+  const [enrichmentQueueError, setEnrichmentQueueError] = useState<
+    string | null
+  >(null);
   const [queueNow, setQueueNow] = useState(Date.now());
   const [annotationModalOpen, setAnnotationModalOpen] = useState(false);
   const [checkingTargets, setCheckingTargets] = useState(false);
@@ -347,8 +352,7 @@ export function SkillsPage({
   const [customPath, setCustomPath] = useState("");
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [pathDraft, setPathDraft] = useState("");
-  const enrichmentRunIdRef = useRef(0);
-  const stopEnrichmentRef = useRef(false);
+  const lastEnrichmentLogKeyRef = useRef<string | null>(null);
 
   // Online search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -364,13 +368,6 @@ export function SkillsPage({
     onDirtyChange(false);
     return () => onDirtyChange(false);
   }, [onDirtyChange]);
-
-  useEffect(() => {
-    return () => {
-      stopEnrichmentRef.current = true;
-      enrichmentRunIdRef.current += 1;
-    };
-  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -395,6 +392,98 @@ export function SkillsPage({
       unlisten?.();
     };
   }, []);
+
+  const applyEnrichmentSnapshot = useCallback(
+    (snapshot: SkillEnrichmentJobSnapshot | null) => {
+      if (!snapshot) {
+        setEnrichmentQueueRunning(false);
+        setEnrichmentQueuePhase("idle");
+        setEnrichmentQueueTotal(0);
+        setEnrichmentQueueCompleted(0);
+        setCurrentEnrichmentSkillDir(null);
+        setNextEnrichmentRunAt(null);
+        setEnrichmentQueueMessage("");
+        setEnrichmentQueueError(null);
+        return;
+      }
+
+      const logKey = [
+        snapshot.runId,
+        snapshot.status,
+        snapshot.completed,
+        snapshot.total,
+        snapshot.currentSkillDir ?? "",
+        snapshot.message,
+        snapshot.errorMessage ?? "",
+      ].join("|");
+      if (lastEnrichmentLogKeyRef.current !== logKey) {
+        const suffix = [
+          `${snapshot.completed}/${snapshot.total}`,
+          snapshot.currentSkillDir ? `当前=${snapshot.currentSkillDir}` : "",
+          snapshot.errorMessage ? `错误=${snapshot.errorMessage}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const text = `[技能注解] ${snapshot.message}${suffix ? ` | ${suffix}` : ""}`;
+        if (snapshot.status === "error") {
+          logger.error(text);
+        } else if (snapshot.status === "done") {
+          logger.success(text);
+        } else if (snapshot.status === "stopped") {
+          logger.warn(text);
+        } else {
+          logger.info(text);
+        }
+        lastEnrichmentLogKeyRef.current = logKey;
+      }
+
+      setEnrichmentQueueRunning(
+        snapshot.status === "running" || snapshot.status === "waiting",
+      );
+      setEnrichmentQueuePhase(snapshot.status);
+      setEnrichmentQueueTotal(snapshot.total);
+      setEnrichmentQueueCompleted(snapshot.completed);
+      setCurrentEnrichmentSkillDir(snapshot.currentSkillDir ?? null);
+      setNextEnrichmentRunAt(snapshot.nextRunAt ?? null);
+      setEnrichmentQueueMessage(snapshot.message);
+      setEnrichmentQueueError(snapshot.errorMessage ?? null);
+      if (Object.keys(snapshot.records).length > 0) {
+        setSkillEnrichments((current) => ({
+          ...current,
+          ...snapshot.records,
+        }));
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | null = null;
+
+    void getSkillEnrichmentJobStatus()
+      .then((snapshot) => {
+        if (active) applyEnrichmentSnapshot(snapshot);
+      })
+      .catch((error) => {
+        console.error("Failed to restore skill enrichment job status", error);
+      });
+
+    void listen<SkillEnrichmentJobSnapshot>(
+      "skill-enrichment-progress",
+      (event) => {
+        if (!active) return;
+        applyEnrichmentSnapshot(event.payload);
+      },
+    ).then((dispose) => {
+      unlisten = dispose;
+    });
+
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [applyEnrichmentSnapshot]);
 
   useEffect(() => {
     let active = true;
@@ -699,56 +788,16 @@ export function SkillsPage({
     }
   }, [selectedLlmProfile, selectedLlmProfileId]);
 
-  function buildEnrichmentErrorRecord(
-    skill: SkillRecord,
-    profile: SystemLlmProfile,
-    errorMessage: string,
-  ): SkillEnrichmentRecord {
-    return {
-      skillDir: skill.dir,
-      skillPath: skill.path,
-      sourceUpdatedAt: skill.updatedAt ?? null,
-      sourceDescription: skill.description,
-      localizedDescription: "",
-      fullDescription: "",
-      contentSummary: "",
-      usage: "",
-      scenarios: "",
-      tags: [],
-      status: "error",
-      providerLabel: profile.label,
-      model: profile.model,
-      requestKind: profile.requestKind,
-      rawResponse: null,
-      errorMessage,
-      enrichedAt: Date.now(),
-    };
-  }
-
-  async function waitForNextEnrichment(runId: number) {
-    const target = Date.now() + enrichmentDelayMs;
-    setEnrichmentQueuePhase("waiting");
-    setNextEnrichmentRunAt(target);
-    while (Date.now() < target) {
-      if (stopEnrichmentRef.current || enrichmentRunIdRef.current !== runId) {
-        break;
+  async function stopEnrichmentQueue() {
+    try {
+      const snapshot = await stopSkillEnrichmentJob();
+      if (snapshot) {
+        applyEnrichmentSnapshot(snapshot);
       }
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(200, enrichmentDelayMs)),
-      );
+    } catch (error) {
+      console.error("Failed to stop skill enrichment job", error);
+      toast("停止技能注解失败", "error");
     }
-    setNextEnrichmentRunAt(null);
-  }
-
-  function stopEnrichmentQueue() {
-    stopEnrichmentRef.current = true;
-    enrichmentRunIdRef.current += 1;
-    setEnrichmentQueueRunning(false);
-    setEnrichmentQueuePhase("stopped");
-    setEnrichmentQueueMessage("已停止当前富化队列");
-    setCurrentEnrichmentSkillDir(null);
-    setNextEnrichmentRunAt(null);
   }
 
   async function handleRunEnrichmentQueue(
@@ -770,94 +819,40 @@ export function SkillsPage({
       return;
     }
 
-    stopEnrichmentRef.current = false;
-    const runId = Date.now();
-    enrichmentRunIdRef.current = runId;
-    setEnrichmentQueueRunning(true);
-    setEnrichmentQueuePhase("running");
-    setEnrichmentQueueTotal(targetSkills.length);
-    setEnrichmentQueueCompleted(0);
-    setEnrichmentQueueMessage(
-      `准备使用 ${selectedLlmProfile.label} 执行${mode === "incremental" ? "增量" : "全量"}技能注解`,
-    );
-    setAnnotationModalOpen(true);
+    const request: SkillEnrichmentJobRequest = {
+      baseUrl: selectedLlmProfile.baseUrl,
+      apiKey: selectedLlmProfile.apiKey,
+      model: selectedLlmProfile.model,
+      requestKind: selectedLlmProfile.requestKind,
+      providerLabel: selectedLlmProfile.label,
+      mode,
+      delayMs: enrichmentDelayMs,
+      skills: targetSkills.map((skill) => ({
+        skillDir: skill.dir,
+        skillPath: skill.path,
+        description: skill.description,
+        categories: skill.categories,
+        updatedAt: skill.updatedAt ?? null,
+      })),
+    };
 
-    for (let index = 0; index < targetSkills.length; index += 1) {
-      if (stopEnrichmentRef.current || enrichmentRunIdRef.current !== runId) {
-        break;
+    try {
+      const snapshot = await startSkillEnrichmentJob(request);
+      setAnnotationModalOpen(true);
+      applyEnrichmentSnapshot(snapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("已有技能注解任务正在运行")) {
+        const snapshot = await getSkillEnrichmentJobStatus();
+        if (snapshot) {
+          applyEnrichmentSnapshot(snapshot);
+          setAnnotationModalOpen(true);
+        }
+        toast(message, "warning");
+        return;
       }
-      const skill = targetSkills[index];
-      setCurrentEnrichmentSkillDir(skill.dir);
-      setEnrichmentQueuePhase("running");
-      setEnrichmentQueueMessage(`正在注解 ${skill.name}`);
-
-      setSkillEnrichments((current) => ({
-        ...current,
-        [skill.dir]: {
-          skillDir: skill.dir,
-          skillPath: skill.path,
-          sourceUpdatedAt: skill.updatedAt ?? null,
-          sourceDescription: skill.description,
-          localizedDescription: current[skill.dir]?.localizedDescription ?? "",
-          fullDescription: current[skill.dir]?.fullDescription ?? "",
-          contentSummary: current[skill.dir]?.contentSummary ?? "",
-          usage: current[skill.dir]?.usage ?? "",
-          scenarios: current[skill.dir]?.scenarios ?? "",
-          tags: current[skill.dir]?.tags ?? [],
-          status: "running",
-          providerLabel: selectedLlmProfile.label,
-          model: selectedLlmProfile.model,
-          requestKind: selectedLlmProfile.requestKind,
-          rawResponse: current[skill.dir]?.rawResponse ?? null,
-          errorMessage: null,
-          enrichedAt: current[skill.dir]?.enrichedAt ?? null,
-        },
-      }));
-
-      try {
-        const request: EnrichSkillRequest = {
-          baseUrl: selectedLlmProfile.baseUrl,
-          apiKey: selectedLlmProfile.apiKey,
-          model: selectedLlmProfile.model,
-          requestKind: selectedLlmProfile.requestKind,
-          skillDir: skill.dir,
-          skillPath: skill.path,
-          description: skill.description,
-          categories: skill.categories,
-          updatedAt: skill.updatedAt ?? null,
-          providerLabel: selectedLlmProfile.label,
-        };
-        // eslint-disable-next-line no-await-in-loop
-        const enriched = await enrichSingleSkill(request);
-        setSkillEnrichments((current) => ({
-          ...current,
-          [skill.dir]: enriched,
-        }));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        setSkillEnrichments((current) => ({
-          ...current,
-          [skill.dir]: buildEnrichmentErrorRecord(
-            skill,
-            selectedLlmProfile,
-            message,
-          ),
-        }));
-      }
-
-      setEnrichmentQueueCompleted(index + 1);
-      if (index < targetSkills.length - 1) {
-        // eslint-disable-next-line no-await-in-loop
-        await waitForNextEnrichment(runId);
-      }
-    }
-
-    if (enrichmentRunIdRef.current === runId && !stopEnrichmentRef.current) {
-      setEnrichmentQueueRunning(false);
-      setEnrichmentQueuePhase("done");
-      setCurrentEnrichmentSkillDir(null);
-      setEnrichmentQueueMessage("技能注解队列已完成");
-      toast("技能注解完成", "success");
+      console.error("Failed to start skill enrichment job", error);
+      toast(`启动技能注解失败：${message}`, "error");
     }
   }
 
@@ -1636,7 +1631,7 @@ export function SkillsPage({
                 </button>
                 <button
                   onClick={() => setAnnotationModalOpen(true)}
-                  disabled={enrichmentQueueRunning || !selectedLlmProfile}
+                  disabled={!selectedLlmProfile}
                   className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   {enrichmentQueueRunning ? (
@@ -2585,15 +2580,13 @@ export function SkillsPage({
                   使用系统配置里已保存的 LLM 参数，对当前筛选范围内的技能做一次中文注解处理。
                 </p>
               </div>
-              {!enrichmentQueueRunning && (
-                <button
-                  onClick={() => setAnnotationModalOpen(false)}
-                  className="text-gray-500 transition-colors hover:text-gray-300"
-                  aria-label="关闭技能注解弹窗"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+              <button
+                onClick={() => setAnnotationModalOpen(false)}
+                className="text-gray-500 transition-colors hover:text-gray-300"
+                aria-label="关闭技能注解弹窗"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-800 bg-black/10 px-4 py-3 text-sm text-gray-300">
@@ -2663,6 +2656,15 @@ export function SkillsPage({
                     />
                   </div>
                 </div>
+
+                {enrichmentQueueError && (
+                  <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-3 text-xs leading-6 text-red-100">
+                    <div className="font-medium text-red-200">失败原因</div>
+                    <div className="mt-1 whitespace-pre-wrap break-words text-red-100/90">
+                      {enrichmentQueueError}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

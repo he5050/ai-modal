@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SkillsPage } from '../SkillsPage'
 import type {
+  SkillAnnotationMode,
+  SkillEnrichmentJobSnapshot,
   SkillEnrichmentRecord,
   SkillTargetConfig,
   SkillTargetStatus,
@@ -18,12 +20,14 @@ const {
   mockOpenPath,
   mockScanLocalSkills,
   mockInspectSkillTargets,
-    mockRunSkillsCommand,
-    mockSearchOnlineSkills,
-    mockSyncSkillTargets,
-    mockResolveSystemLlm,
-    mockEnrichSingleSkill,
-    mockListen,
+  mockRunSkillsCommand,
+  mockSearchOnlineSkills,
+  mockSyncSkillTargets,
+  mockResolveSystemLlm,
+  mockStartSkillEnrichmentJob,
+  mockGetSkillEnrichmentJobStatus,
+  mockStopSkillEnrichmentJob,
+  mockListen,
   mockLoadPersistedJson,
   mockSavePersistedJson,
   mockToast,
@@ -34,12 +38,14 @@ const {
   mockOpenPath: vi.fn(),
   mockScanLocalSkills: vi.fn(),
   mockInspectSkillTargets: vi.fn(),
-      mockRunSkillsCommand: vi.fn(),
-      mockSearchOnlineSkills: vi.fn(),
-      mockSyncSkillTargets: vi.fn(),
-      mockResolveSystemLlm: vi.fn(),
-      mockEnrichSingleSkill: vi.fn(),
-      mockListen: vi.fn(),
+  mockRunSkillsCommand: vi.fn(),
+  mockSearchOnlineSkills: vi.fn(),
+  mockSyncSkillTargets: vi.fn(),
+  mockResolveSystemLlm: vi.fn(),
+  mockStartSkillEnrichmentJob: vi.fn(),
+  mockGetSkillEnrichmentJobStatus: vi.fn(),
+  mockStopSkillEnrichmentJob: vi.fn(),
+  mockListen: vi.fn(),
   mockLoadPersistedJson: vi.fn(),
   mockSavePersistedJson: vi.fn(),
   mockToast: vi.fn(),
@@ -75,7 +81,9 @@ vi.mock('../../api', () => ({
   searchOnlineSkills: mockSearchOnlineSkills,
   syncSkillTargets: mockSyncSkillTargets,
   resolveSystemLlm: mockResolveSystemLlm,
-  enrichSingleSkill: mockEnrichSingleSkill,
+  startSkillEnrichmentJob: mockStartSkillEnrichmentJob,
+  getSkillEnrichmentJobStatus: mockGetSkillEnrichmentJobStatus,
+  stopSkillEnrichmentJob: mockStopSkillEnrichmentJob,
 }))
 
 vi.mock('../../lib/persistence', () => ({
@@ -193,6 +201,30 @@ function createEnrichmentRecord(
   }
 }
 
+function createJobSnapshot(
+  overrides: Partial<SkillEnrichmentJobSnapshot> = {},
+): SkillEnrichmentJobSnapshot {
+  return {
+    runId: Date.now(),
+    mode: 'full' satisfies SkillAnnotationMode,
+    status: 'running',
+    total: 2,
+    completed: 0,
+    currentSkillDir: null,
+    currentSkillName: null,
+    nextRunAt: null,
+    message: '准备使用 AIModal 模型配置 执行技能注解',
+    errorMessage: null,
+    providerLabel: 'AIModal 模型配置',
+    model: 'gpt-5.4',
+    requestKind: 'openai-chat',
+    startedAt: Date.now(),
+    updatedAt: Date.now(),
+    records: {},
+    ...overrides,
+  }
+}
+
 const builtinTargets: SkillTargetConfig[] = [
   {
     id: 'codex',
@@ -275,7 +307,14 @@ beforeEach(() => {
   })
   mockSyncSkillTargets.mockResolvedValue([])
   mockResolveSystemLlm.mockResolvedValue(createSystemLlmSnapshot())
-  mockEnrichSingleSkill.mockResolvedValue(createEnrichmentRecord())
+  mockStartSkillEnrichmentJob.mockResolvedValue(createJobSnapshot())
+  mockGetSkillEnrichmentJobStatus.mockResolvedValue(null)
+  mockStopSkillEnrichmentJob.mockResolvedValue(
+    createJobSnapshot({
+      status: 'stopped',
+      message: '技能注解已中断',
+    }),
+  )
   mockRunSkillsCommand.mockResolvedValue(createCommandResult())
   mockListen.mockResolvedValue(() => {})
   mockSavePersistedJson.mockResolvedValue(undefined)
@@ -351,32 +390,8 @@ describe('SkillsPage', () => {
     ).toBeInTheDocument()
   })
 
-  it(
-    'enriches skills strictly one by one with 5 second spacing',
-    async () => {
+  it('starts a background annotation job with the filtered skills and delay config', async () => {
     const user = userEvent.setup()
-    const first = createEnrichmentRecord({
-      skillDir: 'demo-skill',
-      skillPath: '/Users/test/.agents/skills/demo-skill',
-    })
-    const second = createEnrichmentRecord({
-      skillDir: 'docx',
-      skillPath: '/Users/test/.agents/skills/docx',
-      localizedDescription: '第二个技能简介',
-    })
-
-    let firstResolved = false
-    mockEnrichSingleSkill
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => {
-              firstResolved = true
-              resolve(first)
-            }, 10)
-          }),
-      )
-      .mockResolvedValueOnce(second)
 
     await renderSkillsPage({
       enrichmentDelayMs: 200,
@@ -392,26 +407,163 @@ describe('SkillsPage', () => {
     )
 
     await waitFor(() => {
-      expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(1)
+      expect(mockStartSkillEnrichmentJob).toHaveBeenCalledWith({
+        baseUrl: 'https://llm.example.com/v1',
+        apiKey: 'sk-test',
+        model: 'gpt-5.4',
+        requestKind: 'openai-chat',
+        providerLabel: 'AIModal 模型配置',
+        mode: 'full',
+        delayMs: 200,
+        skills: [
+          {
+            skillDir: 'demo-skill',
+            skillPath: '/Users/test/.agents/skills/demo-skill',
+            description: 'demo description',
+            categories: ['tools'],
+            updatedAt: expect.any(Number),
+          },
+          {
+            skillDir: 'docx',
+            skillPath: '/Users/test/.agents/skills/docx',
+            description: 'docx description',
+            categories: ['docs'],
+            updatedAt: expect.any(Number),
+          },
+        ],
+      })
+    })
+  })
+
+  it('stops annotation immediately and shows failure reason when one skill fails', async () => {
+    const user = userEvent.setup()
+    let enrichmentHandler:
+      | ((event: { payload: SkillEnrichmentJobSnapshot }) => void)
+      | null = null
+
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === 'skill-enrichment-progress') {
+        enrichmentHandler = handler as (event: { payload: SkillEnrichmentJobSnapshot }) => void
+      }
+      return () => {}
+    })
+    mockStartSkillEnrichmentJob.mockResolvedValueOnce(
+      createJobSnapshot({
+        message: '正在注解 demo-skill',
+        currentSkillDir: 'demo-skill',
+        currentSkillName: 'demo-skill',
+      }),
+    )
+
+    await renderSkillsPage({
+      enrichmentDelayMs: 10,
     })
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 15))
-    })
-    expect(firstResolved).toBe(true)
-    expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: '技能注解' }))
+    await user.click(
+      screen.getByRole('button', {
+        name: /全量注解.*全部重新处理一次/,
+      }),
+    )
 
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 15))
+      enrichmentHandler?.({
+        payload: createJobSnapshot({
+          status: 'error',
+          message: '技能 demo-skill 注解失败',
+          errorMessage: 'provider timeout',
+          currentSkillDir: 'demo-skill',
+          currentSkillName: 'demo-skill',
+          records: {
+            'demo-skill': createEnrichmentRecord({
+              status: 'error',
+              errorMessage: 'provider timeout',
+              localizedDescription: '',
+              fullDescription: '',
+              contentSummary: '',
+              usage: '',
+              scenarios: '',
+              rawResponse: null,
+            }),
+          },
+        }),
+      })
     })
-    expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(1)
+
+    expect(
+      (await screen.findAllByText('技能 demo-skill 注解失败')).length,
+    ).toBeGreaterThan(0)
+    expect(await screen.findByText('失败原因')).toBeInTheDocument()
+    expect(await screen.findByText('provider timeout')).toBeInTheDocument()
+    expect(screen.getByText('error')).toBeInTheDocument()
+  })
+
+  it('allows closing the annotation dialog while the queue keeps running and reopens progress', async () => {
+    const user = userEvent.setup()
+    let enrichmentHandler:
+      | ((event: { payload: SkillEnrichmentJobSnapshot }) => void)
+      | null = null
+
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === 'skill-enrichment-progress') {
+        enrichmentHandler = handler as (event: { payload: SkillEnrichmentJobSnapshot }) => void
+      }
+      return () => {}
+    })
+    const runningSnapshot = createJobSnapshot({
+      message: '正在注解 demo-skill',
+      currentSkillDir: 'demo-skill',
+      currentSkillName: 'demo-skill',
+    })
+    mockStartSkillEnrichmentJob.mockResolvedValueOnce(runningSnapshot)
+    mockGetSkillEnrichmentJobStatus.mockResolvedValue(runningSnapshot)
+
+    await renderSkillsPage({
+      enrichmentDelayMs: 10,
+    })
+
+    await user.click(screen.getByRole('button', { name: '技能注解' }))
+    await user.click(
+      screen.getByRole('button', {
+        name: /全量注解.*全部重新处理一次/,
+      }),
+    )
+
+    expect(
+      await screen.findByRole('progressbar', { name: '技能注解进度' }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '关闭技能注解弹窗' }))
 
     await waitFor(() => {
-      expect(mockEnrichSingleSkill).toHaveBeenCalledTimes(2)
+      expect(
+        screen.queryByRole('progressbar', { name: '技能注解进度' }),
+      ).not.toBeInTheDocument()
     })
-    },
-    15000,
-  )
+
+    await user.click(screen.getByRole('button', { name: '技能注解' }))
+
+    expect(
+      await screen.findByRole('progressbar', { name: '技能注解进度' }),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      enrichmentHandler?.({
+        payload: createJobSnapshot({
+          status: 'done',
+          completed: 2,
+          message: '技能注解队列已完成',
+          records: {
+            'demo-skill': createEnrichmentRecord(),
+          },
+        }),
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByText('技能注解队列已完成').length).toBeGreaterThan(0)
+    })
+  })
 
   it('shows progress immediately when running global update', async () => {
     const user = userEvent.setup()

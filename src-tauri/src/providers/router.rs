@@ -80,11 +80,14 @@ pub enum ModelProtocol {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum LlmRequestKind {
+    #[serde(rename = "openai-chat", alias = "open-ai-chat")]
     OpenAiChat,
+    #[serde(rename = "openai-responses", alias = "open-ai-responses")]
     OpenAiResponses,
+    #[serde(rename = "claude")]
     Claude,
+    #[serde(rename = "gemini")]
     Gemini,
 }
 
