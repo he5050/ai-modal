@@ -7,6 +7,7 @@ import type {
   SkillAnnotationMode,
   SkillEnrichmentJobSnapshot,
   SkillEnrichmentRecord,
+  LocalizedOnlineSkillDetail,
   OnlineSkillDetail,
   SkillTargetConfig,
   SkillTargetStatus,
@@ -22,6 +23,7 @@ const {
   mockScanLocalSkills,
   mockInspectSkillTargets,
   mockInspectOnlineSkill,
+  mockTranslateOnlineSkillDetail,
   mockRunSkillsCommand,
   mockSearchOnlineSkills,
   mockSyncSkillTargets,
@@ -41,6 +43,7 @@ const {
   mockScanLocalSkills: vi.fn(),
   mockInspectSkillTargets: vi.fn(),
   mockInspectOnlineSkill: vi.fn(),
+  mockTranslateOnlineSkillDetail: vi.fn(),
   mockRunSkillsCommand: vi.fn(),
   mockSearchOnlineSkills: vi.fn(),
   mockSyncSkillTargets: vi.fn(),
@@ -81,6 +84,7 @@ vi.mock("../../api", () => ({
   scanLocalSkills: mockScanLocalSkills,
   inspectSkillTargets: mockInspectSkillTargets,
   inspectOnlineSkill: mockInspectOnlineSkill,
+  translateOnlineSkillDetail: mockTranslateOnlineSkillDetail,
   runSkillsCommand: mockRunSkillsCommand,
   searchOnlineSkills: mockSearchOnlineSkills,
   syncSkillTargets: mockSyncSkillTargets,
@@ -253,6 +257,30 @@ function createOnlineSkillDetail(
   };
 }
 
+function createLocalizedOnlineSkillDetail(
+  overrides: Partial<LocalizedOnlineSkillDetail> = {},
+): LocalizedOnlineSkillDetail {
+  return {
+    skillDir: "demo-skill",
+    skillName: "demo-skill",
+    skillId: "frontend-design",
+    source: "example/repo",
+    pageUrl: "https://skills.sh/example/repo/frontend-design",
+    installCommand:
+      "npx skills add https://github.com/example/repo --skill frontend-design",
+    sourceSummary: "Distinctive, production-grade frontend interfaces.",
+    sourceUsageHints: ["Use this skill when building frontend interfaces."],
+    localizedSummary: "这是翻译后的在线技能简介。",
+    localizedUsageHints: ["在构建前端界面时使用这个技能。"],
+    providerLabel: "AIModal 模型配置",
+    model: "gpt-5.4",
+    requestKind: "openai-chat",
+    translatedAt: Date.now(),
+    errorMessage: null,
+    ...overrides,
+  };
+}
+
 const builtinTargets: SkillTargetConfig[] = [
   {
     id: "codex",
@@ -310,6 +338,7 @@ beforeEach(() => {
         return createCatalog([createDemoSkill(), createDocxSkill()]);
       }
       if (dbKey === "skill_enrichments") return {};
+      if (dbKey === "localized_online_skill_details") return {};
       if (dbKey === "model_config") {
         return {
           baseUrl: "https://llm.example.com/v1",
@@ -336,6 +365,9 @@ beforeEach(() => {
     durationMs: 0,
   });
   mockInspectOnlineSkill.mockResolvedValue(createOnlineSkillDetail());
+  mockTranslateOnlineSkillDetail.mockResolvedValue(
+    createLocalizedOnlineSkillDetail(),
+  );
   mockSyncSkillTargets.mockResolvedValue([]);
   mockResolveSystemLlm.mockResolvedValue(createSystemLlmSnapshot());
   mockStartSkillEnrichmentJob.mockResolvedValue(createJobSnapshot());
@@ -391,6 +423,7 @@ describe("SkillsPage", () => {
             "demo-skill": createEnrichmentRecord(),
           };
         }
+        if (dbKey === "localized_online_skill_details") return {};
         if (dbKey === "model_config") {
           return {
             baseUrl: "https://llm.example.com/v1",

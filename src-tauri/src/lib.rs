@@ -8,7 +8,9 @@ use commands::model_config::test_model_config;
 use commands::provider::{
     list_models_by_provider, test_models_by_provider, test_single_model_by_provider,
 };
-use commands::skill_enrichment::{enrich_single_skill, resolve_system_llm};
+use commands::skill_enrichment::{
+    enrich_single_skill, resolve_system_llm, translate_online_skill_detail,
+};
 use commands::skill_enrichment_job::{
     get_skill_enrichment_job_status, start_skill_enrichment_job, stop_skill_enrichment_job,
     SkillEnrichmentJobManager,
@@ -72,6 +74,7 @@ pub fn run() {
             inspect_online_skill,
             resolve_system_llm,
             enrich_single_skill,
+            translate_online_skill_detail,
             start_skill_enrichment_job,
             get_skill_enrichment_job_status,
             stop_skill_enrichment_job,

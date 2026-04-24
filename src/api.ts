@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   EnrichSkillRequest,
+  LocalizedOnlineSkillDetail,
   SkillEnrichmentJobRequest,
   SkillEnrichmentJobSnapshot,
   ModelResult,
@@ -110,6 +111,19 @@ export async function inspectOnlineSkill(
     skillId,
     source,
   });
+}
+
+export async function translateOnlineSkillDetail(request: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  requestKind: SkillEnrichmentRecord["requestKind"];
+  providerLabel?: string | null;
+  skillDir: string;
+  skillName: string;
+  detail: OnlineSkillDetail;
+}): Promise<LocalizedOnlineSkillDetail> {
+  return invoke("translate_online_skill_detail", { request });
 }
 
 export async function resolveSystemLlm(): Promise<SystemLlmSnapshot> {

@@ -7,6 +7,7 @@ import {
   getSkillEnrichmentJobStatus,
   inspectOnlineSkill,
   inspectSkillTargets,
+  translateOnlineSkillDetail,
   runSkillsCommand,
   scanLocalSkills,
   searchOnlineSkills,
@@ -47,7 +48,7 @@ import { Tooltip } from "./Tooltip";
 import type {
   LlmRequestKind,
   InstalledSkillSnapshot,
-  OnlineSkillDetail,
+  LocalizedOnlineSkillDetail,
   OnlineSkill,
   Provider,
   SkillAnnotationMode,
@@ -94,8 +95,12 @@ const SKILL_ENRICHMENTS_KEY = "ai-modal-skill-enrichments";
 const SKILL_ENRICHMENTS_DB_KEY = "skill_enrichments";
 const INSTALLED_SKILL_SNAPSHOTS_KEY = "ai-modal-installed-skill-snapshots";
 const INSTALLED_SKILL_SNAPSHOTS_DB_KEY = "installed_skill_snapshots";
+const LOCALIZED_ONLINE_SKILL_DETAILS_KEY =
+  "ai-modal-localized-online-skill-details";
+const LOCALIZED_ONLINE_SKILL_DETAILS_DB_KEY = "localized_online_skill_details";
 const MODEL_CONFIG_KEY = "ai-modal-model-config";
 const MODEL_CONFIG_DB_KEY = "model_config";
+const ONLINE_SKILL_DETAIL_PREFETCH_CONCURRENCY = 4;
 
 type InstallMode = "search" | "github" | "local" | "update" | "remove";
 type SkillsTab = "list" | "manage";
@@ -123,11 +128,11 @@ function formatInstalls(n: number) {
   return String(n);
 }
 
-function splitDetailLines(value: string) {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+function createEmptyLocalizedOnlineSkillDetails(): Record<
+  string,
+  LocalizedOnlineSkillDetail
+> {
+  return {};
 }
 
 const BUILTIN_TARGETS: BuiltinSkillTarget[] = [
@@ -340,6 +345,8 @@ export function SkillsPage({
   const [installedSkillSnapshots, setInstalledSkillSnapshots] = useState<
     Record<string, InstalledSkillSnapshot>
   >({});
+  const [localizedOnlineSkillDetails, setLocalizedOnlineSkillDetails] =
+    useState<Record<string, LocalizedOnlineSkillDetail>>({});
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [loadingLlmProfiles, setLoadingLlmProfiles] = useState(false);
   const [modelConfigs, setModelConfigs] = useState<PersistedModelConfig[]>([]);
@@ -397,6 +404,7 @@ export function SkillsPage({
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [pathDraft, setPathDraft] = useState("");
   const lastEnrichmentLogKeyRef = useRef<string | null>(null);
+  const prefetchingOnlineDetailIdsRef = useRef<Set<string>>(new Set());
 
   // Online search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -404,14 +412,10 @@ export function SkillsPage({
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searchDuration, setSearchDuration] = useState<number | null>(null);
   const [searched, setSearched] = useState(false);
-  const [expandedOnlineSkillIds, setExpandedOnlineSkillIds] = useState<
-    Set<string>
-  >(new Set());
-  const [loadingOnlineSkillDetailIds, setLoadingOnlineSkillDetailIds] =
+  const [loadingLocalizedOnlineDetailIds, setLoadingLocalizedOnlineDetailIds] =
     useState<Set<string>>(new Set());
-  const [onlineSkillDetails, setOnlineSkillDetails] = useState<
-    Record<string, OnlineSkillDetail>
-  >({});
+  const [localizedOnlineDetailErrors, setLocalizedOnlineDetailErrors] =
+    useState<Record<string, string>>({});
 
   // Command log collapsed state
   const [commandLogExpanded, setCommandLogExpanded] = useState(false);
@@ -579,6 +583,7 @@ export function SkillsPage({
           storedCatalog,
           storedEnrichments,
           storedInstalledSkillSnapshots,
+          storedLocalizedOnlineSkillDetails,
           storedModelConfig,
         ] = await Promise.all([
           homeDir().catch(() => ""),
@@ -606,6 +611,11 @@ export function SkillsPage({
             INSTALLED_SKILL_SNAPSHOTS_DB_KEY,
             INSTALLED_SKILL_SNAPSHOTS_KEY,
             {},
+          ),
+          loadPersistedJson<Record<string, LocalizedOnlineSkillDetail>>(
+            LOCALIZED_ONLINE_SKILL_DETAILS_DB_KEY,
+            LOCALIZED_ONLINE_SKILL_DETAILS_KEY,
+            createEmptyLocalizedOnlineSkillDetails(),
           ),
           loadPersistedJson<PersistedModelConfig | null>(
             MODEL_CONFIG_DB_KEY,
@@ -653,6 +663,7 @@ export function SkillsPage({
             storedEnrichments,
           ),
         });
+        setLocalizedOnlineSkillDetails(storedLocalizedOnlineSkillDetails);
       } catch (error) {
         console.error("Failed to bootstrap skill targets", error);
         toast("读取技能目标失败", "error");
@@ -710,6 +721,17 @@ export function SkillsPage({
       console.error("Failed to persist installed skill snapshots", error);
     });
   }, [installedSkillSnapshots, targetsReady]);
+
+  useEffect(() => {
+    if (!targetsReady) return;
+    void savePersistedJson(
+      LOCALIZED_ONLINE_SKILL_DETAILS_DB_KEY,
+      localizedOnlineSkillDetails,
+      LOCALIZED_ONLINE_SKILL_DETAILS_KEY,
+    ).catch((error) => {
+      console.error("Failed to persist localized online skill details", error);
+    });
+  }, [localizedOnlineSkillDetails, targetsReady]);
 
   async function refreshCatalog(nextSources?: Record<string, SkillSourceMeta>) {
     setLoadingCatalog(true);
@@ -1406,63 +1428,143 @@ export function SkillsPage({
     }
   }
 
-  async function handleToggleOnlineSkillDetails(skill: OnlineSkill) {
-    const skillKey = skill.id;
-    const isExpanded = expandedOnlineSkillIds.has(skillKey);
+  async function ensureLocalizedOnlineSkillDetail(skill: OnlineSkill) {
+    if (localizedOnlineSkillDetails[skill.id]) return;
+    if (loadingLocalizedOnlineDetailIds.has(skill.id)) return;
 
-    if (isExpanded) {
-      setExpandedOnlineSkillIds((prev) => {
-        const next = new Set(prev);
-        next.delete(skillKey);
-        return next;
-      });
+    if (!selectedLlmProfile) {
+      setLocalizedOnlineDetailErrors((prev) => ({
+        ...prev,
+        [skill.id]: "未配置可用的 LLM，无法翻译在线详情",
+      }));
       return;
     }
 
-    setExpandedOnlineSkillIds((prev) => {
+    setLoadingLocalizedOnlineDetailIds((prev) => {
       const next = new Set(prev);
-      next.add(skillKey);
+      next.add(skill.id);
       return next;
     });
-
-    if (
-      onlineSkillDetails[skillKey] ||
-      loadingOnlineSkillDetailIds.has(skillKey)
-    ) {
-      return;
-    }
-
-    setLoadingOnlineSkillDetailIds((prev) => {
-      const next = new Set(prev);
-      next.add(skillKey);
+    setLocalizedOnlineDetailErrors((prev) => {
+      const next = { ...prev };
+      delete next[skill.id];
       return next;
     });
 
     try {
       const detail = await inspectOnlineSkill(skill.skillId, skill.source);
-      setOnlineSkillDetails((prev) => ({
-        ...prev,
-        [skillKey]: detail,
-      }));
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error(
-        `[技能查询] 加载在线技能详情失败: ${skill.name} - ${errorMsg}`,
-      );
-      toast(`加载 ${skill.name} 详情失败`, "error");
-      setExpandedOnlineSkillIds((prev) => {
-        const next = new Set(prev);
-        next.delete(skillKey);
-        return next;
+      const localized = await translateOnlineSkillDetail({
+        baseUrl: selectedLlmProfile.baseUrl,
+        apiKey: selectedLlmProfile.apiKey,
+        model: selectedLlmProfile.model,
+        requestKind: selectedLlmProfile.requestKind,
+        providerLabel: selectedLlmProfile.label,
+        skillDir: skill.id,
+        skillName: skill.name,
+        detail,
       });
+
+      setLocalizedOnlineSkillDetails((prev) => ({
+        ...prev,
+        [skill.id]: localized,
+      }));
+      logger.success(
+        `[技能查询] 已缓存在线详情: ${skill.name} <- ${skill.source}/${skill.skillId}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`[技能查询] 在线详情加载失败: ${skill.name} - ${message}`);
+      setLocalizedOnlineDetailErrors((prev) => ({
+        ...prev,
+        [skill.id]: message,
+      }));
     } finally {
-      setLoadingOnlineSkillDetailIds((prev) => {
+      setLoadingLocalizedOnlineDetailIds((prev) => {
         const next = new Set(prev);
-        next.delete(skillKey);
+        next.delete(skill.id);
         return next;
       });
     }
   }
+
+  useEffect(() => {
+    if (installMode !== "search" || loadingSearch || searchResults.length === 0) {
+      return;
+    }
+    if (!selectedLlmProfile) {
+      return;
+    }
+
+    const pendingSkills = searchResults.filter(
+      (skill) =>
+        !localizedOnlineSkillDetails[skill.id] &&
+        !loadingLocalizedOnlineDetailIds.has(skill.id) &&
+        !localizedOnlineDetailErrors[skill.id] &&
+        !prefetchingOnlineDetailIdsRef.current.has(skill.id),
+    );
+
+    if (pendingSkills.length === 0) {
+      return;
+    }
+
+    pendingSkills.forEach((skill) =>
+      prefetchingOnlineDetailIdsRef.current.add(skill.id),
+    );
+
+    logger.info(
+      `[技能查询] 后台预取详情启动: total=${pendingSkills.length} concurrency=${ONLINE_SKILL_DETAIL_PREFETCH_CONCURRENCY}`,
+    );
+
+    let cancelled = false;
+    let cursor = 0;
+
+    async function worker() {
+      while (!cancelled) {
+        const currentIndex = cursor;
+        cursor += 1;
+        if (currentIndex >= pendingSkills.length) {
+          return;
+        }
+
+        const skill = pendingSkills[currentIndex];
+        try {
+          await ensureLocalizedOnlineSkillDetail(skill);
+        } finally {
+          prefetchingOnlineDetailIdsRef.current.delete(skill.id);
+        }
+      }
+    }
+
+    void Promise.all(
+      Array.from(
+        {
+          length: Math.min(
+            ONLINE_SKILL_DETAIL_PREFETCH_CONCURRENCY,
+            pendingSkills.length,
+          ),
+        },
+        () => worker(),
+      ),
+    ).then(() => {
+      if (!cancelled) {
+        logger.info(
+          `[技能查询] 后台预取详情完成: total=${pendingSkills.length}`,
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    installMode,
+    loadingLocalizedOnlineDetailIds,
+    loadingSearch,
+    localizedOnlineDetailErrors,
+    localizedOnlineSkillDetails,
+    searchResults,
+    selectedLlmProfile,
+  ]);
 
   async function handleSyncEnabledTargets() {
     if (enabledTargets.length === 0) {
@@ -2391,12 +2493,152 @@ export function SkillsPage({
                     )}
 
                     {!loadingSearch && searched && searchResults.length > 0 && (
-                      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         {searchResults.map((skill) => (
-                          <div
-                            key={skill.id}
-                            className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5"
-                          >
+                          (() => {
+                            const localizedOnlineDetail =
+                              localizedOnlineSkillDetails[skill.id];
+                            const onlineDetailLoading =
+                              loadingLocalizedOnlineDetailIds.has(skill.id);
+                            const onlineDetailError =
+                              localizedOnlineDetailErrors[skill.id];
+                            const tooltipContent = (
+                              <div className="overflow-hidden rounded-2xl">
+                                <div className="border-b border-gray-800 px-4 py-3">
+                                  <div className="text-sm font-semibold text-white">
+                                    {skill.name}
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                    <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400">
+                                      {formatInstalls(skill.installs)}
+                                    </span>
+                                    <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200">
+                                      {skill.source}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="max-h-[420px] space-y-4 overflow-y-auto px-4 py-4 text-sm">
+                                  {onlineDetailLoading ? (
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      正在拉取并翻译 skills.sh 在线详情...
+                                    </div>
+                                  ) : localizedOnlineDetail ? (
+                                    <>
+                                      <div>
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                          中文简介
+                                        </div>
+                                        <div className="mt-1 whitespace-pre-wrap leading-6 text-gray-200">
+                                          {localizedOnlineDetail.localizedSummary}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                          使用提示
+                                        </div>
+                                        <div className="mt-2 space-y-2 text-gray-200">
+                                          {localizedOnlineDetail.localizedUsageHints.map(
+                                            (hint) => (
+                                              <p
+                                                key={`${skill.id}-localized-hint-${hint}`}
+                                                className="whitespace-pre-wrap leading-6"
+                                              >
+                                                - {hint}
+                                              </p>
+                                            ),
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                          来源信息
+                                        </div>
+                                        <div className="mt-1 space-y-1 text-gray-300">
+                                          <p className="leading-6">
+                                            skillId: {localizedOnlineDetail.skillId}
+                                          </p>
+                                          <p className="leading-6">
+                                            source: {localizedOnlineDetail.source}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                          安装命令
+                                        </div>
+                                        <div className="mt-2 rounded-lg border border-gray-800 bg-black/30 px-2.5 py-2 font-mono text-[11px] leading-5 text-gray-300">
+                                          {localizedOnlineDetail.installCommand}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                          快捷操作
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 border-t border-gray-800 pt-1">
+                                        <button
+                                          onClick={() =>
+                                            void navigator.clipboard
+                                              .writeText(
+                                                localizedOnlineDetail.installCommand,
+                                              )
+                                              .then(
+                                                () =>
+                                                  toast(
+                                                    "命令已复制到剪贴板",
+                                                    "success",
+                                                  ),
+                                                () =>
+                                                  toast("复制命令失败", "error"),
+                                              )
+                                          }
+                                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                                        >
+                                          <Copy className="h-3.5 w-3.5" />
+                                          复制命令
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            void openPath(
+                                              localizedOnlineDetail.pageUrl,
+                                            )
+                                          }
+                                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                                        >
+                                          <Link2 className="h-3.5 w-3.5" />
+                                          打开详情页
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : onlineDetailError ? (
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-[0.16em] text-red-300/80">
+                                        加载失败
+                                      </div>
+                                      <div className="mt-1 whitespace-pre-wrap leading-6 text-red-200">
+                                        {onlineDetailError}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                        在线详情
+                                      </div>
+                                      <div className="mt-1 leading-6 text-gray-400">
+                                        悬浮后会自动拉取并翻译线上详情
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+
+                            return (
+                              <div
+                                key={skill.id}
+                                className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5"
+                              >
                             {/* Progress message */}
                             {installProgress[skill.skillId] && (
                               <div className="mb-2 rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-2 py-1 text-[10px] text-indigo-200">
@@ -2405,45 +2647,36 @@ export function SkillsPage({
                             )}
 
                             <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-gray-100">
-                                  {skill.name}
-                                </p>
-                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                  <span className="rounded-full border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] text-gray-400">
-                                    {formatInstalls(skill.installs)}
-                                  </span>
-                                  <span className="truncate rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-200">
-                                    {skill.source}
-                                  </span>
-                                </div>
-                              </div>
+                              <Tooltip
+                                placement="bottom"
+                                interactive
+                                contentClassName="w-[560px] max-w-[560px] rounded-2xl border-gray-700 bg-gray-900/98 p-0 shadow-2xl"
+                                content={tooltipContent}
+                              >
+                                <button
+                                  type="button"
+                                  onMouseEnter={() =>
+                                    void ensureLocalizedOnlineSkillDetail(skill)
+                                  }
+                                  className="min-w-0 flex-1 text-left"
+                                  aria-label={`查看 ${skill.name} 在线详情`}
+                                >
+                                  <p className="truncate text-sm font-medium text-gray-100 transition-colors hover:text-white">
+                                    {skill.name}
+                                  </p>
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                    <span className="rounded-full border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] text-gray-400">
+                                      {formatInstalls(skill.installs)}
+                                    </span>
+                                    <span className="truncate rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-200">
+                                      {skill.source}
+                                    </span>
+                                  </div>
+                                </button>
+                              </Tooltip>
 
                               {/* Action buttons on the right */}
                               <div className="flex flex-shrink-0 flex-col gap-1">
-                                <button
-                                  onClick={() =>
-                                    void handleToggleOnlineSkillDetails(skill)
-                                  }
-                                  disabled={loadingOnlineSkillDetailIds.has(
-                                    skill.id,
-                                  )}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                  aria-label={`${expandedOnlineSkillIds.has(skill.id) ? "收起" : "查看"} ${skill.name} 详情`}
-                                >
-                                  {loadingOnlineSkillDetailIds.has(skill.id) ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : expandedOnlineSkillIds.has(skill.id) ? (
-                                    <ChevronUp className="h-3 w-3" />
-                                  ) : (
-                                    <ChevronDown className="h-3 w-3" />
-                                  )}
-                                  {loadingOnlineSkillDetailIds.has(skill.id)
-                                    ? "加载中"
-                                    : expandedOnlineSkillIds.has(skill.id)
-                                      ? "收起详情"
-                                      : "查看详情"}
-                                </button>
                                 {isOnlineSkillInstalled(skill) ? (
                                   <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-300">
                                     <Check className="h-3 w-3" />
@@ -2501,112 +2734,9 @@ export function SkillsPage({
                                 )}
                               </div>
                             </div>
-
-                            {expandedOnlineSkillIds.has(skill.id) && (
-                              <div className="mt-3 space-y-3 rounded-xl border border-gray-800/80 bg-gray-950/70 p-3">
-                                {loadingOnlineSkillDetailIds.has(skill.id) ? (
-                                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    正在从 skills.sh 拉取详细介绍与用法...
-                                  </div>
-                                ) : onlineSkillDetails[skill.id] ? (
-                                  <>
-                                    <div className="space-y-1">
-                                      <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
-                                        详细介绍
-                                      </p>
-                                      <div className="space-y-1 text-xs leading-5 text-gray-300">
-                                        {splitDetailLines(
-                                          onlineSkillDetails[skill.id].summary,
-                                        ).map((line) => (
-                                          <p
-                                            key={`${skill.id}-summary-${line}`}
-                                            className="whitespace-pre-wrap"
-                                          >
-                                            {line}
-                                          </p>
-                                        ))}
-                                      </div>
-                                    </div>
-
-                                    <div className="space-y-1">
-                                      <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
-                                        用法
-                                      </p>
-                                      <div className="space-y-1 text-xs leading-5 text-gray-300">
-                                        {onlineSkillDetails[
-                                          skill.id
-                                        ].usageHints.map((hint) => (
-                                          <p
-                                            key={`${skill.id}-usage-${hint}`}
-                                            className="whitespace-pre-wrap"
-                                          >
-                                            {hint}
-                                          </p>
-                                        ))}
-                                      </div>
-                                      <div className="rounded-lg border border-gray-800 bg-black/30 px-2.5 py-2 font-mono text-[11px] leading-5 text-gray-300">
-                                        {
-                                          onlineSkillDetails[skill.id]
-                                            .installCommand
-                                        }
-                                      </div>
-                                      <div className="flex flex-wrap gap-2">
-                                        <button
-                                          onClick={() =>
-                                            void navigator.clipboard
-                                              .writeText(
-                                                onlineSkillDetails[skill.id]
-                                                  .installCommand,
-                                              )
-                                              .then(
-                                                () => {
-                                                  toast(
-                                                    "命令已复制到剪贴板",
-                                                    "success",
-                                                  );
-                                                },
-                                                () => {
-                                                  toast(
-                                                    "复制命令失败",
-                                                    "error",
-                                                  );
-                                                },
-                                              )
-                                          }
-                                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                                        >
-                                          <Copy className="h-3.5 w-3.5" />
-                                          复制详情命令
-                                        </button>
-                                        <button
-                                          onClick={() =>
-                                            void openPath(
-                                              onlineSkillDetails[skill.id]
-                                                .pageUrl,
-                                            )
-                                          }
-                                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                                        >
-                                          <Link2 className="h-3.5 w-3.5" />
-                                          打开详情页
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    <details className="group rounded-lg border border-gray-800 bg-black/20 px-3 py-2">
-                                      <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.14em] text-gray-500 group-open:text-gray-300">
-                                        SKILL.md 原文
-                                      </summary>
-                                      <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-gray-800 bg-black/30 p-3 text-[11px] leading-5 text-gray-300">
-                                        {onlineSkillDetails[skill.id].skillDoc}
-                                      </pre>
-                                    </details>
-                                  </>
-                                ) : null}
                               </div>
-                            )}
-                          </div>
+                            );
+                          })()
                         ))}
                       </div>
                     )}

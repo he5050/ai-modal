@@ -64,6 +64,52 @@ pub struct SkillEnrichmentRecord {
     pub enriched_at: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineSkillDetailInput {
+    pub id: String,
+    pub skill_id: String,
+    pub source: String,
+    pub page_url: String,
+    pub install_command: String,
+    pub summary: String,
+    pub usage_hints: Vec<String>,
+    pub skill_doc: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslateOnlineSkillDetailRequest {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub request_kind: LlmRequestKind,
+    pub provider_label: Option<String>,
+    pub skill_dir: String,
+    pub skill_name: String,
+    pub detail: OnlineSkillDetailInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalizedOnlineSkillDetail {
+    pub skill_dir: String,
+    pub skill_name: String,
+    pub skill_id: String,
+    pub source: String,
+    pub page_url: String,
+    pub install_command: String,
+    pub source_summary: String,
+    pub source_usage_hints: Vec<String>,
+    pub localized_summary: String,
+    pub localized_usage_hints: Vec<String>,
+    pub provider_label: Option<String>,
+    pub model: String,
+    pub request_kind: LlmRequestKind,
+    pub translated_at: Option<u64>,
+    pub error_message: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct EnrichmentPayload {
     #[serde(rename = "localizedDescription")]
@@ -75,6 +121,14 @@ struct EnrichmentPayload {
     usage: String,
     scenarios: String,
     tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OnlineSkillDetailTranslationPayload {
+    #[serde(rename = "localizedSummary")]
+    localized_summary: String,
+    #[serde(rename = "localizedUsageHints")]
+    localized_usage_hints: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -233,6 +287,27 @@ fn trim_text(value: String, fallback: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn normalize_non_empty_lines(lines: &[String], fallback: &[String]) -> Vec<String> {
+    let mut normalized = lines
+        .iter()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    if normalized.is_empty() {
+        normalized = fallback
+            .iter()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(ToString::to_string)
+            .collect();
+    }
+
+    normalized.truncate(6);
+    normalized
 }
 
 fn truncate_chars(value: &str, max_chars: usize) -> String {
@@ -912,6 +987,52 @@ SKILL.md 结构化摘录:\n{structured_source}",
     )
 }
 
+fn build_online_skill_detail_prompt(request: &TranslateOnlineSkillDetailRequest) -> String {
+    let usage = if request.detail.usage_hints.is_empty() {
+        "[]".to_string()
+    } else {
+        request
+            .detail
+            .usage_hints
+            .iter()
+            .map(|hint| format!("- {}", hint.trim()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let skill_doc_excerpt = truncate_chars(&request.detail.skill_doc, 6000);
+
+    format!(
+        "你是一个技能详情本地化助手。请把 skills.sh 上的英文技能详情整理成简体中文，只输出合法 JSON，不要输出 Markdown 代码块或解释。\n\n\
+输出字段要求：\n\
+- localizedSummary: 120 到 260 个中文字符，准确介绍技能做什么、适合什么场景\n\
+- localizedUsageHints: 1 到 6 条中文短句数组，每条 18 到 60 个中文字符，说明何时使用、如何触发或关键限制\n\n\
+约束：\n\
+- 必须用简体中文\n\
+- 不要臆造技能能力\n\
+- 保留原始命令、路径、产品名、协议名等技术术语\n\
+- 如果原文信息不足，就基于已有内容保守总结\n\
+- JSON 必须合法\n\n\
+本地技能目录: {skill_dir}\n\
+本地技能名称: {skill_name}\n\
+线上 skillId: {skill_id}\n\
+来源仓库: {source}\n\
+详情页: {page_url}\n\
+安装命令: {install_command}\n\n\
+英文摘要:\n{summary}\n\n\
+英文用法提示:\n{usage}\n\n\
+SKILL.md 摘录:\n{skill_doc_excerpt}",
+        skill_dir = request.skill_dir,
+        skill_name = request.skill_name,
+        skill_id = request.detail.skill_id,
+        source = request.detail.source,
+        page_url = request.detail.page_url,
+        install_command = request.detail.install_command,
+        summary = request.detail.summary.trim(),
+        usage = usage,
+        skill_doc_excerpt = skill_doc_excerpt,
+    )
+}
+
 #[tauri::command]
 pub async fn enrich_single_skill(
     request: EnrichSkillRequest,
@@ -958,6 +1079,52 @@ pub async fn enrich_single_skill(
                 .map(|duration| duration.as_millis() as u64)
                 .unwrap_or(0),
         ),
+    })
+}
+
+#[tauri::command]
+pub async fn translate_online_skill_detail(
+    request: TranslateOnlineSkillDetailRequest,
+) -> Result<LocalizedOnlineSkillDetail, String> {
+    let prompt = build_online_skill_detail_prompt(&request);
+    let raw_response = router::generate_text(
+        &request.base_url,
+        &request.api_key,
+        &request.model,
+        request.request_kind,
+        &prompt,
+    )
+    .await?;
+
+    let json_text = extract_json_object(&raw_response)
+        .ok_or_else(|| "模型返回中未找到合法 JSON 对象".to_string())?;
+    let payload: OnlineSkillDetailTranslationPayload = serde_json::from_str(&json_text)
+        .map_err(|error| format!("解析在线详情翻译 JSON 失败：{error}"))?;
+
+    Ok(LocalizedOnlineSkillDetail {
+        skill_dir: request.skill_dir,
+        skill_name: request.skill_name,
+        skill_id: request.detail.skill_id,
+        source: request.detail.source,
+        page_url: request.detail.page_url,
+        install_command: request.detail.install_command,
+        source_summary: request.detail.summary.clone(),
+        source_usage_hints: request.detail.usage_hints.clone(),
+        localized_summary: trim_text(payload.localized_summary, &request.detail.summary),
+        localized_usage_hints: normalize_non_empty_lines(
+            &payload.localized_usage_hints,
+            &request.detail.usage_hints,
+        ),
+        provider_label: request.provider_label,
+        model: request.model,
+        request_kind: request.request_kind,
+        translated_at: Some(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as u64)
+                .unwrap_or(0),
+        ),
+        error_message: None,
     })
 }
 

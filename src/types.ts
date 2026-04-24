@@ -331,6 +331,24 @@ export interface OnlineSkillDetail {
   skillDoc: string;
 }
 
+export interface LocalizedOnlineSkillDetail {
+  skillDir: string;
+  skillName: string;
+  skillId: string;
+  source: string;
+  pageUrl: string;
+  installCommand: string;
+  sourceSummary: string;
+  sourceUsageHints: string[];
+  localizedSummary: string;
+  localizedUsageHints: string[];
+  providerLabel?: string | null;
+  model: string;
+  requestKind: LlmRequestKind;
+  translatedAt?: number | null;
+  errorMessage?: string | null;
+}
+
 export interface OnlineSearchResponse {
   query: string;
   searchType: string;
