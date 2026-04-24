@@ -47,6 +47,7 @@ import {
   BUTTON_SIZE_SM_CLASS,
   BUTTON_SIZE_XS_CLASS,
 } from "../lib/buttonStyles";
+import { logger } from "../lib/devlog";
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
 import type { RulePath } from "../types";
@@ -278,6 +279,22 @@ function toDisplayPath(value: string, homePath: string) {
 
 function toAbsolutePath(value: string, homePath: string) {
   return value.startsWith("~/") ? `${homePath}${value.slice(1)}` : value;
+}
+
+function summarizeWatchError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function formatWatchEventType(type: unknown) {
+  if (typeof type === "string") return type;
+  try {
+    return JSON.stringify(type);
+  } catch {
+    return String(type);
+  }
 }
 
 function buildDefaultPath(homePath: string, relativePath: string) {
@@ -533,23 +550,75 @@ export function RulesPage({
       return;
     }
 
-    const watchedPath = normalizeText(
+    const targetPath = normalizeText(
       toAbsolutePath(selectedTool.path, homePath),
     );
-    if (!watchedPath) return;
+    if (!targetPath) return;
 
     let disposed = false;
     let unwatch: (() => void) | null = null;
+    let pollTimer: number | null = null;
+
+    function stopPolling() {
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+        logger.debug(`[规则监听] 已停止轮询: ${targetPath}`);
+      }
+    }
+
+    function startPolling(reason: string) {
+      if (pollTimer !== null) return;
+
+      logger.warn(`[规则监听] 已降级为轮询: target=${targetPath} reason=${reason}`);
+      pollTimer = window.setInterval(() => {
+        if (disposed || dirtyRef.current) return;
+        void refreshCurrent(selectedTool, targetPath);
+      }, 1500);
+    }
 
     async function bindWatcher() {
+      const targetExists = await detectExists(targetPath);
+      const watchPath = targetExists ? targetPath : await dirname(targetPath);
+      const watchTargetKind = targetExists ? "file" : "parent-directory";
+
+      logger.info(
+        `[规则监听] 准备绑定: target=${targetPath} watch=${watchPath} kind=${watchTargetKind} exists=${String(targetExists)}`,
+      );
+
       try {
-        unwatch = await watch(watchedPath, async () => {
-          if (disposed || dirtyRef.current) return;
-          await refreshCurrent(selectedTool, watchedPath);
+        unwatch = await watch(watchPath, async (event) => {
+          const matched =
+            targetExists ||
+            event.paths.some((eventPath) => normalizeText(eventPath) === targetPath);
+
+          logger.debug(
+            `[规则监听] 收到事件: target=${targetPath} watch=${watchPath} type=${formatWatchEventType(event.type)} matched=${String(matched)} paths=${event.paths.join(", ") || "-"}`,
+          );
+
+          if (!matched) return;
+          if (disposed) {
+            logger.debug(`[规则监听] 已释放，忽略事件: ${targetPath}`);
+            return;
+          }
+          if (dirtyRef.current) {
+            logger.debug(`[规则监听] 存在未保存修改，忽略自动刷新: ${targetPath}`);
+            return;
+          }
+
+          await refreshCurrent(selectedTool, targetPath);
         });
+        logger.success(
+          `[规则监听] 绑定成功: target=${targetPath} watch=${watchPath} kind=${watchTargetKind}`,
+        );
       } catch (error) {
+        const message = summarizeWatchError(error);
         console.error("Failed to watch rule file", error);
-        toast("规则文件监听失败，当前预览不会自动刷新", "warning");
+        logger.error(
+          `[规则监听] 绑定失败: target=${targetPath} watch=${watchPath} kind=${watchTargetKind} exists=${String(targetExists)} error=${message}`,
+        );
+        startPolling(message);
+        toast("规则文件监听失败，已降级为轮询自动刷新", "warning");
       }
     }
 
@@ -557,6 +626,8 @@ export function RulesPage({
 
     return () => {
       disposed = true;
+      stopPolling();
+      logger.debug(`[规则监听] 解绑: ${targetPath}`);
       unwatch?.();
     };
   }, [homePath, selectedTool?.id, selectedTool?.path, selectedTool?.kind]);

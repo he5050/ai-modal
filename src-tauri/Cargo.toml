@@ -16,7 +16,7 @@ tempfile = "3"
 [dependencies]
 tauri             = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
-tauri-plugin-fs   = "2"
+tauri-plugin-fs   = { version = "2", features = ["watch"] }
 tauri-plugin-opener = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde      = { version = "1", features = ["derive"] }
