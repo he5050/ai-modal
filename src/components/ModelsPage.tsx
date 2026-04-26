@@ -1938,7 +1938,7 @@ export function ModelsPage({
                       onClick={() => handleSort("time")}
                       className="flex items-center gap-1 hover:text-gray-200 transition-colors"
                     >
-                      更新时间
+                      操作时间
                       {sortKey === "time" ? (
                         sortDir === "asc" ? (
                           <ChevronUp className="w-3 h-3 ml-0.5 inline" />

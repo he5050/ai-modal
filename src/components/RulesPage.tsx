@@ -1,26 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import CodeMirror from "@uiw/react-codemirror";
-import { markdown } from "@codemirror/lang-markdown";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorState, RangeSetBuilder } from "@codemirror/state";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Decoration,
-  EditorView,
-  ViewPlugin,
-  ViewUpdate,
-} from "@codemirror/view";
-import { dirname, homeDir } from "@tauri-apps/api/path";
-import {
-  exists,
-  mkdir,
-  readTextFile,
-  watch,
-  writeTextFile,
-} from "@tauri-apps/plugin-fs";
-import { open as pickPath } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
-import {
-  Copy,
   ExternalLink,
   FilePenLine,
   FolderOpen,
@@ -28,28 +7,30 @@ import {
   Plus,
   Save,
   Trash2,
-  WandSparkles,
   X,
 } from "lucide-react";
+import { open as pickPath } from "@tauri-apps/plugin-dialog";
+import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_GHOST_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_MD_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles";
 import {
   FIELD_INPUT_CLASS,
   FIELD_MONO_INPUT_CLASS,
   FIELD_SELECT_CLASS,
 } from "../lib/formStyles";
-import {
-  BUTTON_ACCENT_OUTLINE_CLASS,
-  BUTTON_DANGER_CLASS,
-  BUTTON_DANGER_OUTLINE_CLASS,
-  BUTTON_GHOST_CLASS,
-  BUTTON_PRIMARY_CLASS,
-  BUTTON_SECONDARY_CLASS,
-  BUTTON_SIZE_MD_CLASS,
-  BUTTON_SIZE_SM_CLASS,
-  BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
-import { logger } from "../lib/devlog";
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
+import { ConfirmModal } from "./ConfirmModal";
+import { RuleEditor } from "./rules/RuleEditor";
+import { useRuleFile } from "./rules/useRuleFile";
+import { useRuleWatch } from "./rules/useRuleWatch";
+import { useSync } from "./rules/useSync";
+import { normalizeText, toAbsolutePath, toDisplayPath } from "./rules/utils";
 import type { RulePath } from "../types";
 
 interface Props {
@@ -64,330 +45,6 @@ interface Props {
   onDirtyChange: (dirty: boolean) => void;
 }
 
-interface BuiltinTool {
-  id: string;
-  label: string;
-  fileName: string;
-  relativePath: string;
-  accentClass: string;
-  kind?: "file" | "directory";
-}
-
-interface ConfirmModalProps {
-  title: string;
-  description: string;
-  chips?: string[];
-  primaryLabel: string;
-  secondaryLabel?: string;
-  tertiaryLabel?: string;
-  danger?: boolean;
-  busy?: boolean;
-  onPrimary: () => void;
-  onSecondary?: () => void;
-  onTertiary?: () => void;
-}
-
-const BUILTIN_TOOLS: BuiltinTool[] = [
-  {
-    id: "claude-code",
-    label: "Claude",
-    fileName: "CLAUDE.md",
-    relativePath: ".claude/CLAUDE.md",
-    accentClass: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200",
-  },
-  {
-    id: "codex",
-    label: "Codex",
-    fileName: "AGENTS.md",
-    relativePath: ".codex/AGENTS.md",
-    accentClass: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
-  },
-  {
-    id: "qwen",
-    label: "Qwen",
-    fileName: "QWEN.md",
-    relativePath: ".qwen/QWEN.md",
-    accentClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-  },
-  {
-    id: "opencode",
-    label: "OpenCode",
-    fileName: "AGENTS.md",
-    relativePath: ".opencode/AGENTS.md",
-    accentClass: "border-amber-500/30 bg-amber-500/10 text-amber-100",
-  },
-  {
-    id: "gemini",
-    label: "Gemini",
-    fileName: "GEMINI.md",
-    relativePath: ".gemini/GEMINI.md",
-    accentClass: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200",
-  },
-];
-
-function buildHeadingDecorations(state: EditorState) {
-  const builder = new RangeSetBuilder<Decoration>();
-  for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber++) {
-    const line = state.doc.line(lineNumber);
-    const headingMatch = /^(#{1,6})\s+/.exec(line.text);
-    if (!headingMatch) continue;
-    const level = Math.min(headingMatch[1].length, 3);
-    builder.add(
-      line.from,
-      line.from,
-      Decoration.line({ class: `cm-md-heading cm-md-heading-${level}` }),
-    );
-  }
-  return builder.finish();
-}
-
-const headingHighlightPlugin = ViewPlugin.fromClass(
-  class {
-    decorations;
-
-    constructor(view: EditorView) {
-      this.decorations = buildHeadingDecorations(view.state);
-    }
-
-    update(update: ViewUpdate) {
-      if (update.docChanged) {
-        this.decorations = buildHeadingDecorations(update.state);
-      }
-    }
-  },
-  {
-    decorations: (value) => value.decorations,
-  },
-);
-
-const markdownEditorTheme = EditorView.theme(
-  {
-    "&": {
-      height: "520px",
-      borderRadius: "1rem",
-      border: "1px solid rgba(31, 41, 55, 1)",
-      backgroundColor: "rgb(3 7 18)",
-      overflow: "hidden",
-    },
-    "&.cm-focused": {
-      outline: "none",
-      borderColor: "rgb(99 102 241)",
-    },
-    ".cm-scroller": {
-      height: "100%",
-      overflow: "auto",
-      scrollbarWidth: "thin",
-      scrollbarColor: "rgba(75, 85, 99, 0.9) rgba(17, 24, 39, 0.9)",
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
-    },
-    ".cm-scroller::-webkit-scrollbar": {
-      width: "10px",
-      height: "10px",
-    },
-    ".cm-scroller::-webkit-scrollbar-track": {
-      backgroundColor: "rgba(17, 24, 39, 0.92)",
-    },
-    ".cm-scroller::-webkit-scrollbar-thumb": {
-      backgroundColor: "rgba(75, 85, 99, 0.9)",
-      borderRadius: "999px",
-      border: "2px solid rgba(17, 24, 39, 0.92)",
-    },
-    ".cm-scroller::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "rgba(99, 102, 241, 0.72)",
-    },
-    ".cm-scroller::-webkit-scrollbar-corner": {
-      backgroundColor: "rgba(17, 24, 39, 0.92)",
-    },
-    ".cm-gutters": {
-      backgroundColor: "rgb(3 7 18)",
-      borderRight: "1px solid rgba(31, 41, 55, 0.8)",
-      color: "rgb(75 85 99)",
-    },
-    ".cm-content": {
-      padding: "16px",
-      caretColor: "#f8fafc",
-      fontSize: "13px",
-      lineHeight: "1.75",
-      color: "rgb(229 231 235)",
-    },
-    ".cm-placeholder": {
-      color: "rgb(75 85 99)",
-    },
-    ".cm-line": {
-      padding: "0 2px",
-    },
-    ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "rgb(129 140 248)",
-    },
-    ".cm-md-heading": {
-      fontWeight: "700",
-    },
-    ".cm-md-heading-1": {
-      color: "#f8fafc",
-      fontSize: "18px",
-      lineHeight: "2",
-      paddingTop: "6px",
-    },
-    ".cm-md-heading-2": {
-      color: "#dbeafe",
-      fontSize: "16px",
-      lineHeight: "1.9",
-      paddingTop: "4px",
-    },
-    ".cm-md-heading-3": {
-      color: "#bfdbfe",
-      fontSize: "14px",
-      lineHeight: "1.8",
-    },
-    ".cm-activeLine": {
-      backgroundColor: "rgba(99, 102, 241, 0.08)",
-    },
-    ".cm-selectionBackground, ::selection": {
-      backgroundColor: "rgba(99, 102, 241, 0.28) !important",
-    },
-    ".cm-tooltip": {
-      border: "1px solid rgba(55, 65, 81, 1)",
-      backgroundColor: "rgb(17 24 39)",
-      color: "rgb(229 231 235)",
-    },
-  },
-  { dark: true },
-);
-
-async function detectExists(path: string) {
-  try {
-    return await exists(path);
-  } catch {
-    return false;
-  }
-}
-
-function normalizeText(value: string) {
-  return value.trim();
-}
-
-function isAbsolutePath(value: string | undefined) {
-  return typeof value === "string" && value.startsWith("/");
-}
-
-function toDisplayPath(value: string, homePath: string) {
-  return value.startsWith(homePath)
-    ? `~${value.slice(homePath.length)}`
-    : value;
-}
-
-function toAbsolutePath(value: string, homePath: string) {
-  return value.startsWith("~/") ? `${homePath}${value.slice(1)}` : value;
-}
-
-function summarizeWatchError(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function formatWatchEventType(type: unknown) {
-  if (typeof type === "string") return type;
-  try {
-    return JSON.stringify(type);
-  } catch {
-    return String(type);
-  }
-}
-
-function buildDefaultPath(homePath: string, relativePath: string) {
-  return `${homePath.replace(/\/$/, "")}/${relativePath}`;
-}
-
-function renderConfirmActionLabel(label: string) {
-  const Icon =
-    label.includes("删除") || label.includes("移除")
-      ? Trash2
-      : label.includes("取消")
-        ? X
-        : label.includes("保存")
-          ? Save
-          : label.includes("编辑")
-            ? FilePenLine
-            : label.includes("同步")
-              ? Link2
-              : label.includes("切换")
-                ? ExternalLink
-                : null;
-
-  return (
-    <>
-      {Icon ? <Icon className="h-4 w-4" /> : null}
-      {label}
-    </>
-  );
-}
-
-function ConfirmModal({
-  title,
-  description,
-  chips,
-  primaryLabel,
-  secondaryLabel,
-  tertiaryLabel,
-  danger = false,
-  busy = false,
-  onPrimary,
-  onSecondary,
-  onTertiary,
-}: ConfirmModalProps) {
-  return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        <p className="mt-3 text-sm leading-6 text-gray-400">{description}</p>
-        {chips && chips.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {chips.map((chip) => (
-              <span
-                key={chip}
-                className="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-300"
-              >
-                {chip}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="mt-6 space-y-2">
-          <button
-            onClick={onPrimary}
-            disabled={busy}
-            className={`flex w-full ${danger ? BUTTON_DANGER_CLASS : BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-          >
-            {renderConfirmActionLabel(primaryLabel)}
-          </button>
-          {secondaryLabel && onSecondary && (
-            <button
-              onClick={onSecondary}
-              disabled={busy}
-              className={`flex w-full ${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-            >
-              {renderConfirmActionLabel(secondaryLabel)}
-            </button>
-          )}
-        </div>
-        {tertiaryLabel && onTertiary && (
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={onTertiary}
-              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-            >
-              {renderConfirmActionLabel(tertiaryLabel)}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function RulesPage({
   storedPaths,
   onPathChange,
@@ -395,76 +52,56 @@ export function RulesPage({
   onDeletePath,
   onDirtyChange,
 }: Props) {
-  const [selectedId, setSelectedId] = useState<string>("claude-code");
-  const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(
-    null,
-  );
-  const [pathDraft, setPathDraft] = useState("");
-  const [contentDraft, setContentDraft] = useState("");
-  const [savedContent, setSavedContent] = useState("");
-  const [fileExists, setFileExists] = useState(false);
-  const [loadingContent, setLoadingContent] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [, setRefreshing] = useState(false);
+  const {
+    homePath,
+    tools,
+    selectedTool,
+    selectedId,
+    setSelectedId,
+    pathDraft,
+    setPathDraft,
+    contentDraft,
+    setContentDraft,
+    fileExists,
+    loadingContent,
+    saving,
+    dirty,
+    dirtyRef,
+    refreshCurrent,
+    handleSaveContent,
+    handleSavePath,
+    handlePickCurrentPath,
+    handleOpenFile,
+    handleOpenDirectory,
+  } = useRuleFile({ storedPaths, onPathChange });
+
+  useRuleWatch({
+    selectedTool,
+    homePath,
+    dirtyRef,
+    refreshCurrent,
+  });
+
+  const { syncCandidates, syncTargetIds, toggleSyncTarget, syncing, executeSync } =
+    useSync({
+      tools,
+      selectedId,
+      homePath,
+      pathDraft,
+      fileExists,
+      selectedTool,
+    });
+
+  // ── local UI state ──
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
   const [showCustomForm, setShowCustomForm] = useState(false);
-  const [syncTargetIds, setSyncTargetIds] = useState<string[]>([]);
+  const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(
+    null,
+  );
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [homePath, setHomePath] = useState("");
-  const dirtyRef = useRef(false);
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadHomePath() {
-      try {
-        const resolved = await homeDir();
-        if (active) setHomePath(resolved.replace(/\/$/, ""));
-      } catch (error) {
-        console.error("Failed to resolve home directory", error);
-        toast("无法解析用户主目录", "error");
-      }
-    }
-
-    void loadHomePath();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const tools = useMemo(() => {
-    const builtin = BUILTIN_TOOLS.map((tool) => {
-      const stored = storedPaths.find((item) => item.id === tool.id);
-      return {
-        ...tool,
-        path: isAbsolutePath(stored?.path)
-          ? stored!.path
-          : homePath
-            ? buildDefaultPath(homePath, tool.relativePath)
-            : "",
-        isBuiltin: true,
-        kind: stored?.kind ?? tool.kind ?? "file",
-      };
-    });
-    const custom = storedPaths
-      .filter((item) => !item.isBuiltin)
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        fileName: item.kind === "directory" ? "directory" : "custom",
-        accentClass: "border-gray-500/30 bg-gray-500/10 text-gray-200",
-        path: item.path,
-        isBuiltin: false,
-        kind: item.kind ?? "file",
-      }));
-    return [...builtin, ...custom];
-  }, [homePath, storedPaths]);
-
-  const selectedTool =
-    tools.find((tool) => tool.id === selectedId) ?? tools[0] ?? null;
   const normalizedLabels = useMemo(
     () => new Set(tools.map((tool) => normalizeText(tool.label).toLowerCase())),
     [tools],
@@ -474,291 +111,14 @@ export function RulesPage({
       new Set(tools.map((tool) => normalizeText(tool.path)).filter(Boolean)),
     [tools],
   );
-  const syncCandidates = useMemo(
-    () =>
-      tools.filter(
-        (tool) => tool.id !== selectedId && tool.kind !== "directory",
-      ),
-    [tools, selectedId],
-  );
-  const editorExtensions = useMemo(
-    () => [markdown(), headingHighlightPlugin, markdownEditorTheme],
-    [],
-  );
-  const dirty =
-    contentDraft !== savedContent ||
-    normalizeText(pathDraft) !==
-      normalizeText(
-        selectedTool && homePath
-          ? toDisplayPath(selectedTool.path, homePath)
-          : (selectedTool?.path ?? ""),
-      );
 
-  useEffect(() => {
-    dirtyRef.current = dirty;
-  }, [dirty]);
-
-  async function refreshCurrent(tool = selectedTool, targetPath?: string) {
-    if (!tool || !homePath) return;
-    const path = normalizeText(
-      toAbsolutePath(targetPath ?? tool.path, homePath),
-    );
-    if (!path) {
-      setFileExists(false);
-      setSavedContent("");
-      setContentDraft("");
-      return;
-    }
-
-    setRefreshing(true);
-    setLoadingContent(true);
-    try {
-      const present = await detectExists(path);
-      setFileExists(present);
-      if (!present) {
-        setSavedContent("");
-        setContentDraft("");
-        return;
-      }
-
-      if (tool.kind === "directory") {
-        setSavedContent("");
-        setContentDraft("");
-        return;
-      }
-
-      const content = await readTextFile(path);
-      setSavedContent(content);
-      setContentDraft(content);
-    } catch (error) {
-      console.error("Failed to read rule file", error);
-      toast("读取规则文件失败", "error");
-    } finally {
-      setLoadingContent(false);
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!selectedTool || !homePath) return;
-    setPathDraft(toDisplayPath(selectedTool.path, homePath));
-    void refreshCurrent(selectedTool, selectedTool.path);
-  }, [homePath, selectedTool?.id, selectedTool?.path]);
-
-  useEffect(() => {
-    if (!selectedTool || !homePath || selectedTool.kind === "directory") {
-      return;
-    }
-
-    const targetPath = normalizeText(
-      toAbsolutePath(selectedTool.path, homePath),
-    );
-    if (!targetPath) return;
-
-    let disposed = false;
-    let unwatch: (() => void) | null = null;
-    let pollTimer: number | null = null;
-
-    function stopPolling() {
-      if (pollTimer !== null) {
-        window.clearInterval(pollTimer);
-        pollTimer = null;
-        logger.debug(`[规则监听] 已停止轮询: ${targetPath}`);
-      }
-    }
-
-    function startPolling(reason: string) {
-      if (pollTimer !== null) return;
-
-      logger.warn(`[规则监听] 已降级为轮询: target=${targetPath} reason=${reason}`);
-      pollTimer = window.setInterval(() => {
-        if (disposed || dirtyRef.current) return;
-        void refreshCurrent(selectedTool, targetPath);
-      }, 1500);
-    }
-
-    async function bindWatcher() {
-      const targetExists = await detectExists(targetPath);
-      const watchPath = targetExists ? targetPath : await dirname(targetPath);
-      const watchTargetKind = targetExists ? "file" : "parent-directory";
-
-      logger.info(
-        `[规则监听] 准备绑定: target=${targetPath} watch=${watchPath} kind=${watchTargetKind} exists=${String(targetExists)}`,
-      );
-
-      try {
-        unwatch = await watch(watchPath, async (event) => {
-          const matched =
-            targetExists ||
-            event.paths.some((eventPath) => normalizeText(eventPath) === targetPath);
-
-          logger.debug(
-            `[规则监听] 收到事件: target=${targetPath} watch=${watchPath} type=${formatWatchEventType(event.type)} matched=${String(matched)} paths=${event.paths.join(", ") || "-"}`,
-          );
-
-          if (!matched) return;
-          if (disposed) {
-            logger.debug(`[规则监听] 已释放，忽略事件: ${targetPath}`);
-            return;
-          }
-          if (dirtyRef.current) {
-            logger.debug(`[规则监听] 存在未保存修改，忽略自动刷新: ${targetPath}`);
-            return;
-          }
-
-          await refreshCurrent(selectedTool, targetPath);
-        });
-        logger.success(
-          `[规则监听] 绑定成功: target=${targetPath} watch=${watchPath} kind=${watchTargetKind}`,
-        );
-      } catch (error) {
-        const message = summarizeWatchError(error);
-        console.error("Failed to watch rule file", error);
-        logger.error(
-          `[规则监听] 绑定失败: target=${targetPath} watch=${watchPath} kind=${watchTargetKind} exists=${String(targetExists)} error=${message}`,
-        );
-        startPolling(message);
-        toast("规则文件监听失败，已降级为轮询自动刷新", "warning");
-      }
-    }
-
-    void bindWatcher();
-
-    return () => {
-      disposed = true;
-      stopPolling();
-      logger.debug(`[规则监听] 解绑: ${targetPath}`);
-      unwatch?.();
-    };
-  }, [homePath, selectedTool?.id, selectedTool?.path, selectedTool?.kind]);
-
-  useEffect(() => {
-    if (!selectedTool && tools.length > 0) {
-      setSelectedId(tools[0].id);
-    }
-  }, [selectedTool, tools]);
-
+  // ── dirty reporting ──
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
 
-  useEffect(() => {
-    setSyncTargetIds((prev) =>
-      prev.filter((id) => syncCandidates.some((tool) => tool.id === id)),
-    );
-  }, [syncCandidates]);
-
-  async function handleFormat() {
-    if (!contentDraft) return;
-    try {
-      const [{ default: prettier }, markdownPluginModule] = await Promise.all([
-        import("prettier/standalone"),
-        import("prettier/plugins/markdown"),
-      ]);
-      const formatted = await prettier.format(contentDraft, {
-        parser: "markdown",
-        plugins: [markdownPluginModule.default ?? markdownPluginModule],
-      });
-      setContentDraft(formatted);
-      toast("已按标准 Markdown formatter 格式化", "success");
-    } catch (error) {
-      console.error("Failed to format markdown", error);
-      toast("Markdown 格式化失败", "error");
-    }
-  }
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(contentDraft);
-      toast("已复制当前规则内容", "success");
-    } catch (error) {
-      console.error("Failed to copy content", error);
-      toast("复制失败", "error");
-    }
-  }
-
-  async function handleOpenFile() {
-    if (!selectedTool || !homePath) return;
-    try {
-      await openPath(toAbsolutePath(pathDraft, homePath));
-    } catch (error) {
-      console.error("Failed to open rule file", error);
-      toast("打开文件失败", "error");
-    }
-  }
-
-  async function handleOpenDirectory() {
-    if (!selectedTool || !homePath) return;
-    try {
-      const folder = await dirname(toAbsolutePath(pathDraft, homePath));
-      await openPath(folder);
-    } catch (error) {
-      console.error("Failed to open rule directory", error);
-      toast("打开目录失败", "error");
-    }
-  }
-
-  async function handleSavePath() {
-    if (!selectedTool || !homePath) return;
-    const nextPath = normalizeText(toAbsolutePath(pathDraft, homePath));
-    if (!nextPath) {
-      toast("路径不能为空", "warning");
-      return;
-    }
-    onPathChange(selectedTool.id, nextPath);
-    toast("路径已更新", "success");
-  }
-
-  async function handlePickCurrentPath() {
-    if (!selectedTool || !homePath) return;
-    try {
-      const picked = await pickPath({
-        directory: selectedTool.kind === "directory",
-        multiple: false,
-        filters:
-          selectedTool.kind === "directory"
-            ? undefined
-            : [{ name: "Markdown", extensions: ["md"] }],
-      });
-      if (typeof picked === "string") {
-        setPathDraft(toDisplayPath(picked, homePath));
-      }
-    } catch (error) {
-      console.error("Failed to pick current path", error);
-      toast("选择路径失败", "error");
-    }
-  }
-
-  async function handleSaveContent() {
-    if (!selectedTool || !homePath) return;
-    const nextPath = normalizeText(toAbsolutePath(pathDraft, homePath));
-    if (!nextPath) {
-      toast("请先填写规则文件路径", "warning");
-      return;
-    }
-    if (selectedTool.kind === "directory") {
-      toast("目录类型规则项不支持直接编辑内容", "warning");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const folder = await dirname(nextPath);
-      await mkdir(folder, { recursive: true });
-      await writeTextFile(nextPath, contentDraft);
-      onPathChange(selectedTool.id, nextPath);
-      setSavedContent(contentDraft);
-      setFileExists(true);
-      toast("规则文件已保存", "success");
-    } catch (error) {
-      console.error("Failed to save rule file", error);
-      toast("保存失败，请检查路径与权限范围", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
+  // ── custom path handlers ──
   function handleAddCustomPath() {
     if (!homePath) return;
     const label = normalizeText(customLabel);
@@ -803,82 +163,11 @@ export function RulesPage({
     if (!selectedTool || selectedTool.isBuiltin) return;
     setShowDeleteConfirm(false);
     onDeletePath(selectedTool.id);
-    setSelectedId(BUILTIN_TOOLS[0].id);
+    setSelectedId("claude-code");
     toast("已删除自定义规则项", "success");
   }
 
-  function toggleSyncTarget(id: string) {
-    setSyncTargetIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  }
-
-  async function executeSync(sourceContentOverride?: string) {
-    if (!selectedTool || !homePath) return;
-    const sourcePath = normalizeText(toAbsolutePath(pathDraft, homePath));
-    const targets = syncCandidates.filter((tool) =>
-      syncTargetIds.includes(tool.id),
-    );
-
-    if (!sourcePath || !fileExists) {
-      toast("源文件不存在，无法同步", "warning");
-      return;
-    }
-    if (selectedTool.kind === "directory") {
-      toast("目录型规则项不能作为同步源", "warning");
-      return;
-    }
-    if (!targets.length) {
-      toast("请至少选择一个同步目标", "warning");
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      const sourceContent =
-        sourceContentOverride ?? (await readTextFile(sourcePath));
-      const results = await Promise.allSettled(
-        targets.map(async (target) => {
-          const targetPath = normalizeText(
-            toAbsolutePath(target.path, homePath),
-          );
-          const folder = await dirname(targetPath);
-          await mkdir(folder, { recursive: true });
-          await writeTextFile(targetPath, sourceContent);
-          return target.label;
-        }),
-      );
-
-      const success = results.filter(
-        (item) => item.status === "fulfilled",
-      ) as PromiseFulfilledResult<string>[];
-      const failed = results.filter((item) => item.status === "rejected");
-      setShowSyncConfirm(false);
-
-      if (failed.length === 0) {
-        toast(`已同步到 ${success.length} 个目标`, "success");
-        return;
-      }
-
-      const names = success.map((item) => item.value).join("、");
-      const failedNames = failed
-        .map((_, index) => targets[index]?.label)
-        .filter(Boolean)
-        .join("、");
-      toast(
-        names
-          ? `部分同步成功：${names}${failedNames ? `；失败：${failedNames}` : `，另有 ${failed.length} 个目标失败`}`
-          : `同步失败：${failedNames || `${failed.length} 个目标未写入`}`,
-        "warning",
-      );
-    } catch (error) {
-      console.error("Failed to sync rule file", error);
-      toast("同步失败，请检查源文件与目标路径", "error");
-    } finally {
-      setSyncing(false);
-    }
-  }
-
+  // ── render ──
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="shrink-0 px-6 pb-6">
@@ -896,6 +185,7 @@ export function RulesPage({
         <section className="min-w-0 rounded-2xl border border-gray-800 bg-gray-900/80">
           {selectedTool && (
             <div className="space-y-5 px-5 py-5">
+              {/* ── path bar ── */}
               <div className="grid grid-cols-[210px_minmax(0,1fr)_auto] items-center gap-3">
                 <div className="min-w-0">
                   <select
@@ -974,6 +264,7 @@ export function RulesPage({
                 </div>
               </div>
 
+              {/* ── sync panel ── */}
               <div className="rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1023,6 +314,7 @@ export function RulesPage({
                     </div>
                   </div>
 
+                  {/* ── custom path form ── */}
                   {showCustomForm && (
                     <div className="mt-3 rounded-xl border border-gray-800/80 bg-black/15 px-3 py-3">
                       <div className="mb-2 flex items-center justify-end gap-3">
@@ -1077,6 +369,7 @@ export function RulesPage({
                     </div>
                   )}
 
+                  {/* ── sync target grid ── */}
                   <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-5">
                     {syncCandidates.map((tool) => {
                       const selected = syncTargetIds.includes(tool.id);
@@ -1115,101 +408,26 @@ export function RulesPage({
                 </div>
               </div>
 
-              <div>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-xs uppercase tracking-[0.2em] text-gray-500">
-                      内容
-                    </label>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs ${selectedTool.accentClass}`}
-                    >
-                      {selectedTool.isBuiltin
-                        ? selectedTool.fileName
-                        : "自定义"}
-                    </span>
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs ${
-                        fileExists
-                          ? "bg-emerald-500/15 text-emerald-300"
-                          : "bg-amber-500/15 text-amber-200"
-                      }`}
-                    >
-                      {fileExists
-                        ? selectedTool.kind === "directory"
-                          ? "目录存在"
-                          : "文件存在"
-                        : selectedTool.kind === "directory"
-                          ? "目录不存在"
-                          : "文件不存在"}
-                    </span>
-                    {dirty && (
-                      <span className="rounded-full bg-indigo-500/15 px-2.5 py-1 text-xs text-indigo-200">
-                        有未保存改动
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={handleFormat}
-                      disabled={
-                        !contentDraft || selectedTool.kind === "directory"
-                      }
-                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-                      title="格式化 Markdown"
-                    >
-                      <WandSparkles className="h-4 w-4" />
-                      格式化
-                    </button>
-                    <button
-                      onClick={handleCopy}
-                      disabled={!contentDraft}
-                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-                    >
-                      <Copy className="h-4 w-4" />
-                      复制
-                    </button>
-                    <button
-                      onClick={handleSaveContent}
-                      disabled={saving}
-                      className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-                    >
-                      <Save className="h-4 w-4" />
-                      保存
-                    </button>
-                  </div>
-                </div>
-
-                <CodeMirror
-                  value={contentDraft}
-                  onChange={(value) => setContentDraft(value)}
-                  extensions={editorExtensions}
-                  theme={oneDark}
-                  editable={selectedTool.kind !== "directory"}
-                  readOnly={selectedTool.kind === "directory"}
-                  basicSetup={{
-                    lineNumbers: true,
-                    foldGutter: true,
-                    dropCursor: false,
-                    allowMultipleSelections: false,
-                    indentOnInput: true,
-                    highlightActiveLineGutter: false,
-                  }}
-                  placeholder={
-                    selectedTool.kind === "directory"
-                      ? "当前规则项是目录类型，支持路径管理与打开目录，不支持直接编辑目录内容。"
-                      : loadingContent
-                        ? "正在读取文件内容..."
-                        : "当前路径下还没有文件内容，你可以直接输入并保存。"
-                  }
-                  className="rules-markdown-editor text-[#c2cad6]"
-                />
-              </div>
+              {/* ── editor ── */}
+              <RuleEditor
+                contentDraft={contentDraft}
+                onContentChange={setContentDraft}
+                fileExists={fileExists}
+                loadingContent={loadingContent}
+                dirty={dirty}
+                saving={saving}
+                isDirectory={selectedTool.kind === "directory"}
+                isBuiltin={selectedTool.isBuiltin}
+                fileName={selectedTool.fileName}
+                accentClass={selectedTool.accentClass}
+                onSave={handleSaveContent}
+              />
             </div>
           )}
         </section>
       </div>
 
+      {/* ── modals ── */}
       {pendingSelectedId && (
         <ConfirmModal
           title="切换当前规则项？"
@@ -1249,7 +467,7 @@ export function RulesPage({
       {showDeleteConfirm && selectedTool && !selectedTool.isBuiltin && (
         <ConfirmModal
           title="删除自定义项？"
-          description={`将移除当前自定义规则项“${selectedTool.label}”的入口配置，不会删除磁盘上的实际文件。`}
+          description={`将移除当前自定义规则项"${selectedTool.label}"的入口配置，不会删除磁盘上的实际文件。`}
           primaryLabel="确认删除"
           tertiaryLabel="取消"
           danger
