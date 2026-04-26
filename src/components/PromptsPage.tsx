@@ -1,10 +1,9 @@
 import { useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { Copy, Download, Eye, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { Copy, Download, Eye, Plus, Search, Trash2, Upload } from "lucide-react";
 import {
   BUTTON_ICON_MD_CLASS,
-  BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
@@ -20,6 +19,8 @@ import { renderMarkdownToHtml } from "../lib/promptMarkdown";
 import { toast } from "../lib/toast";
 import type { PromptRecord } from "../types";
 import { Tooltip } from "./Tooltip";
+import { summarizePromptContent, formatPromptTime } from "./prompts/utils";
+import { DeletePromptDialog } from "./prompts/DeletePromptDialog";
 
 interface Props {
   prompts: PromptRecord[];
@@ -27,58 +28,6 @@ interface Props {
   onOpenDetail: (id: string, mode: "detail" | "edit") => void;
   onDelete: (id: string) => void;
   onImport: (nextPrompts: PromptRecord[]) => void;
-}
-
-function summarizePromptContent(content: string) {
-  return content.replace(/\s+/g, " ").trim();
-}
-
-function formatPromptTime(timestamp: number | null) {
-  if (timestamp == null) return "暂无更新";
-  const date = new Date(timestamp);
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${month}/${day} ${hour}:${minute}`;
-}
-
-function DeletePromptDialog({
-  prompt,
-  onCancel,
-  onConfirm,
-}: {
-  prompt: PromptRecord;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 p-6 shadow-2xl">
-        <h3 className="text-base font-semibold text-white">确认删除提示词</h3>
-        <p className="mt-2 text-sm leading-6 text-gray-400">
-          将删除 <span className="font-medium text-gray-200">{prompt.title}</span>
-          ，该操作不可撤销。
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-          >
-            <X className="h-3.5 w-3.5" />
-            取消
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            确认删除
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function PromptsPage({
