@@ -8,89 +8,33 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
 } from "../lib/buttonStyles";
+import {
+  normalizeSupportedProtocolTag,
+  getModelProtocolLabel,
+  getModelProtocolBadgeClass,
+  getProtocolSupportChipClass,
+  formatProtocolSupportSummary,
+  getProtocolResultDetails,
+  getProtocolSupportState,
+  MODEL_TEST_PROTOCOLS,
+  type ModelTestProtocol,
+} from "../lib/protocolUtils";
 
-export type ModelTestProtocol = "openApi" | "openai-responses" | "claude" | "gemini";
-
-export const MODEL_TEST_PROTOCOLS: ModelTestProtocol[] = [
-  "openApi",
-  "openai-responses",
-  "claude",
-  "gemini",
-];
-
-export function normalizeSupportedProtocolTag(protocol: string) {
-  const normalized = protocol.trim().toLowerCase();
-  if (normalized === "openapi" || normalized === "openai") return "openApi";
-  if (normalized === "openai-responses" || normalized === "responses") return "openai-responses";
-  if (normalized === "claude") return "claude";
-  if (normalized === "gemini") return "gemini";
-  if (normalized === "openrouter") return "openrouter";
-  return normalized;
-}
-
-export function getModelProtocolLabel(protocol: string) {
-  const normalized = normalizeSupportedProtocolTag(protocol);
-  if (normalized === "openApi") return "openApi";
-  if (normalized === "openai-responses") return "openai-responses";
-  if (normalized === "claude") return "claude";
-  if (normalized === "gemini") return "gemini";
-  if (normalized === "openrouter") return "openrouter";
-  return protocol;
-}
-
-export function getModelProtocolBadgeClass(protocol: string) {
-  const normalized = normalizeSupportedProtocolTag(protocol);
-  if (normalized === "openApi") {
-    return "bg-blue-500/15 text-blue-400";
-  }
-  if (normalized === "openai-responses") {
-    return "bg-cyan-500/15 text-cyan-400";
-  }
-  if (normalized === "claude") {
-    return "bg-purple-500/15 text-purple-400";
-  }
-  if (normalized === "gemini") {
-    return "bg-amber-500/15 text-amber-400";
-  }
-  if (normalized === "openrouter") {
-    return "bg-emerald-500/15 text-emerald-400";
-  }
-  return "bg-gray-700 text-gray-400";
-}
-
-export function formatProtocolSupportSummary(result: ModelResult) {
-  const protocolMap = new Map(
-    (result.protocol_results ?? []).map((item) => [
-      normalizeSupportedProtocolTag(item.protocol),
-      item.available,
-    ]),
-  );
-
-  return MODEL_TEST_PROTOCOLS.map((protocol) => {
-    const available = protocolMap.get(protocol);
-    if (available == null) return `${protocol}=未测试`;
-    return `${protocol}=${available ? "支持" : "不支持"}`;
-  }).join("，");
-}
-
-export function getProtocolResultDetails(item: ProtocolTestResult) {
-  return item.response_text?.trim() || item.error || "—";
-}
+export type { ModelTestProtocol };
+export {
+  normalizeSupportedProtocolTag,
+  getModelProtocolLabel,
+  getModelProtocolBadgeClass,
+  getProtocolSupportChipClass,
+  formatProtocolSupportSummary,
+  getProtocolResultDetails,
+  getProtocolSupportState,
+  MODEL_TEST_PROTOCOLS,
+};
 
 function formatDebugMap(value?: Record<string, string> | null) {
   if (!value || Object.keys(value).length === 0) return "—";
   return JSON.stringify(value, null, 2);
-}
-
-export function getProtocolSupportState(
-  result: ModelResult,
-  protocol: ModelTestProtocol,
-) {
-  const match = (result.protocol_results ?? []).find(
-    (item) => normalizeSupportedProtocolTag(item.protocol) === protocol,
-  );
-  if (!match) return "untested" as const;
-  return match.available ? ("supported" as const) : ("unsupported" as const);
 }
 
 /**
@@ -98,56 +42,29 @@ export function getProtocolSupportState(
  * 批量测试时只有 openApi 一项，单模型多协议测试时会显示多项。
  */
 export function TestedProtocolBadges({ result }: { result: ModelResult }) {
-  const protocolResults = result.protocol_results ?? [];
-  if (protocolResults.length === 0) return null;
+  const supportedResults = (result.protocol_results ?? []).filter(
+    (pr) => pr.available,
+  );
+  if (supportedResults.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {protocolResults.map((pr) => {
+      {supportedResults.map((pr) => {
         const normalized = normalizeSupportedProtocolTag(pr.protocol) as ModelTestProtocol;
-        const state = pr.available
-          ? ("supported" as const)
-          : ("unsupported" as const);
         return (
           <span
             key={pr.protocol}
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${getProtocolSupportChipClass(
               normalized,
-              state,
+              "supported",
             )}`}
           >
             <span>{getModelProtocolLabel(pr.protocol)}</span>
-            <span>{state === "supported" ? "支持" : "不支持"}</span>
+            <span>支持</span>
           </span>
         );
       })}
     </div>
   );
-}
-
-export function getProtocolSupportChipClass(
-  protocol: ModelTestProtocol,
-  state: "supported" | "unsupported" | "untested",
-) {
-  const isSupported = state === "supported";
-
-  if (protocol === "openApi") {
-    return isSupported
-      ? "border-blue-500/35 bg-blue-500/15 text-blue-300"
-      : "border-blue-900/50 bg-blue-950/50 text-blue-500";
-  }
-  if (protocol === "openai-responses") {
-    return isSupported
-      ? "border-cyan-500/35 bg-cyan-500/15 text-cyan-300"
-      : "border-cyan-900/50 bg-cyan-950/50 text-cyan-500";
-  }
-  if (protocol === "claude") {
-    return isSupported
-      ? "border-purple-500/35 bg-purple-500/15 text-purple-300"
-      : "border-purple-900/50 bg-purple-950/50 text-purple-500";
-  }
-  return isSupported
-    ? "border-amber-500/35 bg-amber-500/15 text-amber-300"
-    : "border-amber-900/50 bg-amber-950/50 text-amber-500";
 }
 
 function SelectionCheckbox({

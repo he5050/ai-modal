@@ -21,7 +21,7 @@ interface BuiltinConfigGroupDefinition {
   }>;
 }
 
-export const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
+const BUILTIN_CONFIG_GROUPS: BuiltinConfigGroupDefinition[] = [
   {
     id: "claude",
     label: "Claude",
@@ -272,7 +272,7 @@ function resolveBuiltinFile(
   };
 }
 
-export function inferGroupIdFromAbsolutePath(
+function inferGroupIdFromAbsolutePath(
   path: string,
   homePath: string,
 ): ConfigGroupId | null {

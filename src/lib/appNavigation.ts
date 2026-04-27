@@ -10,9 +10,9 @@ import {
 } from 'lucide-react'
 import type { AppPage } from '../types'
 
-export type AppNavSection = 'core' | 'assets' | 'system'
+type AppNavSection = 'core' | 'assets' | 'system'
 
-export interface AppNavItem {
+interface AppNavItem {
   key: AppPage
   label: string
   Icon: LucideIcon

@@ -874,7 +874,7 @@ describe("SkillsPage", () => {
       await screen.findByText("开始更新全部：更新全部全局技能"),
     ).toBeInTheDocument();
 
-    resolveCommand?.(createCommandResult());
+    (resolveCommand as ((value: SkillsCommandResult) => void) | null)?.(createCommandResult());
 
     await waitFor(() => {
       expect(mockRunSkillsCommand).toHaveBeenCalledWith({

@@ -18,7 +18,7 @@ function buildHeadingDecorations(state: EditorState) {
   return builder.finish();
 }
 
-export const headingHighlightPlugin = ViewPlugin.fromClass(
+const headingHighlightPlugin = ViewPlugin.fromClass(
   class {
     decorations;
 
@@ -37,7 +37,7 @@ export const headingHighlightPlugin = ViewPlugin.fromClass(
   },
 );
 
-export const markdownEditorTheme = EditorView.theme(
+const markdownEditorTheme = EditorView.theme(
   {
     "&": {
       height: "520px",

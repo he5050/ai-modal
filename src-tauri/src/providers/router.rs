@@ -179,9 +179,15 @@ pub fn infer_protocol_from_model(model: &str) -> ModelProtocol {
         .trim_start_matches("models/")
         .to_ascii_lowercase();
 
-    if normalized.starts_with("claude") {
+    // 去掉命名空间前缀（如 "no/claude-opus-4"、"anthropic/claude-3.7-sonnet"）
+    let model_name = normalized
+        .rsplit_once('/')
+        .map(|(_, name)| name)
+        .unwrap_or(&normalized);
+
+    if model_name.starts_with("claude") {
         ModelProtocol::Claude
-    } else if normalized.starts_with("gemini") {
+    } else if model_name.starts_with("gemini") {
         ModelProtocol::Gemini
     } else {
         ModelProtocol::OpenAi
@@ -948,6 +954,23 @@ mod tests {
         assert_eq!(
             infer_protocol_from_model("custom-proxy-model"),
             ModelProtocol::OpenAi
+        );
+        // 命名空间前缀不影响模型协议推断
+        assert_eq!(
+            infer_protocol_from_model("no/claude-opus-4-7-high"),
+            ModelProtocol::Claude
+        );
+        assert_eq!(
+            infer_protocol_from_model("anthropic/claude-3.7-sonnet"),
+            ModelProtocol::Claude
+        );
+        assert_eq!(
+            infer_protocol_from_model("openai/gpt-5.2"),
+            ModelProtocol::OpenAi
+        );
+        assert_eq!(
+            infer_protocol_from_model("google/gemini-2.0-flash"),
+            ModelProtocol::Gemini
         );
     }
 

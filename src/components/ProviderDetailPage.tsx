@@ -42,34 +42,8 @@ import { openExternalUrl } from "../lib/openExternalUrl";
 import { toast } from "../lib/toast";
 import { logger } from "../lib/devlog";
 import { getConcurrency } from "./SettingsPage";
-
-type RowStatus = "pending" | "done";
-
-interface LiveResult extends ModelResult {
-  status: RowStatus;
-}
-
-function formatTime(ts: number) {
-  const d = new Date(ts);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hour = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${year}/${month}/${day} ${hour}:${min}`;
-}
-
-function maskKey(key: string) {
-  if (!key) return "—";
-  if (key.length <= 4) return "*".repeat(key.length);
-  return key.slice(0, 2) + "******" + key.slice(-2);
-}
-
-function maskPreviewText(value: string) {
-  if (!value) return "—";
-  if (value.length <= 4) return `${value.slice(0, 1)}******${value.slice(-1)}`;
-  return `${value.slice(0, 2)}******${value.slice(-2)}`;
-}
+import { formatTime, maskKey, maskPreviewText } from "./models/utils";
+import type { RowStatus, LiveResult } from "./models/types";
 
 interface Props {
   provider: Provider | null;
@@ -578,7 +552,7 @@ export function ProviderDetailPage({
               <tbody>
                 {displayResults.map((result, index) => (
                   <tr
-                    key={result.model}
+                    key={`${result.model}-${index}`}
                     className={`hover:bg-gray-800/30 ${
                       index < displayResults.length - 1
                         ? "border-b border-gray-800/40"

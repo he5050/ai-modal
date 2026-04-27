@@ -15,7 +15,7 @@ export function getSupportedConfigFormatsLabel() {
   return SUPPORTED_CONFIG_FORMATS.map((format) => format.toUpperCase()).join(" / ");
 }
 
-export interface FormatConfigResult {
+interface FormatConfigResult {
   formatted: string;
   normalizedPunctuation: boolean;
 }
@@ -86,7 +86,7 @@ function formatXmlContent(content: string) {
 
   const declarationMatch = content.match(/^\s*(<\?xml[\s\S]*?\?>)\s*/i);
   const declaration = declarationMatch?.[1] ?? null;
-  const xmlBody = declaration ? content.slice(declarationMatch[0].length) : content;
+  const xmlBody = declaration && declarationMatch ? content.slice(declarationMatch[0].length) : content;
   const parser = new DOMParser();
   const documentNode = parser.parseFromString(xmlBody, "application/xml");
   const parseError = documentNode.querySelector("parsererror");

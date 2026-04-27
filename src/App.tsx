@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { animate, spring } from "animejs";
-import { AlertTriangle } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { DetectPage } from "./components/DetectPage";
 import { ModelsPage } from "./components/ModelsPage";
@@ -17,27 +16,29 @@ import {
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
 import { PromptDetailPage } from "./components/PromptDetailPage";
 import { SkillsPage } from "./components/SkillsPage";
-import { loadPersistedJson, savePersistedJson } from "./lib/persistence";
-import { parsePromptCategories } from "./lib/promptStore";
+import { loadPersistedJson } from "./lib/persistence";
+import { LeaveConfirmDialog, PageFallback } from "./components/shared/LeaveConfirmDialog";
+import { useProviders } from "./hooks/useProviders";
+import { usePrompts } from "./hooks/usePrompts";
+import { useRulePaths } from "./hooks/useRulePaths";
+import { useConfigPaths } from "./hooks/useConfigPaths";
 import { toast } from "./lib/toast";
 import type {
   AppPage,
-  ConfigPath,
-  PromptRecord,
   Provider,
-  ProviderLastResult,
-  RulePath,
   SkillEnrichmentJobSnapshot,
 } from "./types";
 
-const PROVIDERS_KEY = "ai-modal-providers";
-const RULE_PATHS_KEY = "ai-modal-rule-paths";
-const CONFIG_PATHS_KEY = "ai-modal-config-paths";
-const PROMPTS_KEY = "ai-modal-prompts";
-const PROVIDERS_DB_KEY = "providers";
-const RULE_PATHS_DB_KEY = "rule_paths";
-const CONFIG_PATHS_DB_KEY = "config_paths";
-const PROMPTS_DB_KEY = "prompts";
+const RulesPage = lazy(() =>
+  import("./components/RulesPage").then((m) => ({ default: m.RulesPage })),
+);
+const ConfigPage = lazy(() =>
+  import("./components/ConfigPage").then((m) => ({ default: m.ConfigPage })),
+);
+const PromptsPage = lazy(() =>
+  import("./components/PromptsPage").then((m) => ({ default: m.PromptsPage })),
+);
+
 const SORT_KEY_DB_KEY = "models_sort_key";
 const SORT_DIR_DB_KEY = "models_sort_dir";
 const EXPORT_DIR_DB_KEY = "recent_export_dir";
@@ -45,222 +46,71 @@ const SORT_KEY = "ai-modal-sort-key";
 const SORT_DIR_KEY = "ai-modal-sort-dir";
 const EXPORT_DIR_KEY = "ai-modal-model-export-dir";
 
-const RulesPage = lazy(() =>
-  import("./components/RulesPage").then((module) => ({
-    default: module.RulesPage,
-  })),
-);
-const ConfigPage = lazy(() =>
-  import("./components/ConfigPage").then((module) => ({
-    default: module.ConfigPage,
-  })),
-);
-const PromptsPage = lazy(() =>
-  import("./components/PromptsPage").then((module) => ({
-    default: module.PromptsPage,
-  })),
-);
-
-function parseProviders(raw: unknown): Provider[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item: Provider & { providerType?: string }) => {
-    const { providerType: _providerType, ...provider } = item;
-    return provider;
-  });
-}
-
-function parseRulePaths(raw: unknown): RulePath[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter(
-      (
-        item,
-      ): item is Pick<
-        RulePath,
-        "id" | "label" | "path" | "isBuiltin" | "kind"
-      > =>
-        typeof item?.id === "string" &&
-        typeof item?.label === "string" &&
-        typeof item?.path === "string",
-    )
-    .map((item) => ({
-      id: item.id,
-      label: item.label,
-      path: item.path,
-      isBuiltin: item.isBuiltin !== false,
-      kind: item.kind === "directory" ? "directory" : "file",
-    }));
-}
-
-function parseConfigPaths(raw: unknown): ConfigPath[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter(
-      (
-        item,
-      ): item is Pick<
-        ConfigPath,
-        "id" | "label" | "path" | "isBuiltin" | "kind" | "format"
-      > =>
-        typeof item?.id === "string" &&
-        typeof item?.label === "string" &&
-        typeof item?.path === "string",
-    )
-    .map((item) => ({
-      id: item.id,
-      label: item.label,
-      path: item.path,
-      isBuiltin: item.isBuiltin !== false,
-      kind: "file",
-      format:
-        item.format === "toml"
-          ? "toml"
-          : item.format === "yaml"
-            ? "yaml"
-            : item.format === "xml"
-              ? "xml"
-              : "json",
-    }));
-}
-
-function parsePrompts(raw: unknown): PromptRecord[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter(
-      (item): item is {
-        id: string;
-        title: string;
-        content: string;
-        tags?: unknown;
-        category?: unknown;
-        createdAt: number;
-        updatedAt: number;
-      } =>
-        typeof item?.id === "string" &&
-        typeof item?.title === "string" &&
-        typeof item?.content === "string" &&
-        typeof item?.createdAt === "number" &&
-        typeof item?.updatedAt === "number",
-    )
-    .map((item) => ({
-      id: item.id,
-      title: item.title,
-      content: item.content,
-      tags:
-        typeof item.category === "string" &&
-        parsePromptCategories(item.category).length > 0
-          ? parsePromptCategories(item.category)
-          : Array.isArray(item.tags)
-            ? item.tags.filter((tag): tag is string => typeof tag === "string")
-            : [],
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-}
-
-function LeaveConfirmDialog({
-  onConfirm,
-  onCancel,
-}: {
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (overlayRef.current) {
-      animate(overlayRef.current, {
-        opacity: [0, 1],
-        duration: 180,
-        ease: "outQuad",
-      });
-    }
-    if (cardRef.current) {
-      animate(cardRef.current, {
-        opacity: [0, 1],
-        translateY: [12, 0],
-        scale: [0.97, 1],
-        ease: spring({ stiffness: 380, damping: 22 }),
-        duration: 360,
-      });
-    }
-  }, []);
-
-  return (
-    <div
-      ref={overlayRef}
-      style={{ opacity: 0 }}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60"
-    >
-      <div
-        ref={cardRef}
-        style={{ opacity: 0 }}
-        className="w-[360px] rounded-2xl border border-amber-500/25 bg-gray-900 p-6 shadow-2xl"
-      >
-        <div className="mb-4 flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400">
-            <AlertTriangle className="h-4 w-4" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-white">离开当前编辑？</h3>
-            <p className="mt-1 text-sm leading-6 text-gray-400">
-              当前有未保存的改动，离开后会丢失。确认继续切换页面吗？
-            </p>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200"
-          >
-            继续编辑
-          </button>
-          <button
-            onClick={onConfirm}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-gray-950 transition-colors hover:bg-amber-400"
-          >
-            放弃并离开
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PageFallback() {
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center px-6 pb-6">
-      <div className="rounded-2xl border border-gray-800 bg-gray-900/80 px-6 py-8 text-center">
-        <p className="text-sm font-medium text-gray-200">正在加载页面…</p>
-        <p className="mt-2 text-xs text-gray-500">
-          编辑器相关模块将按需加载，以减少首屏包体积。
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const [page, setPage] = useState<AppPage>("detect");
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [rulePaths, setRulePaths] = useState<RulePath[]>([]);
-  const [configPaths, setConfigPaths] = useState<ConfigPath[]>([]);
-  const [prompts, setPrompts] = useState<PromptRecord[]>([]);
-  const [storageReady, setStorageReady] = useState(false);
   const [editTarget, setEditTarget] = useState<Provider | null>(null);
   const [detailProviderId, setDetailProviderId] = useState<string | null>(null);
   const [detailPromptId, setDetailPromptId] = useState<string | null>(null);
-  const [promptDetailMode, setPromptDetailMode] = useState<
-    "detail" | "edit" | "create"
-  >("detail");
+  const [promptDetailMode, setPromptDetailMode] = useState<"detail" | "edit" | "create">("detail");
   const [editingDirty, setEditingDirty] = useState(false);
   const [debugEnabled, setDebugEnabled] = useState(
     () => localStorage.getItem("ai-modal-debug") === "true",
   );
   const [pendingPage, setPendingPage] = useState<AppPage | null>(null);
   const mainRef = useRef<HTMLElement>(null);
+
+  const {
+    providers,
+    addProvider,
+    editProvider,
+    deleteProvider,
+    saveResult,
+    importProviders,
+  } = useProviders();
+
+  const {
+    prompts,
+    savePrompt,
+    deletePrompt,
+    importPrompts: setPrompts,
+  } = usePrompts();
+
+  const {
+    rulePaths,
+    changePath: handleRulePathChange,
+    addPath: handleAddRulePath,
+    deletePath: handleDeleteRulePath,
+  } = useRulePaths();
+
+  const {
+    configPaths,
+    upsertPath: handleUpsertConfigPath,
+    deletePath: handleDeleteConfigPath,
+  } = useConfigPaths();
+
+  // ─── Bootstrap settings that live in localStorage but sync to SQLite ──
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      loadPersistedJson<boolean>(DEBUG_DB_KEY, DEBUG_KEY, localStorage.getItem(DEBUG_KEY) === "true"),
+      loadPersistedJson<number>(CONCURRENCY_DB_KEY, CONCURRENCY_KEY, Number.parseInt(localStorage.getItem(CONCURRENCY_KEY) ?? "", 10) || 3),
+      loadPersistedJson<string | null>(SORT_KEY_DB_KEY, SORT_KEY, (localStorage.getItem(SORT_KEY) as string | null) ?? null),
+      loadPersistedJson<string>(SORT_DIR_DB_KEY, SORT_DIR_KEY, localStorage.getItem(SORT_DIR_KEY) ?? "asc"),
+      loadPersistedJson<string | null>(EXPORT_DIR_DB_KEY, EXPORT_DIR_KEY, localStorage.getItem(EXPORT_DIR_KEY)),
+    ]).then(([debug, concurrency, sortKey, sortDir, exportDir]) => {
+      if (!active) return;
+      localStorage.setItem(DEBUG_KEY, String(debug));
+      setDebugEnabled(debug);
+      localStorage.setItem(CONCURRENCY_KEY, String(concurrency));
+      if (sortKey) localStorage.setItem(SORT_KEY, sortKey); else localStorage.removeItem(SORT_KEY);
+      localStorage.setItem(SORT_DIR_KEY, sortDir);
+      if (exportDir) localStorage.setItem(EXPORT_DIR_KEY, exportDir); else localStorage.removeItem(EXPORT_DIR_KEY);
+    });
+    return () => { active = false; };
+  }, []);
+
+  // ─── Page navigation ──────────────────────────────────────────────
 
   function animatePage() {
     if (!mainRef.current) return;
@@ -279,196 +129,13 @@ export default function App() {
 
   function handlePageChange(p: AppPage) {
     if (p === page) return;
-    if (editingDirty) {
-      setPendingPage(p);
-      return;
-    }
+    if (editingDirty) { setPendingPage(p); return; }
     applyPageChange(p);
   }
 
-  useEffect(() => {
-    animatePage();
-  }, [page]);
-  useEffect(() => {
-    let active = true;
+  useEffect(() => { animatePage(); }, [page]);
 
-    async function bootstrapStorage() {
-      try {
-        const [
-          providersRaw,
-          rulePathsRaw,
-          configPathsRaw,
-          promptsRaw,
-          debugValue,
-          concurrencyValue,
-          sortKeyValue,
-          sortDirValue,
-          exportDirValue,
-        ] = await Promise.all([
-          loadPersistedJson<unknown[]>(PROVIDERS_DB_KEY, PROVIDERS_KEY, []),
-          loadPersistedJson<unknown[]>(RULE_PATHS_DB_KEY, RULE_PATHS_KEY, []),
-          loadPersistedJson<unknown[]>(
-            CONFIG_PATHS_DB_KEY,
-            CONFIG_PATHS_KEY,
-            [],
-          ),
-          loadPersistedJson<unknown[]>(PROMPTS_DB_KEY, PROMPTS_KEY, []),
-          loadPersistedJson<boolean>(
-            DEBUG_DB_KEY,
-            DEBUG_KEY,
-            localStorage.getItem(DEBUG_KEY) === "true",
-          ),
-          loadPersistedJson<number>(
-            CONCURRENCY_DB_KEY,
-            CONCURRENCY_KEY,
-            Number.parseInt(localStorage.getItem(CONCURRENCY_KEY) ?? "", 10) ||
-              3,
-          ),
-          loadPersistedJson<string | null>(
-            SORT_KEY_DB_KEY,
-            SORT_KEY,
-            (localStorage.getItem(SORT_KEY) as string | null) ?? null,
-          ),
-          loadPersistedJson<string>(
-            SORT_DIR_DB_KEY,
-            SORT_DIR_KEY,
-            localStorage.getItem(SORT_DIR_KEY) ?? "asc",
-          ),
-          loadPersistedJson<string | null>(
-            EXPORT_DIR_DB_KEY,
-            EXPORT_DIR_KEY,
-            localStorage.getItem(EXPORT_DIR_KEY),
-          ),
-        ]);
-
-        if (!active) return;
-        setProviders(parseProviders(providersRaw));
-        setRulePaths(parseRulePaths(rulePathsRaw));
-        setConfigPaths(parseConfigPaths(configPathsRaw));
-        setPrompts(parsePrompts(promptsRaw));
-        localStorage.setItem(DEBUG_KEY, String(debugValue));
-        setDebugEnabled(debugValue);
-        localStorage.setItem(CONCURRENCY_KEY, String(concurrencyValue));
-        if (sortKeyValue) {
-          localStorage.setItem(SORT_KEY, sortKeyValue);
-        } else {
-          localStorage.removeItem(SORT_KEY);
-        }
-        localStorage.setItem(SORT_DIR_KEY, sortDirValue);
-        if (exportDirValue) {
-          localStorage.setItem(EXPORT_DIR_KEY, exportDirValue);
-        } else {
-          localStorage.removeItem(EXPORT_DIR_KEY);
-        }
-      } catch (error) {
-        console.error("Failed to bootstrap persisted state", error);
-      } finally {
-        if (active) setStorageReady(true);
-      }
-    }
-
-    void bootstrapStorage();
-    return () => {
-      active = false;
-    };
-  }, []);
-  useEffect(() => {
-    if (!storageReady) return;
-    void savePersistedJson(PROVIDERS_DB_KEY, providers, PROVIDERS_KEY).catch(
-      (error) => {
-        console.error("Failed to persist providers", error);
-      },
-    );
-  }, [providers, storageReady]);
-  useEffect(() => {
-    if (!storageReady) return;
-    const payload = rulePaths.map(({ id, label, path, isBuiltin, kind }) => ({
-      id,
-      label,
-      path,
-      isBuiltin,
-      kind,
-    }));
-    void savePersistedJson(RULE_PATHS_DB_KEY, payload, RULE_PATHS_KEY).catch(
-      (error) => {
-        console.error("Failed to persist rule paths", error);
-      },
-    );
-  }, [rulePaths, storageReady]);
-  useEffect(() => {
-    if (!storageReady) return;
-    const payload = configPaths.map(
-      ({ id, label, path, isBuiltin, kind, format }) => ({
-        id,
-        label,
-        path,
-        isBuiltin,
-        kind,
-        format,
-      }),
-    );
-    void savePersistedJson(
-      CONFIG_PATHS_DB_KEY,
-      payload,
-      CONFIG_PATHS_KEY,
-    ).catch((error) => {
-      console.error("Failed to persist config paths", error);
-    });
-  }, [configPaths, storageReady]);
-  useEffect(() => {
-    if (!storageReady) return;
-    void savePersistedJson(PROMPTS_DB_KEY, prompts, PROMPTS_KEY).catch(
-      (error) => {
-        console.error("Failed to persist prompts", error);
-      },
-    );
-  }, [prompts, storageReady]);
-
-  function handleAddProvider(
-    data: Omit<Provider, "id" | "createdAt" | "lastResult">,
-  ) {
-    const p: Provider = {
-      ...data,
-      id: Date.now().toString(),
-      createdAt: Date.now(),
-    };
-    setProviders((prev) => [...prev, p]);
-    return p.id;
-  }
-
-  function handleEditProvider(
-    id: string,
-    data: Omit<Provider, "id" | "createdAt" | "lastResult">,
-  ) {
-    setProviders((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const configChanged =
-          p.baseUrl !== data.baseUrl || p.apiKey !== data.apiKey;
-        return {
-          ...p,
-          ...data,
-          lastResult: configChanged ? undefined : p.lastResult,
-        };
-      }),
-    );
-  }
-
-  function handleDeleteProvider(id: string) {
-    if (detailProviderId === id) {
-      setDetailProviderId(null);
-      if (page === "provider-detail") {
-        setPage("models");
-      }
-    }
-    setProviders((prev) => prev.filter((p) => p.id !== id));
-  }
-
-  function handleSaveResult(id: string, result: ProviderLastResult) {
-    setProviders((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, lastResult: result } : p)),
-    );
-  }
+  // ─── Derived handlers ─────────────────────────────────────────────
 
   function handleEditFromList(provider: Provider) {
     setEditTarget(provider);
@@ -480,30 +147,21 @@ export default function App() {
     setPage("provider-detail");
   }
 
-  function handleOpenPromptDetail(
-    promptId: string | null,
-    mode: "detail" | "edit" | "create",
-  ) {
+  function handleOpenPromptDetail(promptId: string | null, mode: "detail" | "edit" | "create") {
     setDetailPromptId(promptId);
     setPromptDetailMode(mode);
     setPage("prompt-detail");
   }
 
-  function handleSavePrompt(nextPrompt: PromptRecord) {
-    setPrompts((prev) => {
-      const exists = prev.some((item) => item.id === nextPrompt.id);
-      const next = exists
-        ? prev.map((item) => (item.id === nextPrompt.id ? nextPrompt : item))
-        : [nextPrompt, ...prev];
-      return [...next].sort((a, b) => b.updatedAt - a.updatedAt);
-    });
+  function handleSavePrompt(nextPrompt: import("./types").PromptRecord) {
+    savePrompt(nextPrompt);
     setDetailPromptId(nextPrompt.id);
     setPromptDetailMode("detail");
     setPage("prompt-detail");
   }
 
   function handleDeletePrompt(promptId: string) {
-    setPrompts((prev) => prev.filter((item) => item.id !== promptId));
+    deletePrompt(promptId);
     if (detailPromptId === promptId) {
       setDetailPromptId(null);
       setPromptDetailMode("detail");
@@ -511,125 +169,39 @@ export default function App() {
     }
   }
 
-  function handleImportProviders(imported: Provider[]) {
-    setProviders((prev) => {
-      const existingIds = new Set(prev.map((p) => p.id));
-      const newOnes = imported.filter((p) => !existingIds.has(p.id));
-      return [...prev, ...newOnes];
-    });
-  }
-
-  function handleRulePathChange(id: string, path: string) {
-    setRulePaths((prev) => {
-      const current = prev.find((item) => item.id === id);
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        ...next,
-        {
-          id,
-          label: current?.label ?? id,
-          path,
-          isBuiltin: current?.isBuiltin ?? true,
-          kind: current?.kind ?? "file",
-        },
-      ];
-    });
-  }
-
-  function handleAddRulePath(input: {
-    label: string;
-    path: string;
-    kind?: "file" | "directory";
-  }) {
-    setRulePaths((prev) => {
-      const next = prev;
-      return [
-        ...next,
-        {
-          id: `custom-${Date.now()}`,
-          label: input.label.trim(),
-          path: input.path.trim(),
-          isBuiltin: false,
-          kind: input.kind ?? "file",
-        },
-      ];
-    });
-  }
-
-  function handleDeleteRulePath(id: string) {
-    setRulePaths((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  function handleUpsertConfigPath(next: ConfigPath) {
-    setConfigPaths((prev) => {
-      const rest = prev.filter((item) => item.id !== next.id);
-      return [...rest, next];
-    });
-  }
-
-  function handleDeleteConfigPath(id: string) {
-    setConfigPaths((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  const availableCount = providers.filter((p) =>
-    p.lastResult?.results.some((r) => r.available),
-  ).length;
-  const lastSkillEnrichmentNoticeRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof (window as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ ===
-        "undefined"
-    ) {
-      return;
+  function handleDeleteProvider(id: string) {
+    deleteProvider(id);
+    if (detailProviderId === id && page === "provider-detail") {
+      setDetailProviderId(null);
+      setPage("models");
     }
+  }
 
+  // ─── Skill enrichment notifications ────────────────────────────────
+
+  const lastSkillEnrichmentNoticeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof (window as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ === "undefined") return;
     let unlisten: (() => void) | null = null;
-
-    void listen<SkillEnrichmentJobSnapshot>(
-      "skill-enrichment-progress",
-      (event) => {
-        const snapshot = event.payload;
-        if (
-          snapshot.status !== "done" &&
-          snapshot.status !== "error" &&
-          snapshot.status !== "stopped"
-        ) {
-          return;
-        }
-
-        const noticeKey = `${snapshot.runId}:${snapshot.status}`;
-        if (lastSkillEnrichmentNoticeRef.current === noticeKey) {
-          return;
-        }
-        lastSkillEnrichmentNoticeRef.current = noticeKey;
-
-        if (snapshot.status === "done") {
-          if (snapshot.errorMessage) {
-            toast(snapshot.errorMessage, "warning");
-            return;
-          }
-          toast("技能注解完成", "success");
-          return;
-        }
-        if (snapshot.status === "error") {
-          toast(
-            `技能注解失败：${snapshot.errorMessage || snapshot.message}`,
-            "error",
-          );
-          return;
-        }
-        toast("技能注解已停止", "info");
-      },
-    ).then((dispose) => {
-      unlisten = dispose;
-    });
-
-    return () => {
-      unlisten?.();
-    };
+    void listen<SkillEnrichmentJobSnapshot>("skill-enrichment-progress", (event) => {
+      const snapshot = event.payload;
+      if (snapshot.status !== "done" && snapshot.status !== "error" && snapshot.status !== "stopped") return;
+      const noticeKey = `${snapshot.runId}:${snapshot.status}`;
+      if (lastSkillEnrichmentNoticeRef.current === noticeKey) return;
+      lastSkillEnrichmentNoticeRef.current = noticeKey;
+      if (snapshot.status === "done") {
+        if (snapshot.errorMessage) { toast(snapshot.errorMessage, "warning"); return; }
+        toast("技能注解完成", "success"); return;
+      }
+      if (snapshot.status === "error") { toast(`技能注解失败：${snapshot.errorMessage || snapshot.message}`, "error"); return; }
+      toast("技能注解已停止", "info");
+    }).then((dispose) => { unlisten = dispose; });
+    return () => { unlisten?.(); };
   }, []);
+
+  // ─── Render ───────────────────────────────────────────────────────
+
+  const availableCount = providers.filter((p) => p.lastResult?.results.some((r) => r.available)).length;
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-200 overflow-hidden">
@@ -645,10 +217,10 @@ export default function App() {
             providers={providers}
             editTarget={editTarget}
             onClearEditTarget={() => setEditTarget(null)}
-            onAddProvider={handleAddProvider}
-            onEditProvider={handleEditProvider}
+            onAddProvider={addProvider}
+            onEditProvider={editProvider}
             onDeleteProvider={handleDeleteProvider}
-            onSaveResult={handleSaveResult}
+            onSaveResult={saveResult}
             onDirtyChange={setEditingDirty}
             onOpenModels={() => handlePageChange("models")}
           />
@@ -658,21 +230,19 @@ export default function App() {
             providers={providers}
             onEdit={handleEditFromList}
             onDelete={handleDeleteProvider}
-            onSaveResult={handleSaveResult}
-            onImport={handleImportProviders}
+            onSaveResult={saveResult}
+            onImport={importProviders}
             onGoDetect={() => handlePageChange("detect")}
             onOpenDetail={handleOpenProviderDetail}
           />
         )}
         {page === "provider-detail" && (
           <ProviderDetailPage
-            provider={
-              providers.find((item) => item.id === detailProviderId) ?? null
-            }
+            provider={providers.find((item) => item.id === detailProviderId) ?? null}
             onBack={() => handlePageChange("models")}
             onEdit={handleEditFromList}
             onDelete={handleDeleteProvider}
-            onSaveResult={handleSaveResult}
+            onSaveResult={saveResult}
           />
         )}
         {page === "skills" && (
@@ -694,15 +264,9 @@ export default function App() {
         )}
         {page === "prompt-detail" && (
           <PromptDetailPage
-            prompt={
-              detailPromptId == null
-                ? null
-                : prompts.find((item) => item.id === detailPromptId) ?? null
-            }
+            prompt={detailPromptId == null ? null : prompts.find((item) => item.id === detailPromptId) ?? null}
             mode={promptDetailMode}
-            availableTags={Array.from(
-              new Set(prompts.flatMap((item) => item.tags)),
-            ).filter(Boolean)}
+            availableTags={Array.from(new Set(prompts.flatMap((item) => item.tags))).filter(Boolean)}
             onBack={() => handlePageChange("prompts")}
             onSave={handleSavePrompt}
             onDelete={handleDeletePrompt}

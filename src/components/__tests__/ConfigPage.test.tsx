@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConfigPage } from '../ConfigPage'
@@ -227,7 +227,7 @@ describe('ConfigPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '应用' }))
     expect(await screen.findByText('应用到 Claude settings.json')).toBeInTheDocument()
 
-    const dialog = screen.getByText('应用到 Claude settings.json').closest('div[role], div')
+    screen.getByText('应用到 Claude settings.json').closest('div[role], div')
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: '选择 ANTHROPIC_DEFAULT_OPUS_MODEL' }),
       'claude-3-opus',

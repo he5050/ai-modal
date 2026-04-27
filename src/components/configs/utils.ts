@@ -92,7 +92,7 @@ export function pickDefaultSnowBasicModel(
   return availableModels.find((model) => model !== primary) ?? primary;
 }
 
-export function formatEnvValue(value: string) {
+function formatEnvValue(value: string) {
   if (value === "") return "";
   if (/[#\s"'`]/.test(value)) {
     return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;

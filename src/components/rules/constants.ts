@@ -1,4 +1,4 @@
-export interface BuiltinTool {
+interface BuiltinTool {
   id: string;
   label: string;
   fileName: string;

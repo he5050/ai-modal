@@ -1,4 +1,4 @@
-export type LogLevel = "debug" | "info" | "warn" | "error" | "success"
+type LogLevel = "debug" | "info" | "warn" | "error" | "success"
 
 export interface LogEntry {
   id: number
@@ -9,7 +9,7 @@ export interface LogEntry {
 
 let seq = 0
 
-export function isDebugEnabled(): boolean {
+function isDebugEnabled(): boolean {
   return localStorage.getItem("ai-modal-debug") === "true"
 }
 
