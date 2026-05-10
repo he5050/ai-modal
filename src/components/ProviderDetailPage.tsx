@@ -9,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { animate, spring } from "animejs";
-import { listModelsByProvider, testSingleModelByProvider } from "../api";
+import { testSingleModelByProvider } from "../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../types";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
@@ -44,6 +44,7 @@ import { logger } from "../lib/devlog";
 import { getConcurrency } from "./SettingsPage";
 import { formatTime, maskKey, maskPreviewText } from "./models/utils";
 import type { RowStatus, LiveResult } from "./models/types";
+import { runModelDetection as runDetection } from "./models/detectionRunner";
 
 interface Props {
   provider: Provider | null;
@@ -152,67 +153,30 @@ export function ProviderDetailPage({
     setLiveResults([]);
     setTesting(true);
     setProgress(targetModels ? "正在准备重测模型..." : "正在获取模型列表...");
-    onSaveResult(currentProvider.id, {
-      timestamp: Date.now(),
-      results: [],
-    });
     logger.info(
       `[${currentProvider.name}] 开始测试，baseUrl: ${currentProvider.baseUrl}${
         targetModels ? `，指定模型=${targetModels.join(", ")}` : ""
       }`,
     );
-    let models: string[];
-    if (targetModels && targetModels.length > 0) {
-      models = targetModels;
-    } else {
-      try {
-        models = await listModelsByProvider(
-          currentProvider.baseUrl,
-          currentProvider.apiKey,
-        );
-        logger.success(
-          `[${currentProvider.name}] 获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
-        );
-      } catch (err) {
-        const message = String(err);
-        logger.error(`[${currentProvider.name}] 获取模型列表失败：${message}`);
-        setError(message);
-        setTesting(false);
-        return;
-      }
-    }
-
-    const initial: LiveResult[] = models.map((model) => ({
-      model,
-      available: false,
-      latency_ms: null,
-      error: null,
-      response_text: null,
-      supported_protocols: [],
-      protocol_results: [],
-      status: "pending",
-    }));
-    setLiveResults(initial);
-    setProgress(`检测 ${models.length} 个模型...`);
     const concurrency = getConcurrency();
-    logger.info(
-      `[${currentProvider.name}] 开始逐条检测，并发数: ${concurrency}`,
-    );
-
-    const final: LiveResult[] = [...initial];
-    const queue = models.map((model, idx) => ({ model, idx }));
-    async function runNext(): Promise<void> {
-      const item = queue.shift();
-      if (!item) return;
-      const { model, idx } = item;
-      logger.debug(`[${currentProvider.name}] → 检测中：${model}`);
-      try {
-        const result = await testSingleModelByProvider(
-          currentProvider.baseUrl,
-          currentProvider.apiKey,
-          model,
+    const detectionResult = await runDetection({
+      baseUrl: currentProvider.baseUrl,
+      apiKey: currentProvider.apiKey,
+      targetModels,
+      concurrency,
+      onStart: ({ models, initialResults, fromListApi }) => {
+        if (fromListApi) {
+          logger.success(
+            `[${currentProvider.name}] 获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
+          );
+        }
+        logger.info(
+          `[${currentProvider.name}] 开始逐条检测，并发数: ${concurrency}`,
         );
-        final[idx] = { ...result, status: "done" };
+        setLiveResults(initialResults);
+        setProgress(`检测 ${models.length} 个模型...`);
+      },
+      onProgress: ({ model, result, liveResults: nextLiveResults }) => {
         if (result.available) {
           logger.success(
             `[${currentProvider.name}] ✓ ${model}  ${
@@ -227,32 +191,18 @@ export function ProviderDetailPage({
             }`,
           );
         }
-      } catch (err) {
-        final[idx] = {
-          model,
-          available: false,
-          latency_ms: null,
-          error: String(err),
-          response_text: String(err),
-          supported_protocols: [],
-          protocol_results: [],
-          status: "done",
-        };
-        logger.error(
-          `[${currentProvider.name}] ✗ ${model} 请求失败：${String(err)}`,
-        );
-      }
-      setLiveResults([...final]);
-      await runNext();
-    }
-
-    await Promise.all(Array.from({ length: concurrency }, runNext));
-
-    const sorted = [...final].sort((a, b) => {
-      if (a.available !== b.available) return a.available ? -1 : 1;
-      return (a.latency_ms ?? 99999) - (b.latency_ms ?? 99999);
+        setLiveResults(nextLiveResults);
+      },
     });
-    const available = sorted.filter((result) => result.available).length;
+    if (!detectionResult.ok) {
+      const message = String(detectionResult.error);
+      logger.error(`[${currentProvider.name}] 获取模型列表失败：${message}`);
+      setError(message);
+      setTesting(false);
+      return;
+    }
+    const sorted = detectionResult.sortedResults;
+    const available = detectionResult.availableCount;
     logger.success(
       `[${currentProvider.name}] 检测完成：${available}/${sorted.length} 可用`,
     );

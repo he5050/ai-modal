@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { ScanSearch, TerminalSquare } from "lucide-react";
 import { animate, spring } from "animejs";
-import { listModelsByProvider, testSingleModelByProvider } from "../../../api";
+import { testSingleModelByProvider } from "../../../api";
 import type { ModelResult, Provider, ProviderLastResult } from "../../../types";
 import { CopyButton } from "../../CopyButton";
 import { Tooltip } from "../../Tooltip";
@@ -21,6 +21,7 @@ import {
   formatTime,
 } from "../utils";
 import { normalizeSupportedProtocolTag } from "../../../lib/protocolUtils";
+import { runModelDetection as runDetection } from "../detectionRunner";
 
 interface LiveResult extends ModelResult {
   status: RowStatus;
@@ -84,84 +85,48 @@ export function DetailRow({
     setLiveResults([]);
     setTesting(true);
     setProgress("正在获取模型列表...");
-    onSaveResult(provider.id, { timestamp: Date.now(), results: [] });
     logger.info(`[${provider.name}] 开始测试，baseUrl: ${provider.baseUrl}`);
-    let models: string[];
-    try {
-      models = await listModelsByProvider(provider.baseUrl, provider.apiKey);
-      logger.success(
-        `[${provider.name}] 获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
-      );
-    } catch (e) {
-      logger.error(`[${provider.name}] 获取模型列表失败：${String(e)}`);
-      setError(String(e));
-      setTesting(false);
-      return;
-    }
-
-    const initial: LiveResult[] = models.map((m) => ({
-      model: m,
-      available: false,
-      latency_ms: null,
-      error: null,
-      response_text: null,
-      supported_protocols: [],
-      status: "pending",
-    }));
-    setLiveResults(initial);
-    setProgress(`检测 ${models.length} 个模型...`);
     const concurrency = getConcurrency();
-    logger.info(`[${provider.name}] 开始逐条检测，并发数: ${concurrency}`);
-
-    const final: LiveResult[] = [...initial];
-    const queue = models.map((model, idx) => ({ model, idx }));
-    async function runNext(): Promise<void> {
-      const item = queue.shift();
-      if (!item) return;
-      const { model, idx } = item;
-      logger.debug(`[${provider.name}] → 检测中：${model}`);
-      try {
-        const res = await testSingleModelByProvider(
-          provider.baseUrl,
-          provider.apiKey,
-          model,
-        );
-        final[idx] = { ...res, status: "done" };
-        logger.debug(
-          `[${provider.name}] ${model} 支持的协议: ${JSON.stringify(res.supported_protocols)}`,
-        );
-        if (res.available) {
+    const detectionResult = await runDetection({
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+      concurrency,
+      onStart: ({ models, initialResults, fromListApi }) => {
+        if (fromListApi) {
           logger.success(
-            `[${provider.name}] ✓ ${model} 协议:${res.supported_protocols?.join(",") || "unknown"} ${res.latency_ms != null ? res.latency_ms + "ms" : ""}`,
+            `[${provider.name}] 获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
+          );
+        }
+        logger.info(`[${provider.name}] 开始逐条检测，并发数: ${concurrency}`);
+        setLiveResults(initialResults);
+        setProgress(`检测 ${models.length} 个模型...`);
+      },
+      onProgress: ({ model, result, liveResults: nextLiveResults }) => {
+        logger.debug(
+          `[${provider.name}] ${model} 支持的协议: ${JSON.stringify(result.supported_protocols)}`,
+        );
+        if (result.available) {
+          logger.success(
+            `[${provider.name}] ✓ ${model} 协议:${result.supported_protocols?.join(",") || "unknown"} ${result.latency_ms != null ? result.latency_ms + "ms" : ""}`,
           );
         } else {
-          const detail = getResultDetails(res);
+          const detail = getResultDetails(result);
           logger.warn(
             `[${provider.name}] ✗ ${model} 不可用${detail && detail !== "—" ? " — " + detail : ""}`,
           );
         }
-      } catch (e) {
-        final[idx] = {
-          model,
-          available: false,
-          latency_ms: null,
-          error: String(e),
-          response_text: String(e),
-          supported_protocols: [],
-          status: "done",
-        };
-        logger.error(`[${provider.name}] ✗ ${model} 请求失败：${String(e)}`);
-      }
-      setLiveResults([...final]);
-      await runNext();
-    }
-    await Promise.all(Array.from({ length: concurrency }, runNext));
-
-    const sorted = [...final].sort((a, b) => {
-      if (a.available !== b.available) return a.available ? -1 : 1;
-      return (a.latency_ms ?? 99999) - (b.latency_ms ?? 99999);
+        setLiveResults(nextLiveResults);
+      },
     });
-    const available = sorted.filter((r) => r.available).length;
+    if (!detectionResult.ok) {
+      logger.error(`[${provider.name}] 获取模型列表失败：${String(detectionResult.error)}`);
+      setError(String(detectionResult.error));
+      setTesting(false);
+      return;
+    }
+
+    const sorted = detectionResult.sortedResults;
+    const available = detectionResult.availableCount;
     logger.success(
       `[${provider.name}] 检测完成：${available}/${sorted.length} 可用`,
     );

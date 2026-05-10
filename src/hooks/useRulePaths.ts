@@ -34,9 +34,17 @@ export function useRulePaths() {
 
   const changePath = useCallback((id: string, path: string) => {
     setRulePaths((prev) => {
-      const current = prev.find((item) => item.id === id);
-      const rest = prev.filter((item) => item.id !== id);
-      return [...rest, { id, label: current?.label ?? id, path, isBuiltin: current?.isBuiltin ?? true, kind: current?.kind ?? "file" }];
+      const index = prev.findIndex((item) => item.id === id);
+      if (index === -1) {
+        return [
+          ...prev,
+          { id, label: id, path, isBuiltin: true, kind: "file" },
+        ];
+      }
+      const current = prev[index];
+      const next = [...prev];
+      next[index] = { ...current, path };
+      return next;
     });
   }, []);
 

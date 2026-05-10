@@ -1,11 +1,12 @@
 import { useState, useCallback } from "react";
-import { listModelsByProvider, testSingleModelByProvider } from "../../../api";
+import { testSingleModelByProvider } from "../../../api";
 import type { ModelResult } from "../../../types";
 import { logger } from "../../../lib/devlog";
 import { toast } from "../../../lib/toast";
 import { getConcurrency } from "../../SettingsPage";
 import type { LiveResult, ModelTestProtocol, Phase } from "../types";
 import { MODEL_TEST_PROTOCOLS } from "../constants";
+import { runModelDetection as runDetection } from "../detectionRunner";
 import {
   buildTestSignature,
   mergeSingleResult,
@@ -43,7 +44,6 @@ export function useModelDetection() {
     async (baseUrl: string, apiKey: string, name: string, targetModels?: string[]) => {
       if (!baseUrl.trim()) return;
       setError(null);
-      setResults([]);
       setLiveResults([]);
       setPhase(targetModels ? "testing" : "fetching");
       setProgress(targetModels ? "正在准备重测模型..." : "正在获取模型列表...");
@@ -51,101 +51,57 @@ export function useModelDetection() {
       logger.info(
         `[${name || baseUrl}] 开始检测，baseUrl: ${baseUrl}${targetModels ? `，指定模型=${targetModels.join(", ")}` : ""}`,
       );
-      let models: string[];
-      if (targetModels && targetModels.length > 0) {
-        models = targetModels;
-      } else {
-        try {
-          models = await listModelsByProvider(baseUrl.trim(), apiKey.trim());
-          logger.success(
-            `获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`,
-          );
-        } catch (e) {
-          const msg = friendlyError(e);
-          logger.error(`获取模型列表失败：${msg}`);
-          setError(msg);
-          setPhase("idle");
-          return;
-        }
-      }
-
-      const initial: LiveResult[] = models.map((m) => ({
-        model: m,
-        available: false,
-        latency_ms: null,
-        error: null,
-        response_text: null,
-        supported_protocols: [],
-        protocol_results: [],
-        status: "pending",
-      }));
-      setLiveResults(initial);
-      setTestCount({ done: 0, total: models.length });
-      setPhase("testing");
-      setProgress(`正在检测 0 / ${models.length} 个模型...`);
       const concurrency = getConcurrency();
-      logger.info(`开始逐条检测 ${models.length} 个模型，并发数: ${concurrency}`);
-
-      const final: LiveResult[] = [...initial];
-      let doneCount = 0;
-      const queue = models.map((model, idx) => ({ model, idx }));
-      async function runNext(): Promise<void> {
-        const item = queue.shift();
-        if (!item) return;
-        const { model, idx } = item;
-        logger.debug(`→ 检测中：${model}`);
-        try {
-          const res = await testSingleModelByProvider(
-            baseUrl.trim(),
-            apiKey.trim(),
-            model,
-          );
-          final[idx] = { ...res, status: "done" };
-          if (res.available) {
+      const detectionResult = await runDetection({
+        baseUrl,
+        apiKey,
+        targetModels,
+        concurrency,
+        onStart: ({ models, initialResults, fromListApi }) => {
+          if (fromListApi) {
+            logger.success(`获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`);
+          }
+          logger.info(`开始逐条检测 ${models.length} 个模型，并发数: ${concurrency}`);
+          setLiveResults(initialResults);
+          setTestCount({ done: 0, total: models.length });
+          setPhase("testing");
+          setProgress(`正在检测 0 / ${models.length} 个模型...`);
+        },
+        onProgress: ({ done, total, model, result, liveResults: nextLiveResults }) => {
+          if (result.available) {
             logger.success(
-              `✓ ${model}  ${res.latency_ms != null ? res.latency_ms + "ms" : ""}`,
+              `✓ ${model}  ${result.latency_ms != null ? result.latency_ms + "ms" : ""}`,
             );
           } else {
-            logger.warn(`✗ ${model} 不可用${res.error ? " — " + res.error : ""}`);
+            logger.warn(`✗ ${model} 不可用${result.error ? " — " + result.error : ""}`);
           }
-        } catch (e) {
-          final[idx] = {
-            model,
-            available: false,
-            latency_ms: null,
-            error: String(e),
-            response_text: String(e),
-            supported_protocols: [],
-            protocol_results: [],
-            status: "done",
-          };
-          logger.error(`✗ ${model} 请求失败：${String(e)}`);
-        }
-        doneCount++;
-        setTestCount({ done: doneCount, total: models.length });
-        setProgress(`正在检测 ${doneCount} / ${models.length} 个模型...`);
-        setLiveResults([...final]);
-        await runNext();
-      }
-      await Promise.all(Array.from({ length: concurrency }, runNext));
-
-      const sorted = [...final].sort((a, b) => {
-        if (a.available !== b.available) return a.available ? -1 : 1;
-        return (a.latency_ms ?? 99999) - (b.latency_ms ?? 99999);
+          setTestCount({ done, total });
+          setProgress(`正在检测 ${done} / ${total} 个模型...`);
+          setLiveResults(nextLiveResults);
+        },
       });
-      const available = sorted.filter((r) => r.available).length;
-      logger.success(`检测完成：${available}/${sorted.length} 可用`);
-      setResults(sorted);
+      if (!detectionResult.ok) {
+        const msg = friendlyError(detectionResult.error);
+        logger.error(`获取模型列表失败：${msg}`);
+        setError(msg);
+        setPhase("idle");
+        return;
+      }
+
+      logger.success(
+        `检测完成：${detectionResult.availableCount}/${detectionResult.sortedResults.length} 可用`,
+      );
+      setResults(detectionResult.sortedResults);
       setResultTimestamp(Date.now());
       setLastTestSignature(buildTestSignature(baseUrl, apiKey));
       setLiveResults([]);
       setPhase("done");
       setProgress("");
       toast(
-        available > 0
-          ? `检测完成：${available}/${sorted.length} 可用`
+        detectionResult.availableCount > 0
+          ? `检测完成：${detectionResult.availableCount}/${detectionResult.sortedResults.length} 可用`
           : "检测完成：全部不可用",
-        available > 0 ? "success" : "warning",
+        detectionResult.availableCount > 0 ? "success" : "warning",
       );
     },
     [],

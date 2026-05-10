@@ -34,8 +34,11 @@ export function useConfigPaths() {
 
   const upsertPath = useCallback((next: ConfigPath) => {
     setConfigPaths((prev) => {
-      const rest = prev.filter((item) => item.id !== next.id);
-      return [...rest, next];
+      const index = prev.findIndex((item) => item.id === next.id);
+      if (index === -1) return [...prev, next];
+      const updated = [...prev];
+      updated[index] = next;
+      return updated;
     });
   }, []);
 
