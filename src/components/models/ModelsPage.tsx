@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { openExternalUrl } from "../../lib/openExternalUrl";
 import { CopyButton } from "../CopyButton";
 import { HintTooltip } from "../HintTooltip";
@@ -36,8 +36,6 @@ import { useModelListSort } from "./hooks/useModelListSort";
 import { useModelImportExport } from "./hooks/useModelImportExport";
 import { useBatchTest } from "./hooks/useBatchTest";
 import { DeleteDialog, SelectionCheckbox } from "./components/SharedDialogs";
-import { QuickTestDialog } from "./components/QuickTestDialog";
-import { DetailRow } from "./components/DetailRow";
 import { formatTime, maskPreviewText, maskKey } from "./utils";
 
 interface Props {
@@ -62,7 +60,6 @@ export function ModelsPage({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
-  const [quickTestProvider, setQuickTestProvider] = useState<Provider | null>(null);
 
   const { filter, sortKey, sortDir, handleSort, handleFilterChange } =
     useModelListSort();
@@ -403,8 +400,7 @@ export function ModelsPage({
                   );
 
                   return (
-                    <Fragment key={p.id}>
-                      <tr
+                    <tr
                         className={`hover:bg-gray-800/30 transition-colors border-l-2 ${
                           hasAvailable
                             ? "border-l-emerald-500/40"
@@ -534,12 +530,6 @@ export function ModelsPage({
                           </div>
                         </td>
                       </tr>
-                      <DetailRow
-                        provider={p}
-                        onSaveResult={onSaveResult}
-                        onOpenQuickTest={setQuickTestProvider}
-                      />
-                    </Fragment>
                   );
                 })}
               </tbody>
@@ -594,13 +584,6 @@ export function ModelsPage({
             </div>
           </div>
         </div>
-      )}
-
-      {quickTestProvider && (
-        <QuickTestDialog
-          provider={quickTestProvider}
-          onClose={() => setQuickTestProvider(null)}
-        />
       )}
     </div>
   );

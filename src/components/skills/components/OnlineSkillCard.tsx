@@ -66,6 +66,7 @@ export function OnlineSkillCard({
           <button
             type="button"
             onMouseEnter={() => void onFetchDetail(skill)}
+            onFocus={() => void onFetchDetail(skill)}
             className="min-w-0 flex-1 text-left"
             aria-label={`查看 ${skill.name} 在线详情`}
           >

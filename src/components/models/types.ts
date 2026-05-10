@@ -11,7 +11,7 @@ export type Filter = "all" | "available" | "untested";
 export type SortKey = "name" | "time" | "available" | null;
 export type SortDir = "asc" | "desc";
 
-export type QuickTestProtocol = "openai" | "claude" | "gemini";
+export type QuickTestProtocol = "chat" | "responses" | "claude" | "gemini";
 export type { ModelTestProtocol } from "../../lib/protocolUtils";
 
 export type RowStatus = "pending" | "done";

@@ -127,7 +127,7 @@ export function OnlineSkillTooltip({
               在线详情
             </div>
             <div className="mt-1 leading-6 text-gray-400">
-              悬浮后会自动拉取并翻译线上详情
+              悬浮或聚焦卡片后会按需拉取并翻译线上详情
             </div>
           </div>
         )}

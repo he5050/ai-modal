@@ -4,6 +4,11 @@ import type {
   LocalizedOnlineSkillDetail,
   SkillEnrichmentJobRequest,
   SkillEnrichmentJobSnapshot,
+  ModelMappingConfig,
+  ModelMappingLogEntry,
+  ModelMappingSettings,
+  ModelMappingStatus,
+  ModelMappingTestResult,
   ModelResult,
   OnlineSkillDetail,
   OnlineSearchResponse,
@@ -67,6 +72,67 @@ export async function testModelConfig(
   model: string,
 ): Promise<ModelResult> {
   return invoke("test_model_config", { baseUrl, apiKey, model });
+}
+
+export async function loadModelMappingConfig(): Promise<ModelMappingConfig> {
+  return invoke("load_model_mapping_config");
+}
+
+export async function loadModelMappingSettings(): Promise<ModelMappingSettings> {
+  return invoke("load_model_mapping_settings");
+}
+
+export async function saveModelMappingSettings(
+  settings: ModelMappingSettings,
+): Promise<ModelMappingStatus> {
+  return invoke("save_model_mapping_settings", { settings });
+}
+
+export async function saveModelMappingConfig(
+  config: ModelMappingConfig,
+): Promise<ModelMappingStatus> {
+  return invoke("save_model_mapping_config", { config });
+}
+
+export async function applyModelMappingToClaude(
+  config: ModelMappingConfig,
+): Promise<string> {
+  return invoke("apply_model_mapping_to_claude", { config });
+}
+
+export async function startModelMappingGateway(
+  config: ModelMappingConfig,
+): Promise<ModelMappingStatus> {
+  return invoke("start_model_mapping_gateway", { config });
+}
+
+export async function stopModelMappingGateway(): Promise<ModelMappingStatus> {
+  return invoke("stop_model_mapping_gateway");
+}
+
+export async function getModelMappingStatus(): Promise<ModelMappingStatus> {
+  return invoke("get_model_mapping_status");
+}
+
+export async function getModelMappingLogs(): Promise<ModelMappingLogEntry[]> {
+  return invoke("get_model_mapping_logs");
+}
+
+export async function testModelMappingProvider(request: {
+  target_url: string;
+  api_key: string;
+  model: string;
+  protocol?: string | null;
+}): Promise<ModelMappingTestResult> {
+  return invoke("test_model_mapping_provider", { request });
+}
+
+export async function getModelMappingAutostart(): Promise<boolean> {
+  return invoke("get_model_mapping_autostart");
+}
+
+export async function setModelMappingAutostart(enabled: boolean): Promise<boolean> {
+  return invoke("set_model_mapping_autostart", { enabled });
 }
 
 export async function scanLocalSkills(): Promise<SkillsCatalogSnapshot> {

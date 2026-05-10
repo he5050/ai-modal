@@ -20,7 +20,10 @@ import type {
 export function useEnrichmentQueue(options: {
   selectedLlmProfile: LlmProfile | null;
   filteredSkills: SkillRecord[];
-  skillEnrichments: Record<string, import("../../../types").SkillEnrichmentRecord>;
+  skillEnrichments: Record<
+    string,
+    import("../../../types").SkillEnrichmentRecord
+  >;
   catalog: SkillsCatalogSnapshot | null;
   enrichmentDelayMs?: number;
   onRecordsUpdate?: (
@@ -79,10 +82,14 @@ export function useEnrichmentQueue(options: {
         if (enrichment.status !== "success") return true;
         if (!enrichment.localizedDescription.trim()) return true;
         if (enrichment.tags.length < 2) return true;
-        if ((enrichment.sourceUpdatedAt ?? null) !== (skill.updatedAt ?? null)) {
+        if (
+          (enrichment.sourceUpdatedAt ?? null) !== (skill.updatedAt ?? null)
+        ) {
           return true;
         }
-        if ((enrichment.sourceDescription ?? "") !== (skill.description ?? "")) {
+        if (
+          (enrichment.sourceDescription ?? "") !== (skill.description ?? "")
+        ) {
           return true;
         }
         return false;
@@ -106,7 +113,7 @@ export function useEnrichmentQueue(options: {
         return;
       }
 
-      const activeSkillDirs = Object.values(snapshot.records)
+      const activeSkillDirs = Object.values(snapshot.records ?? {})
         .filter((record) => record.status === "running")
         .map((record) => record.skillDir)
         .sort((a, b) => a.localeCompare(b));
@@ -159,11 +166,14 @@ export function useEnrichmentQueue(options: {
       setNextEnrichmentRunAt(snapshot.nextRunAt ?? null);
       setEnrichmentQueueMessage(snapshot.message);
       setEnrichmentQueueError(snapshot.errorMessage ?? null);
-      setEnrichmentQueueRecords(snapshot.records);
-      if (Object.keys(snapshot.records).length > 0) {
+      setEnrichmentQueueRecords(snapshot.records ?? {});
+      if (Object.keys(snapshot.records ?? {}).length > 0) {
         const currentCatalog = catalogRef.current;
         const currentOnRecordsUpdate = onRecordsUpdateRef.current;
-        const snapshots: Record<string, import("../../../types").InstalledSkillSnapshot> = {};
+        const snapshots: Record<
+          string,
+          import("../../../types").InstalledSkillSnapshot
+        > = {};
         for (const [skillDir, enrRecord] of Object.entries(snapshot.records)) {
           const skill = (currentCatalog?.skills ?? []).find(
             (item) => item.dir === skillDir,
@@ -226,9 +236,7 @@ export function useEnrichmentQueue(options: {
     }
   }
 
-  async function handleRunEnrichmentQueue(
-    mode: SkillAnnotationMode = "full",
-  ) {
+  async function handleRunEnrichmentQueue(mode: SkillAnnotationMode = "full") {
     const targetSkills =
       mode === "incremental" ? incrementalAnnotationSkills : filteredSkills;
     if (!selectedLlmProfile) {
@@ -252,7 +260,8 @@ export function useEnrichmentQueue(options: {
       baseUrl: selectedLlmProfile.baseUrl,
       apiKey: selectedLlmProfile.apiKey,
       model: selectedLlmProfile.model,
-      requestKind: selectedLlmProfile.requestKind as import("../../../types").LlmRequestKind,
+      requestKind:
+        selectedLlmProfile.requestKind as import("../../../types").LlmRequestKind,
       providerLabel: selectedLlmProfile.label,
       mode,
       delayMs: enrichmentDelayMs,

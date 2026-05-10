@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { Loader2, RefreshCcw, FolderOpen, WandSparkles, X } from "lucide-react";
-import { ACTION_GROUP_BUTTON_ACTIVE_CLASS, ACTION_GROUP_BUTTON_BASE_CLASS, ACTION_GROUP_BUTTON_INACTIVE_CLASS, ACTION_GROUP_WRAPPER_CLASS } from "../../lib/actionGroupStyles";
-import { BUTTON_ACCENT_OUTLINE_CLASS, BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "../../lib/buttonStyles";
+import {
+  ACTION_GROUP_BUTTON_ACTIVE_CLASS,
+  ACTION_GROUP_BUTTON_BASE_CLASS,
+  ACTION_GROUP_BUTTON_INACTIVE_CLASS,
+  ACTION_GROUP_WRAPPER_CLASS,
+} from "../../lib/actionGroupStyles";
+import {
+  BUTTON_ACCENT_OUTLINE_CLASS,
+  BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../../lib/buttonStyles";
 import { FIELD_INPUT_CLASS } from "../../lib/formStyles";
 import { HintTooltip } from "../HintTooltip";
 import { buildInstalledSkillSnapshot } from "../../lib/skillEnrichment";
@@ -50,12 +60,20 @@ export function SkillsPage({
     return localSkills.filter((skill) => {
       const skillSnapshot =
         skillData.installedSkillSnapshots[skill.dir] ??
-        buildInstalledSkillSnapshot(skill, skillData.skillEnrichments[skill.dir] ?? null);
+        buildInstalledSkillSnapshot(
+          skill,
+          skillData.skillEnrichments[skill.dir] ?? null,
+        );
       const matchesQuery =
         !normalizedQuery || skillSnapshot.searchText.includes(normalizedQuery);
       return matchesQuery;
     });
-  }, [skillData.installedSkillSnapshots, localSkills, query, skillData.skillEnrichments]);
+  }, [
+    skillData.installedSkillSnapshots,
+    localSkills,
+    query,
+    skillData.skillEnrichments,
+  ]);
 
   const enrichment = useEnrichmentQueue({
     selectedLlmProfile: llm.selectedLlmProfile,
@@ -104,12 +122,16 @@ export function SkillsPage({
       return;
     }
     setSelectedTargetId((prev) =>
-      skillData.targets.some((item) => item.id === prev) ? prev : skillData.targets[0].id,
+      skillData.targets.some((item) => item.id === prev)
+        ? prev
+        : skillData.targets[0].id,
     );
   }, [skillData.targets]);
 
   useEffect(() => {
-    const selected = skillData.targets.find((item) => item.id === selectedTargetId);
+    const selected = skillData.targets.find(
+      (item) => item.id === selectedTargetId,
+    );
     setPathDraft(selected?.path ?? "");
   }, [selectedTargetId, skillData.targets]);
 
@@ -136,10 +158,12 @@ export function SkillsPage({
       <div className="shrink-0 px-6 pb-6">
         <div className="flex items-center justify-end gap-3">
           <div className={ACTION_GROUP_WRAPPER_CLASS}>
-            {([
-              ["list", "技能列表"],
-              ["manage", "同步与安装"],
-            ] as const).map(([tab, label]) => (
+            {(
+              [
+                ["list", "技能列表"],
+                ["manage", "同步与安装"],
+              ] as const
+            ).map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setSelectedTab(tab)}
@@ -192,7 +216,8 @@ export function SkillsPage({
                     <button
                       onClick={() =>
                         void openPath(
-                          skillData.catalog?.sourceDir || `${skillData.homePath}/.agents/skills`,
+                          skillData.catalog?.sourceDir ||
+                            `${skillData.homePath}/.agents/skills`,
                         )
                       }
                       className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
@@ -238,13 +263,17 @@ export function SkillsPage({
                   <EnrichmentProgress
                     enrichmentQueueMessage={enrichment.enrichmentQueueMessage}
                     enrichmentQueuePhase={enrichment.enrichmentQueuePhase}
-                    enrichmentQueueCompleted={enrichment.enrichmentQueueCompleted}
+                    enrichmentQueueCompleted={
+                      enrichment.enrichmentQueueCompleted
+                    }
                     enrichmentQueueTotal={enrichment.enrichmentQueueTotal}
                     enrichmentActiveSummary={enrichment.enrichmentActiveSummary}
                     nextEnrichmentSeconds={enrichment.nextEnrichmentSeconds}
                     enrichmentQueueError={enrichment.enrichmentQueueError}
                     failedEnrichmentRecords={enrichment.failedEnrichmentRecords}
-                    enrichmentProgressPercent={enrichment.enrichmentProgressPercent}
+                    enrichmentProgressPercent={
+                      enrichment.enrichmentProgressPercent
+                    }
                     compact
                   />
                 )}
@@ -291,12 +320,22 @@ export function SkillsPage({
               pathDraft={pathDraft}
               onSetTargetEnabled={skillData.setTargetEnabled}
               onDeleteCustomTarget={skillData.handleDeleteCustomTarget}
-              onSaveTargetPath={() => skillData.handleSaveTargetPath(skillData.targets.find((t) => t.id === selectedTargetId) ?? null, pathDraft)}
+              onSaveTargetPath={() =>
+                skillData.handleSaveTargetPath(
+                  skillData.targets.find((t) => t.id === selectedTargetId) ??
+                    null,
+                  pathDraft,
+                )
+              }
               onAddCustomTarget={skillData.handleAddCustomTarget}
               onSelectTargetId={setSelectedTargetId}
               onSetPathDraft={setPathDraft}
-              onRefreshTargetStatuses={() => void skillData.refreshTargetStatuses()}
-              onSyncEnabledTargets={() => void skillData.handleSyncEnabledTargets()}
+              onRefreshTargetStatuses={() =>
+                void skillData.refreshTargetStatuses()
+              }
+              onSyncEnabledTargets={() =>
+                void skillData.handleSyncEnabledTargets()
+              }
             />
 
             <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
@@ -360,29 +399,35 @@ export function SkillsPage({
                     searchDuration={online.searchDuration}
                     searched={online.searched}
                     searchResults={online.searchResults}
-                    localizedOnlineSkillDetails={skillData.localizedOnlineSkillDetails}
-                    loadingLocalizedOnlineDetailIds={online.loadingLocalizedOnlineDetailIds}
-                    localizedOnlineDetailErrors={online.localizedOnlineDetailErrors}
+                    localizedOnlineSkillDetails={
+                      skillData.localizedOnlineSkillDetails
+                    }
+                    loadingLocalizedOnlineDetailIds={
+                      online.loadingLocalizedOnlineDetailIds
+                    }
+                    localizedOnlineDetailErrors={
+                      online.localizedOnlineDetailErrors
+                    }
                     installingOnlineSkillIds={online.installingOnlineSkillIds}
                     copiedSkillIds={online.copiedSkillIds}
                     commandRunning={command.commandRunning}
                     onSearch={online.handleSearch}
                     onInstallOnlineSkill={online.handleInstallOnlineSkill}
                     onCopyInstallCommand={online.handleCopyInstallCommand}
-                    onEnsureLocalizedOnlineSkillDetail={online.ensureLocalizedOnlineSkillDetail}
+                    onEnsureLocalizedOnlineSkillDetail={
+                      online.ensureLocalizedOnlineSkillDetail
+                    }
                   />
                 )}
 
-                {installMode !== "search" && (
-                  <InstallModes
-                    installMode={installMode}
-                    setInstallMode={setInstallMode}
-                    commandRunning={command.commandRunning}
-                    homePath={skillData.homePath}
-                    localSkills={localSkills}
-                    onExecuteSkillsCommand={command.executeSkillsCommand}
-                  />
-                )}
+                <InstallModes
+                  installMode={installMode}
+                  setInstallMode={setInstallMode}
+                  commandRunning={command.commandRunning}
+                  homePath={skillData.homePath}
+                  localSkills={localSkills}
+                  onExecuteSkillsCommand={command.executeSkillsCommand}
+                />
               </div>
 
               <CommandLog
@@ -411,7 +456,9 @@ export function SkillsPage({
           availableLlmProfiles={llm.availableLlmProfiles}
           onSelectLlmProfile={llm.setSelectedLlmProfileId}
           filteredSkillsCount={filteredSkills.length}
-          incrementalAnnotationSkillsCount={enrichment.incrementalAnnotationSkills.length}
+          incrementalAnnotationSkillsCount={
+            enrichment.incrementalAnnotationSkills.length
+          }
           enrichmentQueueRunning={enrichment.enrichmentQueueRunning}
           enrichmentQueueMessage={enrichment.enrichmentQueueMessage}
           enrichmentQueuePhase={enrichment.enrichmentQueuePhase}

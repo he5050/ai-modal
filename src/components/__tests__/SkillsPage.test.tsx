@@ -393,7 +393,7 @@ describe("SkillsPage", () => {
     await renderSkillsPage();
 
     await user.click(screen.getByRole("button", { name: "同步与安装" }));
-    await user.click(screen.getByRole("button", { name: "更新全部" }));
+    await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
     await waitFor(() => {
@@ -867,14 +867,16 @@ describe("SkillsPage", () => {
     await renderSkillsPage();
 
     await user.click(screen.getByRole("button", { name: "同步与安装" }));
-    await user.click(screen.getByRole("button", { name: "更新全部" }));
+    await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
     expect(
       await screen.findByText("开始更新全部：更新全部全局技能"),
     ).toBeInTheDocument();
 
-    (resolveCommand as ((value: SkillsCommandResult) => void) | null)?.(createCommandResult());
+    (resolveCommand as ((value: SkillsCommandResult) => void) | null)?.(
+      createCommandResult(),
+    );
 
     await waitFor(() => {
       expect(mockRunSkillsCommand).toHaveBeenCalledWith({
@@ -898,7 +900,7 @@ describe("SkillsPage", () => {
     await renderSkillsPage();
 
     await user.click(screen.getByRole("button", { name: "同步与安装" }));
-    await user.click(screen.getByRole("button", { name: "更新全部" }));
+    await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
     expect(
@@ -925,7 +927,7 @@ describe("SkillsPage", () => {
     await renderSkillsPage();
 
     await user.click(screen.getByRole("button", { name: "同步与安装" }));
-    await user.click(screen.getByRole("button", { name: "更新全部" }));
+    await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
     await waitFor(() => {
@@ -957,8 +959,13 @@ describe("SkillsPage", () => {
 
     await renderSkillsPage();
     await user.click(screen.getByRole("button", { name: "同步与安装" }));
-    await user.click(screen.getByRole("button", { name: "更新全部" }));
+    await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
+
+    // 等待 useEffect 完成，确保 progressHandler 已被设置
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
     await act(async () => {
       progressHandler?.({
@@ -1065,7 +1072,7 @@ describe("SkillsPage", () => {
     expect(await screen.findByText("frontend-design")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: "查看 frontend-design 详情" }),
+      screen.getByRole("button", { name: "查看 frontend-design 在线详情" }),
     );
 
     await waitFor(() => {

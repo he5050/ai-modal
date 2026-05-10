@@ -16,6 +16,7 @@ import {
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
 import { PromptDetailPage } from "./components/PromptDetailPage";
 import { SkillsPage } from "./components/SkillsPage";
+import { ModelMappingPage } from "./components/ModelMappingPage";
 import { loadPersistedJson } from "./lib/persistence";
 import { LeaveConfirmDialog, PageFallback } from "./components/shared/LeaveConfirmDialog";
 import { useProviders } from "./hooks/useProviders";
@@ -205,6 +206,11 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-200 overflow-hidden">
+      <div
+        data-tauri-drag-region
+        className="fixed left-52 right-0 top-0 z-50 h-7 cursor-move bg-gray-950/80"
+        aria-hidden="true"
+      />
       <Sidebar
         page={page}
         onPageChange={handlePageChange}
@@ -243,6 +249,12 @@ export default function App() {
             onEdit={handleEditFromList}
             onDelete={handleDeleteProvider}
             onSaveResult={saveResult}
+          />
+        )}
+        {page === "model-mapping" && (
+          <ModelMappingPage
+            providers={providers}
+            onDirtyChange={setEditingDirty}
           />
         )}
         {page === "skills" && (

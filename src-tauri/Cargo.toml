@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 tempfile = "3"
 
 [dependencies]
-tauri             = { version = "2", features = ["macos-private-api"] }
+tauri             = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs   = { version = "2", features = ["watch"] }
 tauri-plugin-opener = "2"
@@ -22,9 +22,11 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
-reqwest            = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest            = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 percent-encoding = "2"
 tokio      = { version = "1", features = ["full"] }
+axum = "0.7"
+futures-util = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"

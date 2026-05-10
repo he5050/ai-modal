@@ -1,10 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { RulesPage } from '../RulesPage'
-import type { RulePath } from '../../types'
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { RulesPage } from "../RulesPage";
+import type { RulePath } from "../../types";
 
-const watchCallbacks: Array<(event: unknown) => void | Promise<void>> = []
+const watchCallbacks: Array<(event: unknown) => void | Promise<void>> = [];
 
 const {
   mockHomeDir,
@@ -26,58 +26,62 @@ const {
   mockPickPath: vi.fn(),
   mockOpenPath: vi.fn(),
   mockToast: vi.fn(),
-}))
+}));
 
-vi.mock('@tauri-apps/api/path', () => ({
+vi.mock("@tauri-apps/api/path", () => ({
   dirname: vi
     .fn()
-    .mockImplementation(async (path: string) => path.split('/').slice(0, -1).join('/') || '/'),
+    .mockImplementation(
+      async (path: string) => path.split("/").slice(0, -1).join("/") || "/",
+    ),
   homeDir: mockHomeDir,
-}))
+}));
 
-vi.mock('@tauri-apps/plugin-fs', () => ({
+vi.mock("@tauri-apps/plugin-fs", () => ({
   exists: mockExists,
   mkdir: mockMkdir,
   readTextFile: mockReadTextFile,
   watch: mockWatch,
   writeTextFile: mockWriteTextFile,
-}))
+}));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
+vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: mockPickPath,
-}))
+}));
 
-vi.mock('@tauri-apps/plugin-opener', () => ({
+vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: mockOpenPath,
-}))
+}));
 
-vi.mock('../../lib/toast', () => ({
+vi.mock("../../lib/toast", () => ({
   toast: mockToast,
-}))
+}));
 
-const storedPaths: RulePath[] = []
+const storedPaths: RulePath[] = [];
 
-describe('RulesPage', () => {
+describe("RulesPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    watchCallbacks.length = 0
+    vi.clearAllMocks();
+    watchCallbacks.length = 0;
 
-    mockHomeDir.mockResolvedValue('/Users/test')
-    mockExists.mockResolvedValue(true)
-    mockMkdir.mockResolvedValue(undefined)
-    mockWriteTextFile.mockResolvedValue(undefined)
-    mockPickPath.mockResolvedValue(null)
-    mockOpenPath.mockResolvedValue(undefined)
-    mockWatch.mockImplementation(async (_path: string, cb: (event: unknown) => void | Promise<void>) => {
-      watchCallbacks.push(cb)
-      return vi.fn()
-    })
-  })
+    mockHomeDir.mockResolvedValue("/Users/test");
+    mockExists.mockResolvedValue(true);
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteTextFile.mockResolvedValue(undefined);
+    mockPickPath.mockResolvedValue(null);
+    mockOpenPath.mockResolvedValue(undefined);
+    mockWatch.mockImplementation(
+      async (_path: string, cb: (event: unknown) => void | Promise<void>) => {
+        watchCallbacks.push(cb);
+        return vi.fn();
+      },
+    );
+  });
 
-  it('refreshes the preview when the current rule file changes on disk', async () => {
+  it("refreshes the preview when the current rule file changes on disk", async () => {
     mockReadTextFile
-      .mockResolvedValueOnce('# Rule v1')
-      .mockResolvedValueOnce('# Rule v2')
+      .mockResolvedValueOnce("# Rule v1")
+      .mockResolvedValueOnce("# Rule v2");
 
     render(
       <RulesPage
@@ -87,27 +91,30 @@ describe('RulesPage', () => {
         onDeletePath={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
-    )
+    );
 
-    const editor = await screen.findByTestId('codemirror')
+    const editor = await screen.findByTestId("codemirror");
     await waitFor(() => {
-      expect(editor).toHaveValue('# Rule v1')
-      expect(watchCallbacks).toHaveLength(1)
-    })
+      expect(editor).toHaveValue("# Rule v1");
+      expect(watchCallbacks).toHaveLength(1);
+    });
 
     await act(async () => {
-      await watchCallbacks[0]?.({ kind: { type: 'modify' } })
-    })
+      await watchCallbacks[0]?.({
+        type: "modify",
+        paths: ["/Users/test/.rules/rules.md"],
+      });
+    });
 
     await waitFor(() => {
-      expect(editor).toHaveValue('# Rule v2')
-    })
-  })
+      expect(editor).toHaveValue("# Rule v2");
+    });
+  });
 
-  it('does not overwrite unsaved draft content when the file changes externally', async () => {
+  it("does not overwrite unsaved draft content when the file changes externally", async () => {
     mockReadTextFile
-      .mockResolvedValueOnce('# Rule v1')
-      .mockResolvedValueOnce('# Rule external')
+      .mockResolvedValueOnce("# Rule v1")
+      .mockResolvedValueOnce("# Rule external");
 
     render(
       <RulesPage
@@ -117,24 +124,27 @@ describe('RulesPage', () => {
         onDeletePath={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
-    )
+    );
 
-    const editor = await screen.findByTestId('codemirror')
+    const editor = await screen.findByTestId("codemirror");
     await waitFor(() => {
-      expect(editor).toHaveValue('# Rule v1')
-      expect(watchCallbacks).toHaveLength(1)
-    })
+      expect(editor).toHaveValue("# Rule v1");
+      expect(watchCallbacks).toHaveLength(1);
+    });
 
-    await userEvent.type(editor, '\nlocal draft')
+    await userEvent.type(editor, "\nlocal draft");
     await waitFor(() => {
-      expect(screen.getByText('有未保存改动')).toBeInTheDocument()
-    })
+      expect(screen.getByText("有未保存改动")).toBeInTheDocument();
+    });
 
     await act(async () => {
-      await watchCallbacks[0]?.({ kind: { type: 'modify' } })
-    })
+      await watchCallbacks[0]?.({
+        type: "modify",
+        paths: ["/Users/test/.rules/rules.md"],
+      });
+    });
 
-    expect(editor).toHaveValue('# Rule v1\nlocal draft')
-    expect(mockReadTextFile).toHaveBeenCalledTimes(1)
-  })
-})
+    expect(editor).toHaveValue("# Rule v1\nlocal draft");
+    expect(mockReadTextFile).toHaveBeenCalledTimes(1);
+  });
+});

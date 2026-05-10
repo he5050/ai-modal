@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { searchOnlineSkills, inspectOnlineSkill, translateOnlineSkillDetail, runSkillsCommand, scanLocalSkills, syncSkillTargets } from "../../../api";
 import { logger } from "../../../lib/devlog";
 import { toast } from "../../../lib/toast";
-import { ONLINE_SKILL_DETAIL_PREFETCH_CONCURRENCY } from "../constants";
 import type { LlmProfile } from "./useLlmProfile";
 import type {
   OnlineSkill,
@@ -70,7 +69,6 @@ export function useOnlineSearch(options: UseOnlineSearchOptions) {
     null,
   );
 
-  const prefetchingOnlineDetailIdsRef = useRef<Set<string>>(new Set());
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
 
@@ -172,77 +170,6 @@ export function useOnlineSearch(options: UseOnlineSearchOptions) {
       });
     }
   }
-
-  // ─── Prefetch online details ───────────────────────────────────
-  useEffect(() => {
-    if (loadingSearch || searchResults.length === 0) return;
-    if (!selectedLlmProfile) return;
-
-    const pendingSkills = searchResults.filter(
-      (skill) =>
-        !localizedOnlineSkillDetails[skill.id] &&
-        !loadingLocalizedOnlineDetailIds.has(skill.id) &&
-        !localizedOnlineDetailErrors[skill.id] &&
-        !prefetchingOnlineDetailIdsRef.current.has(skill.id),
-    );
-
-    if (pendingSkills.length === 0) return;
-
-    pendingSkills.forEach((skill) =>
-      prefetchingOnlineDetailIdsRef.current.add(skill.id),
-    );
-
-    logger.info(
-      `[技能查询] 后台预取详情启动: total=${pendingSkills.length} concurrency=${ONLINE_SKILL_DETAIL_PREFETCH_CONCURRENCY}`,
-    );
-
-    let cancelled = false;
-    let cursor = 0;
-
-    async function worker() {
-      while (!cancelled) {
-        const currentIndex = cursor;
-        cursor += 1;
-        if (currentIndex >= pendingSkills.length) return;
-
-        const skill = pendingSkills[currentIndex];
-        try {
-          await ensureLocalizedOnlineSkillDetail(skill);
-        } finally {
-          prefetchingOnlineDetailIdsRef.current.delete(skill.id);
-        }
-      }
-    }
-
-    void Promise.all(
-      Array.from(
-        {
-          length: Math.min(
-            ONLINE_SKILL_DETAIL_PREFETCH_CONCURRENCY,
-            pendingSkills.length,
-          ),
-        },
-        () => worker(),
-      ),
-    ).then(() => {
-      if (!cancelled) {
-        logger.info(
-          `[技能查询] 后台预取详情完成: total=${pendingSkills.length}`,
-        );
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadingLocalizedOnlineDetailIds,
-    loadingSearch,
-    localizedOnlineDetailErrors,
-    localizedOnlineSkillDetails,
-    searchResults,
-    selectedLlmProfile,
-  ]);
 
   // ─── Install helpers ───────────────────────────────────────────
   function isOnlineSkillInstalled(skill: OnlineSkill): boolean {

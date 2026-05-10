@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   BookOpen,
+  GitBranch,
   List,
   MessageSquareQuote,
   ScanSearch,
@@ -22,6 +23,7 @@ interface AppNavItem {
 export const APP_NAV_ITEMS: AppNavItem[] = [
   { key: 'detect', label: '模型检测', Icon: ScanSearch, section: 'core' },
   { key: 'models', label: '模型列表', Icon: List, section: 'core' },
+  { key: 'model-mapping', label: '模型映射', Icon: GitBranch, section: 'core' },
   { key: 'skills', label: '技能管理', Icon: Sparkles, section: 'assets' },
   { key: 'prompts', label: '提示词管理', Icon: MessageSquareQuote, section: 'assets' },
   { key: 'rules', label: '规则管理', Icon: BookOpen, section: 'assets' },

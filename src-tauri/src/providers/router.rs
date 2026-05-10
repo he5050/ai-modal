@@ -108,20 +108,18 @@ pub async fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, S
 }
 
 /// 批量检测模型可用性。
-/// 为避免触发限流，统一只走 OpenAI Chat Completions 协议（最通用的格式），
-/// 不测 fallback。如需精确探测协议支持情况，请使用单模型测试。
+/// 默认按 chat -> responses -> claude -> gemini 顺序回退；
+/// OpenRouter base_url 会先走 openrouter，再走其余协议。
 pub async fn test_models(
     base_url: &str,
     api_key: &str,
     models: Vec<String>,
 ) -> Result<Vec<ModelResult>, String> {
+    let batch_protocols = determine_test_protocols(base_url, "");
     let client = Arc::new(client()?);
     let semaphore = Arc::new(Semaphore::new(5));
     let base_url = Arc::new(base_url.to_string());
     let api_key = Arc::new(api_key.to_string());
-
-    // 批量检测固定只测 OpenAI Chat，避免每个模型 fallback 多次请求触发限流
-    let batch_protocols: Vec<ModelProtocol> = vec![ModelProtocol::OpenAi];
 
     let mut handles = Vec::new();
     for model_id in models {
@@ -173,6 +171,7 @@ pub async fn test_single_model(
     .await)
 }
 
+#[allow(dead_code)]
 pub fn infer_protocol_from_model(model: &str) -> ModelProtocol {
     let normalized = model
         .trim()
@@ -387,59 +386,23 @@ fn parse_requested_protocols(protocols: &[String]) -> Vec<ModelProtocol> {
     parsed
 }
 
-fn determine_test_protocols(base_url: &str, model: &str) -> Vec<ModelProtocol> {
+fn determine_test_protocols(base_url: &str, _model: &str) -> Vec<ModelProtocol> {
     let base_protocol = infer_protocol_from_base_url(base_url);
-    let model_protocol = infer_protocol_from_model(model);
-
-    match base_protocol {
-        // OpenRouter 统一走 OpenRouter 协议，不 fallback
-        ModelProtocol::OpenRouter => vec![ModelProtocol::OpenRouter],
-        // 对于 Claude/Gemini 专用 base_url，优先走对应协议，然后尝试 OpenAI
-        ModelProtocol::Claude => {
-            if model_protocol == ModelProtocol::Claude {
-                vec![ModelProtocol::Claude, ModelProtocol::OpenAi]
-            } else {
-                vec![
-                    ModelProtocol::Claude,
-                    ModelProtocol::OpenAi,
-                    ModelProtocol::Gemini,
-                ]
-            }
-        }
-        ModelProtocol::Gemini => {
-            if model_protocol == ModelProtocol::Gemini {
-                vec![ModelProtocol::Gemini, ModelProtocol::OpenAi]
-            } else {
-                vec![
-                    ModelProtocol::Gemini,
-                    ModelProtocol::OpenAi,
-                    ModelProtocol::Claude,
-                ]
-            }
-        }
-        // 通用 OpenAI 兼容地址：按模型名推断优先，然后 fallback 其他协议
-        ModelProtocol::OpenAi | ModelProtocol::OpenAiResponses => {
-            let mut protocols = Vec::new();
-            // 优先使用模型推断的协议
-            protocols.push(model_protocol);
-            // 然后尝试 OpenAI Chat
-            if !protocols.contains(&ModelProtocol::OpenAi) {
-                protocols.push(ModelProtocol::OpenAi);
-            }
-            // 再尝试 OpenAI Responses
-            if !protocols.contains(&ModelProtocol::OpenAiResponses) {
-                protocols.push(ModelProtocol::OpenAiResponses);
-            }
-            // 再尝试 Claude 和 Gemini
-            if !protocols.contains(&ModelProtocol::Claude) {
-                protocols.push(ModelProtocol::Claude);
-            }
-            if !protocols.contains(&ModelProtocol::Gemini) {
-                protocols.push(ModelProtocol::Gemini);
-            }
-            protocols
-        }
+    if base_protocol == ModelProtocol::OpenRouter {
+        return vec![
+            ModelProtocol::OpenRouter,
+            ModelProtocol::OpenAiResponses,
+            ModelProtocol::Claude,
+            ModelProtocol::Gemini,
+        ];
     }
+
+    vec![
+        ModelProtocol::OpenAi,
+        ModelProtocol::OpenAiResponses,
+        ModelProtocol::Claude,
+        ModelProtocol::Gemini,
+    ]
 }
 
 fn apply_auth(builder: RequestBuilder, protocol: ModelProtocol, api_key: &str) -> RequestBuilder {
@@ -1045,11 +1008,46 @@ mod tests {
     fn openrouter_base_url_overrides_model_prefix_protocol_detection() {
         assert_eq!(
             determine_test_protocols("https://openrouter.ai/api", "openai/gpt-5.2"),
-            vec![ModelProtocol::OpenRouter]
+            vec![
+                ModelProtocol::OpenRouter,
+                ModelProtocol::OpenAiResponses,
+                ModelProtocol::Claude,
+                ModelProtocol::Gemini
+            ]
         );
         assert_eq!(
             determine_test_protocols("https://openrouter.ai/api", "anthropic/claude-3.7-sonnet"),
-            vec![ModelProtocol::OpenRouter]
+            vec![
+                ModelProtocol::OpenRouter,
+                ModelProtocol::OpenAiResponses,
+                ModelProtocol::Claude,
+                ModelProtocol::Gemini
+            ]
+        );
+    }
+
+    #[test]
+    fn uses_default_fallback_order_for_non_openrouter_base_url() {
+        assert_eq!(
+            determine_test_protocols("https://api.openai.com/v1", "claude-sonnet-4"),
+            vec![
+                ModelProtocol::OpenAi,
+                ModelProtocol::OpenAiResponses,
+                ModelProtocol::Claude,
+                ModelProtocol::Gemini
+            ]
+        );
+        assert_eq!(
+            determine_test_protocols(
+                "https://generativelanguage.googleapis.com/v1beta/openai",
+                "gemini-2.0-flash"
+            ),
+            vec![
+                ModelProtocol::OpenAi,
+                ModelProtocol::OpenAiResponses,
+                ModelProtocol::Claude,
+                ModelProtocol::Gemini
+            ]
         );
     }
 

@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BUTTON_ICON_SM_CLASS } from "../lib/buttonStyles";
+import { FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
 import { savePersistedJson } from "../lib/persistence";
+import { loadModelMappingSettings, saveModelMappingSettings } from "../api";
 import { HintTooltip } from "./HintTooltip";
 import { ModelConfigSection } from "./ModelConfigSection";
 import { toast } from "../lib/toast";
@@ -12,6 +14,7 @@ export const CONCURRENCY_KEY = "ai-modal-concurrency";
 export const CONCURRENCY_DB_KEY = "concurrency";
 const DEFAULT_CONCURRENCY = 5;
 const MAX_CONCURRENCY = 20;
+const DEFAULT_MODEL_MAPPING_PORT = 5678;
 
 export function getConcurrency(): number {
   const v = parseInt(localStorage.getItem(CONCURRENCY_KEY) ?? "", 10);
@@ -34,6 +37,25 @@ export function SettingsPage({
   onDirtyChange,
 }: Props) {
   const [concurrency, setConcurrency] = useState<number>(getConcurrency);
+  const [modelMappingPort, setModelMappingPort] = useState(String(DEFAULT_MODEL_MAPPING_PORT));
+  const [modelMappingPortSaved, setModelMappingPortSaved] = useState(DEFAULT_MODEL_MAPPING_PORT);
+  const [modelMappingPortBusy, setModelMappingPortBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    loadModelMappingSettings()
+      .then((settings) => {
+        if (!active) return;
+        setModelMappingPort(String(settings.port));
+        setModelMappingPortSaved(settings.port);
+      })
+      .catch((error) => {
+        console.error("Failed to load model mapping settings", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleToggle() {
     const next = !debugEnabled;
@@ -58,6 +80,27 @@ export function SettingsPage({
     } catch (error) {
       console.error("Failed to update concurrency", error);
       toast("检测并发数更新失败", "error");
+    }
+  }
+
+  async function handleModelMappingPortSave() {
+    const port = Number.parseInt(modelMappingPort, 10);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      toast("模型映射代理端口必须在 1 - 65535 之间", "warning");
+      return;
+    }
+    if (port === modelMappingPortSaved) return;
+    setModelMappingPortBusy(true);
+    try {
+      await saveModelMappingSettings({ port });
+      setModelMappingPort(String(port));
+      setModelMappingPortSaved(port);
+      toast("模型映射代理端口已保存，重启代理后生效", "success");
+    } catch (error) {
+      console.error("Failed to update model mapping port", error);
+      toast("模型映射代理端口更新失败", "error");
+    } finally {
+      setModelMappingPortBusy(false);
     }
   }
 
@@ -136,6 +179,37 @@ export function SettingsPage({
                   className={BUTTON_ICON_SM_CLASS}
                 >
                   +
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-200">
+                    模型映射代理端口
+                  </p>
+                  <HintTooltip content="Claude Desktop 连接模型映射 Gateway 使用的本地端口。修改后会更新 Claude 配置，运行中的代理需要停止再启动才会监听新端口。" />
+                </div>
+                <p className="mt-1 text-xs text-gray-600">
+                  当前地址：http://127.0.0.1:{modelMappingPortSaved}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={modelMappingPort}
+                  onChange={(event) => setModelMappingPort(event.target.value.replace(/[^\d]/g, "").slice(0, 5))}
+                  onBlur={() => void handleModelMappingPortSave()}
+                  className={`${FIELD_MONO_INPUT_CLASS} w-28 text-center`}
+                  inputMode="numeric"
+                  placeholder="5678"
+                />
+                <button
+                  onClick={() => void handleModelMappingPortSave()}
+                  disabled={modelMappingPortBusy || modelMappingPort === String(modelMappingPortSaved)}
+                  className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-indigo-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  保存
                 </button>
               </div>
             </div>

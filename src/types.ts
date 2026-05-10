@@ -1,6 +1,7 @@
 export type AppPage =
   | "detect"
   | "models"
+  | "model-mapping"
   | "skills"
   | "prompts"
   | "prompt-detail"
@@ -94,6 +95,67 @@ export interface Provider {
   apiKey: string;
   createdAt: number;
   lastResult?: ProviderLastResult;
+}
+
+export type ModelMappingThinkingEffort = "" | "off" | "high" | "max";
+
+export interface ModelMappingEntry {
+  id?: string;
+  name: string;
+  to_1m: string;
+  enabled?: boolean;
+  protocol?: LlmRequestKind | "openrouter" | string;
+}
+
+export interface ModelMappingProvider {
+  id?: string | null;
+  name: string;
+  target_url: string;
+  api_key: string;
+  models: ModelMappingEntry[];
+  thinking_effort: ModelMappingThinkingEffort | string;
+}
+
+export interface ModelMappingConfig {
+  providers: ModelMappingProvider[];
+}
+
+export interface ModelMappingSettings {
+  port: number;
+}
+
+export interface ModelMappingFlatEntry {
+  slot: string;
+  name: string;
+  provider_name: string;
+  target_url: string;
+  supports_1m: boolean;
+  thinking_effort: string;
+  protocol: string;
+}
+
+export interface ModelMappingStatus {
+  running: boolean;
+  autostart: boolean;
+  port: number;
+  config_path: string;
+  claude_dir?: string | null;
+  model_count: number;
+  mapped_models: ModelMappingFlatEntry[];
+}
+
+export interface ModelMappingTestResult {
+  ok: boolean;
+  status?: number | null;
+  message: string;
+}
+
+export interface ModelMappingLogEntry {
+  time: string;
+  model: string;
+  target_model: string;
+  status: number;
+  thinking: string;
 }
 
 export interface SkillRecord {

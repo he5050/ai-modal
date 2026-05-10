@@ -1,6 +1,7 @@
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -188,11 +189,109 @@ fn online_skill_install_command(source: &str, skill_id: &str) -> String {
     )
 }
 
-fn extract_between<'a>(text: &'a str, start_marker: &str, end_marker: &str) -> Option<&'a str> {
-    let start = text.find(start_marker)? + start_marker.len();
-    let tail = &text[start..];
-    let end = tail.find(end_marker)?;
-    Some(&tail[..end])
+fn extract_balanced_div(html: &str, start: usize) -> Option<String> {
+    let bytes = html.as_bytes();
+    if start >= bytes.len() || !bytes[start..].starts_with(b"<div") {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    let mut index = start;
+    while index < bytes.len() {
+        if bytes[index..].starts_with(b"<div") {
+            depth += 1;
+            index += 4;
+            continue;
+        }
+        if bytes[index..].starts_with(b"</div>") {
+            if depth == 0 {
+                return None;
+            }
+            depth -= 1;
+            index += 6;
+            if depth == 0 {
+                return Some(html[start..index].to_string());
+            }
+            continue;
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn find_section_anchor(html: &str, title: &str) -> Option<usize> {
+    let mut cursor = 0usize;
+    while let Some(rel) = html[cursor..].find(title) {
+        let idx = cursor + rel;
+        if idx > 0 && html.as_bytes()[idx - 1] == b'>' {
+            return Some(idx);
+        }
+        cursor = idx + title.len();
+    }
+    None
+}
+
+fn extract_next_prose_block_after(html: &str, anchor: usize) -> Option<String> {
+    let after = &html[anchor..];
+    let prose_rel = after.find("<div class=\"prose ")?;
+    let prose_start = anchor + prose_rel;
+    extract_balanced_div(html, prose_start)
+}
+
+fn extract_section_prose_by_title(html: &str, title: &str) -> Option<String> {
+    let anchor = find_section_anchor(html, title)?;
+    extract_next_prose_block_after(html, anchor)
+}
+
+fn description_from_json_ld(value: &Value) -> Option<String> {
+    match value {
+        Value::Array(items) => items.iter().find_map(description_from_json_ld),
+        Value::Object(map) => {
+            let type_name = map
+                .get("@type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let description = map
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(ToString::to_string);
+
+            if matches!(type_name, "SoftwareApplication" | "Article" | "WebPage") && description.is_some()
+            {
+                return description;
+            }
+
+            description.or_else(|| map.values().find_map(description_from_json_ld))
+        }
+        _ => None,
+    }
+}
+
+fn extract_json_ld_description(html: &str) -> Option<String> {
+    let marker = "<script type=\"application/ld+json\">";
+    let mut cursor = 0usize;
+
+    while let Some(rel) = html[cursor..].find(marker) {
+        let start = cursor + rel + marker.len();
+        let tail = &html[start..];
+        let Some(end_rel) = tail.find("</script>") else {
+            break;
+        };
+        let payload = tail[..end_rel].trim();
+        if !payload.is_empty() {
+            if let Ok(value) = serde_json::from_str::<Value>(payload) {
+                if let Some(description) = description_from_json_ld(&value) {
+                    return Some(description);
+                }
+            }
+        }
+        cursor = start + end_rel + "</script>".len();
+    }
+
+    None
 }
 
 fn decode_html_entities(value: &str) -> String {
@@ -418,6 +517,167 @@ fn emit_skills_progress(
 ) -> Result<(), String> {
     app.emit("skills-command-progress", payload)
         .map_err(|error| format!("发送技能进度事件失败：{error}"))
+}
+
+fn build_pnpm_dlx_command_from_npx(command: &[String]) -> Option<Vec<String>> {
+    if command.len() < 4 || command[0] != "npx" {
+        return None;
+    }
+    let skills_index = command.iter().position(|part| part == "skills")?;
+    let mut next = vec![
+        "pnpm".to_string(),
+        "dlx".to_string(),
+        "skills".to_string(),
+    ];
+    next.extend(command[skills_index + 1..].iter().cloned());
+    Some(next)
+}
+
+fn should_retry_with_same_runner(stderr: &str) -> bool {
+    let text = stderr.to_ascii_lowercase();
+    text.contains("enotempty")
+        || text.contains("ebusy")
+        || text.contains("eexist")
+        || text.contains("rename")
+        || text.contains("resource busy")
+}
+
+async fn execute_skills_command_once(
+    app: &AppHandle,
+    action: SkillsCommandAction,
+    home: &Path,
+    command: &[String],
+    runner_label: &str,
+) -> Result<(std::process::ExitStatus, String, String), String> {
+    let mut child = Command::new(&command[0])
+        .args(&command[1..])
+        .current_dir(home)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("执行 {runner_label} 失败：{error}"))?;
+
+    let mut stdout_reader = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("无法读取 {runner_label} stdout"))?;
+    let mut stderr_reader = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("无法读取 {runner_label} stderr"))?;
+
+    let stdout_app = app.clone();
+    let stdout_action = action.clone();
+    let stdout_task = tokio::spawn(async move {
+        let mut collected = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let mut pending = String::new();
+        let mut last_progress: Option<(usize, usize, String)> = None;
+        let mut started = false;
+
+        loop {
+            let bytes_read = stdout_reader
+                .read(&mut chunk)
+                .await
+                .map_err(|error| format!("读取命令 stdout 失败：{error}"))?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            collected.extend_from_slice(&chunk[..bytes_read]);
+            let text = String::from_utf8_lossy(&chunk[..bytes_read]);
+            pending.push_str(&text);
+
+            let sanitized = strip_ansi_sequences(&pending);
+            if !started && sanitized.contains("Checking for skill updates...") {
+                started = true;
+                emit_skills_progress(
+                    &stdout_app,
+                    SkillsCommandProgressEvent {
+                        action: stdout_action.clone(),
+                        stage: "checking".to_string(),
+                        message: "正在检查全局技能更新...".to_string(),
+                        current: Some(0),
+                        total: None,
+                        skill_name: None,
+                    },
+                )?;
+            }
+
+            for segment in sanitized.split(['\r', '\n']) {
+                if let Some((current, total, skill_name)) = parse_skills_progress_line(segment) {
+                    let next_progress = (current, total, skill_name.clone());
+                    if last_progress.as_ref() != Some(&next_progress) {
+                        last_progress = Some(next_progress.clone());
+                        emit_skills_progress(
+                            &stdout_app,
+                            SkillsCommandProgressEvent {
+                                action: stdout_action.clone(),
+                                stage: "checking".to_string(),
+                                message: format!("正在检查 {current} / {total}：{skill_name}"),
+                                current: Some(current),
+                                total: Some(total),
+                                skill_name: Some(skill_name),
+                            },
+                        )?;
+                    }
+                } else if segment.contains("All global skills are up to date") {
+                    emit_skills_progress(
+                        &stdout_app,
+                        SkillsCommandProgressEvent {
+                            action: stdout_action.clone(),
+                            stage: "checked".to_string(),
+                            message: "全局技能已检查完成，均为最新版本".to_string(),
+                            current: last_progress.as_ref().map(|item| item.1),
+                            total: last_progress.as_ref().map(|item| item.1),
+                            skill_name: None,
+                        },
+                    )?;
+                }
+            }
+
+            let tail = sanitized
+                .rsplit(['\r', '\n'])
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            pending = tail;
+        }
+
+        Ok::<String, String>(String::from_utf8_lossy(&collected).to_string())
+    });
+
+    let stderr_task = tokio::spawn(async move {
+        let mut collected = Vec::new();
+        let mut chunk = [0u8; 4096];
+
+        loop {
+            let bytes_read = stderr_reader
+                .read(&mut chunk)
+                .await
+                .map_err(|error| format!("读取命令 stderr 失败：{error}"))?;
+            if bytes_read == 0 {
+                break;
+            }
+            collected.extend_from_slice(&chunk[..bytes_read]);
+        }
+
+        Ok::<String, String>(String::from_utf8_lossy(&collected).to_string())
+    });
+
+    let status = timeout(Duration::from_secs(120), child.wait())
+        .await
+        .map_err(|_| format!("执行 {runner_label} 超时"))?
+        .map_err(|error| format!("执行 {runner_label} 失败：{error}"))?;
+
+    let stdout = stdout_task
+        .await
+        .map_err(|error| format!("等待命令 stdout 失败：{error}"))??;
+    let stderr = stderr_task
+        .await
+        .map_err(|error| format!("等待命令 stderr 失败：{error}"))??;
+
+    Ok((status, stdout, stderr))
 }
 
 fn is_hidden_name(name: &str) -> bool {
@@ -1109,134 +1369,58 @@ pub async fn run_skills_command(
     let home = home_dir()?;
     let cwd = home.to_string_lossy().to_string();
     let command = build_skills_command(&request, &home)?;
+    let mut executed_command = command.clone();
 
-    let mut child = Command::new(&command[0])
-        .args(&command[1..])
-        .current_dir(&home)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("执行 npx skills 失败：{error}"))?;
+    let (mut status, mut stdout, mut stderr) = execute_skills_command_once(
+        &app,
+        request.action.clone(),
+        &home,
+        &command,
+        "npx skills",
+    )
+    .await?;
 
-    let mut stdout_reader = child
-        .stdout
-        .take()
-        .ok_or_else(|| "无法读取 npx skills stdout".to_string())?;
-    let mut stderr_reader = child
-        .stderr
-        .take()
-        .ok_or_else(|| "无法读取 npx skills stderr".to_string())?;
+    if !status.success() && should_retry_with_same_runner(&stderr) {
+        let retry = execute_skills_command_once(
+            &app,
+            request.action.clone(),
+            &home,
+            &command,
+            "npx skills",
+        )
+        .await?;
+        status = retry.0;
+        stdout = retry.1;
+        stderr = retry.2;
+    }
 
-    let stdout_app = app.clone();
-    let stdout_action = request.action.clone();
-    let stdout_task = tokio::spawn(async move {
-        let mut collected = Vec::new();
-        let mut chunk = [0u8; 4096];
-        let mut pending = String::new();
-        let mut last_progress: Option<(usize, usize, String)> = None;
-        let mut started = false;
-
-        loop {
-            let bytes_read = stdout_reader
-                .read(&mut chunk)
-                .await
-                .map_err(|error| format!("读取 npx skills stdout 失败：{error}"))?;
-            if bytes_read == 0 {
-                break;
-            }
-
-            collected.extend_from_slice(&chunk[..bytes_read]);
-            let text = String::from_utf8_lossy(&chunk[..bytes_read]);
-            pending.push_str(&text);
-
-            let sanitized = strip_ansi_sequences(&pending);
-            if !started && sanitized.contains("Checking for skill updates...") {
-                started = true;
-                emit_skills_progress(
-                    &stdout_app,
-                    SkillsCommandProgressEvent {
-                        action: stdout_action.clone(),
-                        stage: "checking".to_string(),
-                        message: "正在检查全局技能更新...".to_string(),
-                        current: Some(0),
-                        total: None,
-                        skill_name: None,
-                    },
-                )?;
-            }
-
-            for segment in sanitized.split(['\r', '\n']) {
-                if let Some((current, total, skill_name)) = parse_skills_progress_line(segment) {
-                    let next_progress = (current, total, skill_name.clone());
-                    if last_progress.as_ref() != Some(&next_progress) {
-                        last_progress = Some(next_progress.clone());
-                        emit_skills_progress(
-                            &stdout_app,
-                            SkillsCommandProgressEvent {
-                                action: stdout_action.clone(),
-                                stage: "checking".to_string(),
-                                message: format!("正在检查 {current} / {total}：{skill_name}"),
-                                current: Some(current),
-                                total: Some(total),
-                                skill_name: Some(skill_name),
-                            },
-                        )?;
-                    }
-                } else if segment.contains("All global skills are up to date") {
-                    emit_skills_progress(
-                        &stdout_app,
-                        SkillsCommandProgressEvent {
-                            action: stdout_action.clone(),
-                            stage: "checked".to_string(),
-                            message: "全局技能已检查完成，均为最新版本".to_string(),
-                            current: last_progress.as_ref().map(|item| item.1),
-                            total: last_progress.as_ref().map(|item| item.1),
-                            skill_name: None,
-                        },
-                    )?;
+    if !status.success() {
+        if let Some(fallback_command) = build_pnpm_dlx_command_from_npx(&command) {
+            let fallback_label = "pnpm dlx skills";
+            if let Ok((fallback_status, fallback_stdout, fallback_stderr)) = execute_skills_command_once(
+                &app,
+                request.action.clone(),
+                &home,
+                &fallback_command,
+                fallback_label,
+            )
+            .await
+            {
+                if fallback_status.success() {
+                    status = fallback_status;
+                    stdout = fallback_stdout;
+                    stderr = fallback_stderr;
+                    executed_command = fallback_command;
+                } else if stderr.trim().is_empty() {
+                    status = fallback_status;
+                    stdout = fallback_stdout;
+                    stderr = fallback_stderr;
+                    executed_command = fallback_command;
                 }
             }
-
-            let tail = sanitized
-                .rsplit(['\r', '\n'])
-                .next()
-                .unwrap_or_default()
-                .to_string();
-            pending = tail;
         }
+    }
 
-        Ok::<String, String>(String::from_utf8_lossy(&collected).to_string())
-    });
-
-    let stderr_task = tokio::spawn(async move {
-        let mut collected = Vec::new();
-        let mut chunk = [0u8; 4096];
-
-        loop {
-            let bytes_read = stderr_reader
-                .read(&mut chunk)
-                .await
-                .map_err(|error| format!("读取 npx skills stderr 失败：{error}"))?;
-            if bytes_read == 0 {
-                break;
-            }
-            collected.extend_from_slice(&chunk[..bytes_read]);
-        }
-
-        Ok::<String, String>(String::from_utf8_lossy(&collected).to_string())
-    });
-
-    let status = timeout(Duration::from_secs(120), child.wait())
-        .await
-        .map_err(|_| "执行 npx skills 超时".to_string())?
-        .map_err(|error| format!("执行 npx skills 失败：{error}"))?;
-
-    let mut stdout = stdout_task
-        .await
-        .map_err(|error| format!("等待 npx skills stdout 失败：{error}"))??;
-    let mut stderr = stderr_task
-        .await
-        .map_err(|error| format!("等待 npx skills stderr 失败：{error}"))??;
     let mut catalog_refreshed = false;
     let code = status.code().unwrap_or(-1);
 
@@ -1263,7 +1447,7 @@ pub async fn run_skills_command(
 
     Ok(SkillsCommandResult {
         action: request.action,
-        command,
+        command: executed_command,
         cwd,
         success: status.success(),
         code,
@@ -1588,13 +1772,19 @@ pub async fn inspect_online_skill(
         .await
         .map_err(|e| format!("读取 skills.sh 详情页失败：{e}"))?;
 
-    let summary_fragment = extract_between(&html, ">Summary</div>", ">SKILL.md</span></div>")
-        .ok_or_else(|| "无法解析 skills.sh 详情页中的 Summary".to_string())?;
-    let skill_doc_fragment = extract_between(&html, ">SKILL.md</span></div>", ">Weekly Installs<")
-        .ok_or_else(|| "无法解析 skills.sh 详情页中的 SKILL.md".to_string())?;
+    let summary = extract_section_prose_by_title(&html, "Summary")
+        .map(|fragment| html_fragment_to_text(&fragment))
+        .or_else(|| extract_json_ld_description(&html))
+        .unwrap_or_default();
 
-    let summary = html_fragment_to_text(summary_fragment);
-    let skill_doc = html_fragment_to_text(skill_doc_fragment);
+    let skill_doc = extract_section_prose_by_title(&html, "SKILL.md")
+        .map(|fragment| html_fragment_to_text(&fragment))
+        .unwrap_or_default();
+
+    if summary.is_empty() && skill_doc.is_empty() {
+        return Err("无法解析 skills.sh 详情页中的 Summary / SKILL.md".to_string());
+    }
+
     let usage_hints = extract_usage_hints(&summary, &skill_doc);
 
     Ok(OnlineSkillDetail {

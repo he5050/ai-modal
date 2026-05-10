@@ -44,7 +44,7 @@ export function DetailRow({
   );
   const [selectedProtocols, setSelectedProtocols] = useState<
     ModelTestProtocol[]
-  >(["openApi"]);
+  >([...MODEL_TEST_PROTOCOLS]);
   const [singleTestingModel, setSingleTestingModel] = useState<string | null>(
     null,
   );
@@ -192,7 +192,7 @@ export function DetailRow({
         ) ?? [];
 
     setSelectedProtocols(
-      nextProtocols.length > 0 ? nextProtocols : ["openApi"],
+      nextProtocols.length > 0 ? nextProtocols : [...MODEL_TEST_PROTOCOLS],
     );
     setProtocolDialogModel(result.model);
   }

@@ -69,12 +69,20 @@ function isOpenRouterBaseUrl(baseUrl: string) {
 // ─── Protocol labels and badges ──────────────────────────────────
 
 export function getQuickTestProtocolLabel(protocol: QuickTestProtocol) {
+  if (protocol === "chat") return "Chat (OpenAI)";
+  if (protocol === "responses") return "Responses (Codex)";
   if (protocol === "claude") return "Claude";
   if (protocol === "gemini") return "Gemini";
-  return "OpenAI";
+  return "Chat (OpenAI)";
 }
 
 export function getQuickTestProtocolBadgeClass(protocol: QuickTestProtocol) {
+  if (protocol === "chat") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  }
+  if (protocol === "responses") {
+    return "border-cyan-500/30 bg-cyan-500/10 text-cyan-200";
+  }
   if (protocol === "claude") {
     return "border-amber-500/30 bg-amber-500/10 text-amber-200";
   }
@@ -142,12 +150,23 @@ export function buildQuickTestTerminalSetup(
     ].join("\n");
   }
 
+  if (protocol === "responses") {
+    return [
+      `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export OPENAI_BASE_URL=${quoteShell(buildOpenAiCliBaseUrl(provider.baseUrl))}`,
+      `export OPENAI_MODEL=${quoteShell(normalizedModel)}`,
+      "",
+      "# 直接启动 Codex CLI（Responses 协议）",
+      'codex -m "$OPENAI_MODEL" -c openai_base_url="$OPENAI_BASE_URL"',
+    ].join("\n");
+  }
+
   return [
     `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`,
     `export OPENAI_BASE_URL=${quoteShell(buildOpenAiCliBaseUrl(provider.baseUrl))}`,
     `export OPENAI_MODEL=${quoteShell(normalizedModel)}`,
     "",
-    "# 直接启动 Codex CLI",
+    "# 直接启动 Codex CLI（Chat 协议）",
     'codex -m "$OPENAI_MODEL" -c openai_base_url="$OPENAI_BASE_URL"',
   ].join("\n");
 }
@@ -169,6 +188,8 @@ export function buildQuickTestCurlSnippet(
       ? "ANTHROPIC_MODEL"
       : protocol === "gemini"
         ? "GEMINI_MODEL"
+        : protocol === "responses"
+          ? "OPENAI_MODEL"
         : "OPENAI_MODEL";
 
   const availableModels = getAvailableModels(provider);
@@ -192,11 +213,10 @@ export function buildQuickTestCurlSnippet(
       `export ANTHROPIC_MESSAGES_URL=${quoteShell(buildClaudeUrl(provider.baseUrl, "messages"))}`,
       `export ANTHROPIC_MODEL=${quoteShell(model || "your-model")}`,
       "",
-      `curl ${quoteShell(buildClaudeUrl(provider.baseUrl, "messages"))} \\`,
+      `curl -X POST ${quoteShell(buildClaudeUrl(provider.baseUrl, "messages"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "x-api-key: $ANTHROPIC_API_KEY" \\',
       '  -H "anthropic-version: 2023-06-01" \\',
-      "  -X POST \\",
       '  -d "{',
       `    \\"model\\": \\"${model || "your-model"}\\",`,
       '    \\"max_tokens\\": 1,',
@@ -214,13 +234,13 @@ export function buildQuickTestCurlSnippet(
       `export GEMINI_GENERATE_URL=${quoteShell(buildGeminiGenerateUrl(provider.baseUrl, model || "your-model"))}`,
       `export GEMINI_MODEL=${quoteShell(normalizeGeminiModelName(model || "your-model"))}`,
       "",
-      `curl ${quoteShell(buildGeminiGenerateUrl(provider.baseUrl, model || "your-model"))} \\`,
+      `curl -X POST ${quoteShell(buildGeminiGenerateUrl(provider.baseUrl, model || "your-model"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "x-goog-api-key: $GEMINI_API_KEY" \\',
-      "  -X POST \\",
       '  -d "{',
       '    \\"contents\\": [',
       "      {",
+      '        \\"role\\": \\"user\\",',
       '        \\"parts\\": [',
       "          {",
       `            \\"text\\": \\"${QUICK_TEST_PROMPT}\\"`,
@@ -233,19 +253,35 @@ export function buildQuickTestCurlSnippet(
       "    }",
       '  }"',
     );
+  } else if (protocol === "responses") {
+    lines.push(
+      `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`,
+      `export OPENAI_RESPONSES_URL=${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "responses"))}`,
+      `export OPENAI_MODEL=${quoteShell(model || "your-model")}`,
+      "",
+      `curl -X POST ${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "responses"))} \\`,
+      '  -H "Content-Type: application/json" \\',
+      '  -H "Authorization: Bearer $OPENAI_API_KEY" \\',
+      ...(isOpenRouterBaseUrl(provider.baseUrl)
+        ? ['  -H "X-Title: AIModal" \\']
+        : []),
+      '  -d "{',
+      `    \\"model\\": \\"${model || "your-model"}\\",`,
+      `    \\"input\\": \\"${QUICK_TEST_PROMPT}\\"`,
+      '  }"',
+    );
   } else {
     lines.push(
       `export OPENAI_API_KEY=${quoteShell(provider.apiKey)}`,
       `export OPENAI_CHAT_URL=${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "chat/completions"))}`,
       `export OPENAI_MODEL=${quoteShell(model || "your-model")}`,
       "",
-      `curl ${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "chat/completions"))} \\`,
+      `curl -X POST ${quoteShell(buildOpenAiStyleUrl(provider.baseUrl, "chat/completions"))} \\`,
       '  -H "Content-Type: application/json" \\',
       '  -H "Authorization: Bearer $OPENAI_API_KEY" \\',
       ...(isOpenRouterBaseUrl(provider.baseUrl)
         ? ['  -H "X-Title: AIModal" \\']
         : []),
-      "  -X POST \\",
       '  -d "{',
       `    \\"model\\": \\"${model || "your-model"}\\",`,
       '    \\"messages\\": [',
@@ -253,9 +289,7 @@ export function buildQuickTestCurlSnippet(
       '        \\"role\\": \\"user\\",',
       `        \\"content\\": \\"${QUICK_TEST_PROMPT}\\"`,
       "      }",
-      "    ],",
-      '    \\"max_completion_tokens\\": 1,',
-      '    \\"stream\\": false',
+      "    ]",
       '  }"',
     );
   }

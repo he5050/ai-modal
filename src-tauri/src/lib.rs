@@ -4,6 +4,14 @@ mod commands;
 mod providers;
 
 use commands::model::{list_models, test_models};
+use commands::model_mapping::{
+    apply_model_mapping_to_claude, ensure_model_mapping_claude_gateway,
+    get_model_mapping_autostart, get_model_mapping_logs, get_model_mapping_status,
+    load_model_mapping_config, load_model_mapping_settings, save_model_mapping_config,
+    save_model_mapping_settings, set_model_mapping_autostart, start_model_mapping_gateway,
+    start_model_mapping_gateway_on_startup, stop_model_mapping_gateway,
+    test_model_mapping_provider, ModelMappingManager,
+};
 use commands::model_config::test_model_config;
 use commands::provider::{
     list_models_by_provider, test_models_by_provider, test_single_model_by_provider,
@@ -18,6 +26,12 @@ use commands::skill_enrichment_job::{
 use commands::skills::{
     inspect_online_skill, inspect_skill_targets, run_skills_command, scan_local_skills,
     search_online_skills, sync_skill_targets,
+};
+use tauri::{
+    image::Image,
+    menu::{MenuBuilder, MenuEvent, MenuItemBuilder},
+    tray::TrayIconBuilder,
+    AppHandle, Manager, WindowEvent, Wry,
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -35,15 +49,45 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SkillEnrichmentJobManager::default())
+        .manage(std::sync::Arc::new(ModelMappingManager::default()))
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:state.db", migrations)
                 .build(),
         )
         .setup(|app| {
+            ensure_model_mapping_claude_gateway();
+            if let Some(manager) = app.try_state::<std::sync::Arc<ModelMappingManager>>() {
+                start_model_mapping_gateway_on_startup(manager.inner().clone());
+            }
+            let show_item = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+            let tray_menu = MenuBuilder::new(app)
+                .item(&show_item)
+                .item(&quit_item)
+                .build()?;
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .unwrap_or_else(|| Image::new(&[], 0, 0));
+            let _tray = TrayIconBuilder::new()
+                .icon(icon)
+                .tooltip("AIModal")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app: &AppHandle<Wry>, event: MenuEvent| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
             #[cfg(target_os = "macos")]
             {
-                use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     let ns_window = window.ns_window().unwrap() as cocoa::base::id;
                     unsafe {
@@ -59,9 +103,29 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             list_models,
             test_models,
+            load_model_mapping_config,
+            load_model_mapping_settings,
+            save_model_mapping_config,
+            save_model_mapping_settings,
+            apply_model_mapping_to_claude,
+            start_model_mapping_gateway,
+            stop_model_mapping_gateway,
+            get_model_mapping_status,
+            get_model_mapping_logs,
+            test_model_mapping_provider,
+            get_model_mapping_autostart,
+            set_model_mapping_autostart,
             test_model_config,
             list_models_by_provider,
             test_models_by_provider,

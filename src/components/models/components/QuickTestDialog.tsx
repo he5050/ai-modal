@@ -25,7 +25,7 @@ export function QuickTestDialog({
   const availableModels = getAvailableModels(provider);
   const selectableModels = getSelectableModels(provider);
   const [selectedProtocol, setSelectedProtocol] =
-    useState<QuickTestProtocol>("openai");
+    useState<QuickTestProtocol>("chat");
   const [selectedModel, setSelectedModel] = useState<string>(
     getDefaultQuickTestModel(provider),
   );
@@ -47,7 +47,7 @@ export function QuickTestDialog({
   ].join("\n");
 
   useEffect(() => {
-    setSelectedProtocol("openai");
+    setSelectedProtocol("chat");
     setSelectedModel(getDefaultQuickTestModel(provider));
   }, [provider.id, provider.lastResult?.timestamp]);
 
@@ -131,7 +131,7 @@ export function QuickTestDialog({
             复制协议
           </p>
           <div className="flex flex-wrap gap-2">
-            {(["openai", "claude", "gemini"] as QuickTestProtocol[]).map(
+            {(["chat", "responses", "claude", "gemini"] as QuickTestProtocol[]).map(
               (protocol) => (
                 <button
                   key={protocol}
