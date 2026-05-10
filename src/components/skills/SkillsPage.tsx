@@ -155,7 +155,7 @@ export function SkillsPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-6 pb-6">
+      <div className="shrink-0 px-5 pb-5">
         <div className="flex items-center justify-end gap-3">
           <div className={ACTION_GROUP_WRAPPER_CLASS}>
             {(
@@ -180,7 +180,7 @@ export function SkillsPage({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {selectedTab === "list" && (
           <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
             <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">

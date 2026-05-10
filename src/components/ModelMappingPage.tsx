@@ -57,6 +57,7 @@ import {
   toMappingEntry,
 } from "../lib/modelMapping";
 import { toast } from "../lib/toast";
+import { logger } from "../lib/devlog";
 import type {
   ModelMappingConfig,
   ModelMappingLogEntry,
@@ -96,6 +97,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
   useEffect(() => {
     let active = true;
     async function bootstrap() {
+      logger.info("[模型映射] 开始加载配置与状态");
       try {
         const [loadedConfig, loadedStatus, loadedLogs] = await Promise.all([
           loadModelMappingConfig(),
@@ -106,8 +108,11 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
         setConfig(loadedConfig.providers ? normalizeModelMappingConfig(loadedConfig) : EMPTY_CONFIG);
         setStatus(loadedStatus);
         setLogs(loadedLogs);
+        logger.success(
+          `[模型映射] 加载完成：provider=${loadedConfig.providers?.length ?? 0}，log=${loadedLogs.length}`,
+        );
       } catch (error) {
-        console.error("Failed to load model mapping", error);
+        logger.error(`[模型映射] 加载失败：${error instanceof Error ? error.message : String(error)}`);
         toast("模型映射配置加载失败", "error");
       } finally {
         if (active) setLoading(false);
@@ -164,9 +169,11 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
       });
       setCollapsedProviders((prev) => ({ ...prev, [providerKey(nextProvider, existingIndex)]: false }));
       toast("已覆盖同一 Provider 的模型映射", "success");
+      logger.info(`[模型映射] 覆盖导入 provider：${provider.name} (${provider.id})`);
       return;
     }
     updateConfig({ providers: [...config.providers, nextProvider] });
+    logger.info(`[模型映射] 新增导入 provider：${provider.name} (${provider.id})`);
   }
 
   function deleteProvider(index: number) {
@@ -233,12 +240,15 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   async function handleSave() {
     setBusy("save");
+    logger.info("[模型映射] 开始保存配置");
     try {
       const nextStatus = await saveModelMappingConfig(config);
       setStatus(nextStatus);
       onDirtyChange?.(false);
       toast("模型映射配置已保存", "success");
+      logger.success("[模型映射] 配置保存成功");
     } catch (error) {
+      logger.error(`[模型映射] 配置保存失败：${error instanceof Error ? error.message : String(error)}`);
       toast(error instanceof Error ? error.message : String(error), "error");
     } finally {
       setBusy(null);
@@ -247,13 +257,16 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   async function handleApply() {
     setBusy("apply");
+    logger.info("[模型映射] 开始应用到 Claude");
     try {
       const message = await applyModelMappingToClaude(config);
       const nextStatus = await getModelMappingStatus();
       setStatus(nextStatus);
       onDirtyChange?.(false);
       toast(message, "success");
+      logger.success(`[模型映射] 应用成功：${message}`);
     } catch (error) {
+      logger.error(`[模型映射] 应用失败：${error instanceof Error ? error.message : String(error)}`);
       toast(error instanceof Error ? error.message : String(error), "error");
     } finally {
       setBusy(null);
@@ -262,12 +275,15 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   async function handleStartGateway() {
     setBusy("gateway");
+    logger.info("[模型映射] 启动代理");
     try {
       const nextStatus = await startModelMappingGateway(config);
       setStatus(nextStatus);
       onDirtyChange?.(false);
       toast("模型映射代理已启动", "success");
+      logger.success(`[模型映射] 代理已启动，端口=${nextStatus.port}`);
     } catch (error) {
+      logger.error(`[模型映射] 启动代理失败：${error instanceof Error ? error.message : String(error)}`);
       toast(error instanceof Error ? error.message : String(error), "error");
     } finally {
       setBusy(null);
@@ -276,11 +292,14 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   async function handleStopGateway() {
     setBusy("gateway-stop");
+    logger.info("[模型映射] 停止代理");
     try {
       const nextStatus = await stopModelMappingGateway();
       setStatus(nextStatus);
       toast("模型映射代理已停止", "success");
+      logger.success("[模型映射] 代理已停止");
     } catch (error) {
+      logger.error(`[模型映射] 停止代理失败：${error instanceof Error ? error.message : String(error)}`);
       toast(error instanceof Error ? error.message : String(error), "error");
     } finally {
       setBusy(null);
@@ -292,10 +311,14 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
     const model = provider.models[modelIndex];
     if (!model?.id) {
       toast("模型标识缺失，请刷新页面后重试", "error");
+      logger.warn("[模型映射] 单模型测试跳过：模型标识缺失");
       return;
     }
     const key = modelTestKey(providerIndex, model.id);
     setBusy(`test-${key}`);
+    logger.info(
+      `[模型映射] 单模型测试：provider=${provider.name}，model=${model.name}，protocol=${model.protocol ?? "claude"}`,
+    );
     try {
       const result = await testModelMappingProvider({
         target_url: provider.target_url,
@@ -305,7 +328,13 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
       });
       setTestResults((prev) => ({ ...prev, [key]: result }));
       toast(result.message, result.ok ? "success" : "error");
+      if (result.ok) {
+        logger.success(`[模型映射] 单模型测试成功：${model.name} ${result.status ?? ""}`);
+      } else {
+        logger.warn(`[模型映射] 单模型测试失败：${model.name} ${result.message}`);
+      }
     } catch (error) {
+      logger.error(`[模型映射] 单模型测试异常：${error instanceof Error ? error.message : String(error)}`);
       toast(error instanceof Error ? error.message : String(error), "error");
     } finally {
       setBusy(null);
@@ -320,10 +349,12 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
     if (candidates.length === 0) {
       toast("没有可测试的模型，请先填写模型名", "error");
+      logger.warn(`[模型映射] 批量测试跳过：provider=${provider.name} 无可测模型`);
       return;
     }
 
     setBusy(`test-all-${providerIndex}`);
+    logger.info(`[模型映射] 批量测试开始：provider=${provider.name}，count=${candidates.length}`);
     const collected: Record<string, ModelMappingTestResult> = {};
     let okCount = 0;
     let failCount = 0;
@@ -356,6 +387,11 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
       setTestResults((prev) => ({ ...prev, ...collected }));
       toast(`批量测试完成：成功 ${okCount}，失败 ${failCount}`, failCount === 0 ? "success" : "error");
+      if (failCount === 0) {
+        logger.success(`[模型映射] 批量测试完成：${okCount}/${candidates.length} 成功`);
+      } else {
+        logger.warn(`[模型映射] 批量测试完成：成功 ${okCount}，失败 ${failCount}`);
+      }
     } finally {
       setBusy(null);
     }
@@ -364,11 +400,14 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
   async function handleAutostartToggle() {
     const nextEnabled = !status?.autostart;
     setBusy("autostart");
+    logger.info(`[模型映射] 切换开机自启：${nextEnabled ? "开启" : "关闭"}`);
     try {
       const enabled = await setModelMappingAutostart(nextEnabled);
       setStatus((prev) => (prev ? { ...prev, autostart: enabled } : prev));
       toast(enabled ? "模型映射已开启开机自启" : "模型映射已关闭开机自启", "success");
+      logger.success(`[模型映射] 开机自启已${enabled ? "开启" : "关闭"}`);
     } catch (error) {
+      logger.error(`[模型映射] 切换开机自启失败：${error instanceof Error ? error.message : String(error)}`);
       toast(error instanceof Error ? error.message : String(error), "error");
     } finally {
       setBusy(null);
@@ -380,7 +419,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
       const nextLogs = await getModelMappingLogs();
       setLogs(nextLogs);
     } catch (error) {
-      console.error("Failed to refresh model mapping logs", error);
+      logger.error(`[模型映射] 刷新请求日志失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -395,7 +434,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-6 pb-5">
+      <div className="shrink-0 px-5 pb-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -462,7 +501,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
         </div>
       </div>
 
-      <div className="shrink-0 px-6 pb-4">
+      <div className="shrink-0 px-5 pb-3">
         <div className="flex items-center justify-end">
           <div className={ACTION_GROUP_WRAPPER_CLASS}>
             {(
@@ -486,7 +525,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {selectedTab === "mapping" && (
           <div className="space-y-4">
             <SourceActions providers={providers} onImportProvider={importProvider} />
@@ -805,8 +844,8 @@ function ModelMappingRow({
   onTestModel: (modelIndex: number) => void;
 }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2">
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_118px_86px_80px_78px_32px]">
+    <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-2">
+      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px_84px_72px_72px_32px]">
         <div>
           <input
             value={model.name}
@@ -823,7 +862,7 @@ function ModelMappingRow({
             </datalist>
           )}
         </div>
-        <div className="flex h-11 min-w-0 items-center rounded-xl border border-gray-800 bg-gray-950 px-3 font-mono text-xs text-gray-500">
+        <div className="flex h-10 min-w-0 items-center rounded-lg border border-gray-800 bg-gray-950 px-3 font-mono text-xs text-gray-500">
           <span className="truncate">{model.name ? makeModelSlot(model.name) : "claude-..."}</span>
         </div>
         <select
@@ -837,7 +876,7 @@ function ModelMappingRow({
           <option value="claude">Claude</option>
           <option value="gemini">Gemini（不支持代理）</option>
         </select>
-        <label className="inline-flex h-11 items-center justify-center gap-1.5 px-2 text-xs text-gray-300">
+        <label className="inline-flex h-10 items-center justify-center gap-1.5 px-1 text-xs text-gray-300">
           <input
             type="checkbox"
             checked={Boolean(model.enabled)}
@@ -846,7 +885,7 @@ function ModelMappingRow({
           />
           启用
         </label>
-        <label className="inline-flex h-11 items-center justify-center gap-1.5 px-2 text-xs text-gray-400">
+        <label className="inline-flex h-10 items-center justify-center gap-1.5 px-1 text-xs text-gray-400">
           <input
             type="checkbox"
             checked={Boolean(model.to_1m)}
@@ -858,12 +897,12 @@ function ModelMappingRow({
         <button
           onClick={() => onTestModel(modelIndex)}
           disabled={testing}
-          className="inline-flex h-11 items-center justify-center gap-1.5 px-2 text-xs text-gray-300 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS} w-full`}
         >
           {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
           测试
         </button>
-        <button onClick={() => onDeleteModel(modelIndex)} className={`${BUTTON_ICON_GHOST_SM_CLASS} h-11 w-8 hover:text-red-300`}>
+        <button onClick={() => onDeleteModel(modelIndex)} className={`${BUTTON_ICON_GHOST_SM_CLASS} h-10 w-8 hover:text-red-300`}>
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>

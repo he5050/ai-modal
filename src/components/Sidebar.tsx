@@ -41,22 +41,22 @@ export function Sidebar({
   }
 
   return (
-    <aside className="w-52 h-full bg-gray-900 border-r border-gray-800 flex flex-col">
+    <aside className="flex h-full w-52 flex-col border-r border-gray-800 bg-gray-900/95">
       {/* Logo */}
       <div
         data-tauri-drag-region
-        className="px-4 pt-8 pb-4 border-b border-gray-800"
+        className="border-b border-gray-800 px-4 pb-4 pt-8"
       >
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shadow-[0_0_10px_2px_rgba(99,102,241,0.6)]">
-            <Zap className="w-4 h-4 text-white fill-white" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-md border border-indigo-500/50 bg-indigo-600/90">
+            <Zap className="h-3.5 w-3.5 fill-white text-white" />
           </div>
           <span className="text-sm font-bold text-white">AIModal</span>
         </div>
       </div>
 
       {/* 导航 */}
-      <nav className="px-3 pt-3 pb-2 space-y-0.5">
+      <nav className="space-y-0.5 px-3 pb-2 pt-3">
         {APP_NAV_ITEMS.map(({ key, label, Icon }) => (
           <button
             key={key}
@@ -64,13 +64,13 @@ export function Sidebar({
               btnRefs.current[key] = el;
             }}
             onClick={() => handleNav(key)}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+            className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
               isActive(key)
-                ? "bg-indigo-600 text-white"
-                : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+                ? "border border-indigo-500/60 bg-indigo-600/90 text-white"
+                : "border border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800/85 hover:text-gray-200"
             }`}
           >
-            <Icon className="w-4 h-4 flex-shrink-0" />
+            <Icon className="h-4 w-4 flex-shrink-0" />
             {label}
             {key === "models" && modelCount > 0 && (
               <Tooltip
@@ -78,7 +78,7 @@ export function Sidebar({
                 placement="right"
               >
                 <span
-                  className={`ml-auto text-xs px-1.5 py-0.5 rounded-full ${
+                  className={`ml-auto rounded-full px-1.5 py-0.5 text-xs ${
                     availableCount > 0
                       ? "bg-emerald-500/20 text-emerald-400"
                       : "bg-gray-700 text-gray-400"
@@ -92,8 +92,8 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="mt-auto px-4 py-3 border-t border-gray-800 flex items-center gap-2">
-        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/60" />
+      <div className="mt-auto flex items-center gap-2 border-t border-gray-800 px-4 py-3">
+        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500/60" />
         <p className="text-xs text-gray-600">v0.1.0</p>
       </div>
     </aside>

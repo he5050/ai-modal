@@ -10,7 +10,7 @@ import {
   FIELD_SELECT_CLASS,
 } from "../../lib/formStyles";
 import {
-  BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_ICON_GHOST_MD_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_PRIMARY_CLASS,
@@ -722,19 +722,19 @@ export function DetectPage({
               <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="w-[20%] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[24%] px-4 py-2.5 text-left text-xs text-gray-400">
                       模型
                     </th>
-                    <th className="w-[120px] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[112px] px-4 py-2.5 text-left text-xs text-gray-400">
                       状态
                     </th>
-                    <th className="w-[120px] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[108px] px-4 py-2.5 text-left text-xs text-gray-400">
                       延迟
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="px-4 py-2.5 text-left text-xs text-gray-400">
                       返回结果
                     </th>
-                    <th className="w-[100px] text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[92px] px-4 py-2.5 text-center text-xs text-gray-400">
                       测试
                     </th>
                   </tr>
@@ -751,7 +751,7 @@ export function DetectPage({
                             : "border-l-2 border-l-red-500/20"
                       }`}
                     >
-                      <td className="px-5 py-2.5">
+                      <td className="px-4 py-2 align-middle">
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-xs text-gray-200 truncate max-w-[160px]">
                             {r.model}
@@ -759,7 +759,7 @@ export function DetectPage({
                           {r.status === "done" && <CopyButton text={r.model} />}
                         </div>
                       </td>
-                      <td className="px-5 py-2.5">
+                      <td className="px-4 py-2 align-middle">
                         {r.status === "pending" ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-400">
                             <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-pulse" />
@@ -769,10 +769,10 @@ export function DetectPage({
                           <StatusBadge available={r.available} />
                         )}
                       </td>
-                      <td className="px-5 py-2.5 text-gray-300 text-xs">
+                      <td className="px-4 py-2 text-xs text-gray-300 align-middle">
                         {r.latency_ms != null ? `${r.latency_ms} ms` : "—"}
                       </td>
-                      <td className="px-5 py-2.5 text-gray-500 text-xs">
+                      <td className="px-4 py-2 text-xs text-gray-500">
                         {r.status === "pending" ? (
                           ""
                         ) : (
@@ -782,7 +782,7 @@ export function DetectPage({
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => setDetailDialogResult(r)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white"
+                                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                                 >
                                   查看详情
                                 </button>
@@ -805,7 +805,7 @@ export function DetectPage({
                                   content={getResultDetails(r)}
                                   placement="top"
                                 >
-                                  <span className="max-w-[360px] truncate leading-5 text-gray-500 cursor-default">
+                                  <span className="max-w-[320px] truncate leading-5 text-gray-500 cursor-default">
                                     {getResultDetails(r)}
                                   </span>
                                 </Tooltip>
@@ -820,14 +820,16 @@ export function DetectPage({
                           </div>
                         )}
                       </td>
-                      <td className="px-5 py-2.5">
-                        <button
-                          onClick={() => detection.handleOpenProtocolDialog(r)}
-                          disabled={isLoading || !!detection.singleTestingModel}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-indigo-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          测试
-                        </button>
+                      <td className="px-4 py-2 align-middle">
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => detection.handleOpenProtocolDialog(r)}
+                            disabled={isLoading || !!detection.singleTestingModel}
+                            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                          >
+                            测试
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -869,25 +871,25 @@ export function DetectPage({
               </div>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400 w-12">
+                    <th className="w-12 px-4 py-2.5 text-left text-xs text-gray-400">
                       #
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[76px] px-4 py-2.5 text-left text-xs text-gray-400">
                       状态
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[24%] px-4 py-2.5 text-left text-xs text-gray-400">
                       名称
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[28%] px-4 py-2.5 text-left text-xs text-gray-400">
                       Base URL
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[140px] px-4 py-2.5 text-left text-xs text-gray-400">
                       上次检测
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs text-gray-400">
+                    <th className="w-[72px] px-4 py-2.5 text-center text-xs text-gray-400">
                       操作
                     </th>
                   </tr>
@@ -903,10 +905,10 @@ export function DetectPage({
                         className={`hover:bg-gray-800/30 transition-colors cursor-pointer ${i < pagedRecentProviders.length - 1 ? "border-b border-gray-800/50" : ""}`}
                         onClick={() => form.handleLoadHistory(p)}
                       >
-                        <td className="px-5 py-2.5 text-xs text-gray-500">
+                        <td className="px-4 py-2 text-xs text-gray-500">
                           {(recentPage - 1) * RECENT_PAGE_SIZE + i + 1}
                         </td>
-                        <td className="px-5 py-2.5">
+                        <td className="px-4 py-2">
                           {!hasTested ? (
                             <Tooltip content="未检测" placement="top">
                               <span className="w-2 h-2 rounded-full bg-gray-600 inline-block cursor-default" />
@@ -921,7 +923,7 @@ export function DetectPage({
                             </Tooltip>
                           )}
                         </td>
-                        <td className="px-5 py-2.5">
+                        <td className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <span className="text-gray-200 text-sm font-medium">
                               {p.name}
@@ -933,14 +935,14 @@ export function DetectPage({
                             )}
                           </div>
                         </td>
-                        <td className="px-5 py-2.5">
+                        <td className="px-4 py-2">
                           <Tooltip content={p.baseUrl} placement="top">
                             <span className="font-mono text-xs text-gray-400 truncate max-w-[200px] block cursor-default">
                               {maskPreviewText(p.baseUrl)}
                             </span>
                           </Tooltip>
                         </td>
-                        <td className="px-5 py-2.5 text-xs text-gray-500">
+                        <td className="px-4 py-2 text-xs text-gray-500">
                           {p.lastResult
                             ? new Date(p.lastResult.timestamp).toLocaleString(
                                 "zh-CN",
@@ -948,17 +950,20 @@ export function DetectPage({
                               )
                             : "—"}
                         </td>
-                        <td className="px-5 py-2.5">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirmId(p.id);
-                            }}
-                            className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
-                          </button>
+                        <td className="px-4 py-2">
+                          <div className="flex justify-center">
+                            <Tooltip content="删除接口" placement="top">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirmId(p.id);
+                                }}
+                                className={`${BUTTON_ICON_GHOST_SM_CLASS} hover:text-red-300`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          </div>
                         </td>
                       </tr>
                     );

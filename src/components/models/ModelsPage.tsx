@@ -110,7 +110,7 @@ export function ModelsPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-6 pb-6">
+      <div className="shrink-0 px-5 pb-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -155,8 +155,8 @@ export function ModelsPage({
           </div>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+        <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {batch.batchTesting && (
               <span className="text-xs text-indigo-400">
@@ -290,17 +290,17 @@ export function ModelsPage({
             </p>
             <button
               onClick={onGoDetect}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} mt-4`}
             >
               去模型检测新增接口
             </button>
           </div>
         ) : (
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="px-5 py-3 text-xs font-medium text-gray-400 w-10">
+                  <th className="w-10 px-4 py-2.5 text-xs font-medium text-gray-400">
                     <SelectionCheckbox
                       checked={
                         selectedIds.size === filtered.length &&
@@ -318,10 +318,10 @@ export function ModelsPage({
                       }}
                     />
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 w-10">
+                  <th className="w-10 px-4 py-2.5 text-left text-xs font-medium text-gray-400">
                     #
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-400">
+                  <th className="w-[22%] px-4 py-2.5 text-left text-xs font-medium text-gray-400">
                     <button
                       onClick={() => handleSort("name")}
                       className="flex items-center gap-1 hover:text-gray-200 transition-colors"
@@ -338,13 +338,13 @@ export function ModelsPage({
                       )}
                     </button>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-400">
+                  <th className="w-[22%] px-4 py-2.5 text-left text-xs font-medium text-gray-400">
                     Base URL
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-400">
+                  <th className="w-[16%] px-4 py-2.5 text-left text-xs font-medium text-gray-400">
                     API Key
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-400">
+                  <th className="w-[132px] px-4 py-2.5 text-left text-xs font-medium text-gray-400">
                     <button
                       onClick={() => handleSort("time")}
                       className="flex items-center gap-1 hover:text-gray-200 transition-colors"
@@ -361,7 +361,7 @@ export function ModelsPage({
                       )}
                     </button>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-400">
+                  <th className="w-[118px] px-4 py-2.5 text-center text-xs font-medium text-gray-400">
                     操作
                   </th>
                 </tr>
@@ -409,7 +409,7 @@ export function ModelsPage({
                               : "border-l-transparent"
                         } ${i < filtered.length - 1 ? "border-b border-gray-800/50" : ""}`}
                       >
-                        <td className="px-5 py-3">
+                        <td className="px-4 py-2">
                           <SelectionCheckbox
                             checked={selectedIds.has(p.id)}
                             onToggle={() => {
@@ -425,10 +425,10 @@ export function ModelsPage({
                             }}
                           />
                         </td>
-                        <td className="px-5 py-3 text-xs text-gray-500">
+                        <td className="px-4 py-2 text-xs text-gray-500">
                           {i + 1}
                         </td>
-                        <td className="px-5 py-3">
+                        <td className="px-4 py-2">
                           <Tooltip
                             content={nameTooltipContent}
                             placement="right"
@@ -462,10 +462,10 @@ export function ModelsPage({
                             </div>
                           </Tooltip>
                         </td>
-                        <td className="px-5 py-2.5">
+                        <td className="px-4 py-2">
                           <div className="flex items-center gap-1.5">
                             <Tooltip content={p.baseUrl} placement="top">
-                              <span className="font-mono text-xs text-gray-500 truncate max-w-[220px] cursor-default">
+                              <span className="block max-w-[220px] cursor-default truncate font-mono text-xs text-gray-500">
                                 {maskPreviewText(p.baseUrl)}
                               </span>
                             </Tooltip>
@@ -483,7 +483,7 @@ export function ModelsPage({
                             </button>
                           </div>
                         </td>
-                        <td className="px-5 py-2.5">
+                        <td className="px-4 py-2">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono text-xs text-gray-600">
@@ -498,35 +498,38 @@ export function ModelsPage({
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-2.5 text-xs text-gray-500">
+                        <td className="px-4 py-2 text-xs text-gray-500">
                           {formatTime(p.lastResult?.timestamp ?? p.createdAt)}
                         </td>
                         <td
-                          className="px-5 py-2.5"
+                          className="px-4 py-2"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => onOpenDetail(p)}
-                              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              详情
-                            </button>
-                            <button
-                              onClick={() => onEdit(p)}
-                              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                            >
-                              <FilePenLine className="h-3.5 w-3.5" />
-                              编辑
-                            </button>
-                            <button
-                              onClick={() => setDeleteId(p.id)}
-                              className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              删除
-                            </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <Tooltip content="查看详情" placement="top">
+                              <button
+                                onClick={() => onOpenDetail(p)}
+                                className={BUTTON_ICON_GHOST_SM_CLASS}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                            <Tooltip content="编辑接口" placement="top">
+                              <button
+                                onClick={() => onEdit(p)}
+                                className={BUTTON_ICON_GHOST_SM_CLASS}
+                              >
+                                <FilePenLine className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                            <Tooltip content="删除接口" placement="top">
+                              <button
+                                onClick={() => setDeleteId(p.id)}
+                                className={`${BUTTON_ICON_GHOST_SM_CLASS} hover:text-red-300`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
                           </div>
                         </td>
                       </tr>
@@ -588,4 +591,3 @@ export function ModelsPage({
     </div>
   );
 }
-

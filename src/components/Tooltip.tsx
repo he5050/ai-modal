@@ -222,7 +222,7 @@ export function Tooltip({
             opacity: pos ? 1 : 0,
             transition: "opacity 0.12s ease",
           }}
-          className={`max-w-xs rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-gray-100 shadow-xl break-all ${contentClassName}`}
+          className={`max-w-xs rounded-md border border-gray-700 bg-gray-900/95 px-2.5 py-1.5 text-xs leading-5 text-gray-100 shadow-lg break-all ${contentClassName}`}
           onMouseEnter={() => {
             if (!interactive) return
             hoverStateRef.current.tooltip = true

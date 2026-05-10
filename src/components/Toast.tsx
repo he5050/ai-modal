@@ -6,10 +6,10 @@ import { animate, spring } from "animejs"
 import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
 
 const ICONS = {
-  success: <CheckCircle className="w-4 h-4 text-emerald-400" />,
-  error:   <XCircle className="w-4 h-4 text-red-400" />,
-  warning: <AlertTriangle className="w-4 h-4 text-amber-400" />,
-  info:    <Info className="w-4 h-4 text-indigo-400" />,
+  success: <CheckCircle className="h-4 w-4 text-emerald-400" />,
+  error: <XCircle className="h-4 w-4 text-red-400" />,
+  warning: <AlertTriangle className="h-4 w-4 text-amber-400" />,
+  info: <Info className="h-4 w-4 text-indigo-400" />,
 }
 
 const COLORS = {
@@ -40,9 +40,9 @@ function ToastEl({ item, onRemove }: { item: ToastItem; onRemove: (id: string) =
     })
   }, [])
 
-  // 自动消失
   useEffect(() => {
-    const t = setTimeout(() => handleRemove(), 3000)
+    const duration = item.type === "error" ? 4200 : 2800
+    const t = setTimeout(() => handleRemove(), duration)
     return () => clearTimeout(t)
   }, [item.id])
 
@@ -63,12 +63,17 @@ function ToastEl({ item, onRemove }: { item: ToastItem; onRemove: (id: string) =
       ref={ref}
       data-toast-item={item.id}
       style={{ opacity: 0 }}
-      className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border border-l-2 shadow-lg text-sm text-gray-100 min-w-[220px] max-w-sm ${COLORS[item.type]} ${LEFT_BORDER[item.type]}`}
+      className={`flex items-center gap-2 rounded-lg border border-l-2 px-3 py-2.5 text-sm text-gray-100 shadow-lg min-w-[220px] max-w-[360px] ${COLORS[item.type]} ${LEFT_BORDER[item.type]}`}
     >
       {ICONS[item.type]}
-      <span className="flex-1">{item.message}</span>
-      <button onClick={handleRemove} className={`ml-auto flex-shrink-0 ${BUTTON_GHOST_CLASS} h-7 w-7 rounded-md p-0 text-gray-500 hover:text-gray-300`}>
-        <X className="w-3.5 h-3.5" />
+      <span className="flex-1 truncate pr-1" title={item.message}>
+        {item.message}
+      </span>
+      <button
+        onClick={handleRemove}
+        className={`ml-auto flex-shrink-0 ${BUTTON_GHOST_CLASS} h-6 w-6 rounded-md p-0 text-gray-500 hover:text-gray-300`}
+      >
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   )
@@ -92,7 +97,7 @@ export function ToastContainer() {
   return (
     <div
       data-toast-visible="true"
-      className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 items-end"
+      className="fixed bottom-4 right-4 z-[100] flex flex-col items-end gap-2"
     >
       {items.map(item => (
         <ToastEl key={item.id} item={item} onRemove={remove} />

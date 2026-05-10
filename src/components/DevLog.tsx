@@ -4,8 +4,8 @@ import type { LogEntry } from "../lib/devlog"
 
 const LEVEL_STYLE: Record<LogEntry["level"], string> = {
   debug:   "text-gray-500",
-  info:    "text-blue-400",
-  warn:    "text-yellow-400",
+  info:    "text-indigo-400",
+  warn:    "text-amber-400",
   error:   "text-red-400",
   success: "text-emerald-400",
 }
@@ -20,8 +20,8 @@ const LEVEL_TAG: Record<LogEntry["level"], string> = {
 
 const LEVEL_BADGE: Record<LogEntry["level"], string> = {
   debug:   "bg-gray-500/20 text-gray-400",
-  info:    "bg-blue-500/20 text-blue-400",
-  warn:    "bg-yellow-500/20 text-yellow-400",
+  info:    "bg-indigo-500/20 text-indigo-400",
+  warn:    "bg-amber-500/20 text-amber-400",
   error:   "bg-red-500/20 text-red-400",
   success: "bg-emerald-500/20 text-emerald-400",
 }
@@ -78,7 +78,7 @@ export function DevLog() {
             <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px]">{counts.error} ERR</span>
           )}
           {counts.warn > 0 && (
-            <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 text-[10px]">{counts.warn} WARN</span>
+            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[10px]">{counts.warn} WARN</span>
           )}
         </div>
         <div className="flex items-center gap-3">

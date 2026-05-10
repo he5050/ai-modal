@@ -24,8 +24,8 @@ function ensureFallbackContainer() {
   container.id = FALLBACK_CONTAINER_ID
   Object.assign(container.style, {
     position: "fixed",
-    top: "20px",
-    right: "20px",
+    bottom: "16px",
+    right: "16px",
     zIndex: "9999",
     display: "flex",
     flexDirection: "column",
@@ -54,8 +54,8 @@ function showFallbackToast(item: ToastItem) {
   Object.assign(toastEl.style, {
     minWidth: "220px",
     maxWidth: "360px",
-    padding: "12px 14px",
-    borderRadius: "12px",
+    padding: "10px 12px",
+    borderRadius: "10px",
     border: `1px solid ${accent.border}`,
     borderLeft: `3px solid ${accent.border}`,
     background: accent.background,
@@ -89,7 +89,7 @@ function showFallbackToast(item: ToastItem) {
     }, 180)
   }
 
-  window.setTimeout(remove, 3000)
+  window.setTimeout(remove, item.type === "error" ? 4200 : 2800)
 }
 
 export function toast(message: string, type: ToastType = "success") {
