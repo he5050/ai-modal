@@ -17,6 +17,7 @@ import { ProviderDetailPage } from "./components/ProviderDetailPage";
 import { PromptDetailPage } from "./components/PromptDetailPage";
 import { SkillsPage } from "./components/SkillsPage";
 import { ModelMappingPage } from "./components/ModelMappingPage";
+import { McpPage } from "./components/McpPage";
 import { loadPersistedJson } from "./lib/persistence";
 import { LeaveConfirmDialog, PageFallback } from "./components/shared/LeaveConfirmDialog";
 import { useProviders } from "./hooks/useProviders";
@@ -260,6 +261,11 @@ export default function App() {
         {page === "skills" && (
           <SkillsPage
             providers={providers}
+            onDirtyChange={setEditingDirty}
+          />
+        )}
+        {page === "mcp" && (
+          <McpPage
             onDirtyChange={setEditingDirty}
           />
         )}

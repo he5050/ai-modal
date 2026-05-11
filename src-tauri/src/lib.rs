@@ -3,6 +3,7 @@
 mod commands;
 mod providers;
 
+use commands::mcp::test_mcp_server;
 use commands::model::{list_models, test_models};
 use commands::model_mapping::{
     apply_model_mapping_to_claude, ensure_model_mapping_claude_gateway,
@@ -114,6 +115,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_models,
             test_models,
+            test_mcp_server,
             load_model_mapping_config,
             load_model_mapping_settings,
             save_model_mapping_config,

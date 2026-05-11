@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   EnrichSkillRequest,
   LocalizedOnlineSkillDetail,
+  McpServerConfigInput,
+  McpServerTestResult,
   SkillEnrichmentJobRequest,
   SkillEnrichmentJobSnapshot,
   ModelMappingConfig,
@@ -108,6 +110,13 @@ export async function startModelMappingGateway(
 
 export async function stopModelMappingGateway(): Promise<ModelMappingStatus> {
   return invoke("stop_model_mapping_gateway");
+}
+
+export async function testMcpServer(
+  name: string,
+  config: McpServerConfigInput,
+): Promise<McpServerTestResult> {
+  return invoke("test_mcp_server", { name, config });
 }
 
 export async function getModelMappingStatus(): Promise<ModelMappingStatus> {

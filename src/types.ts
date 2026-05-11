@@ -2,6 +2,7 @@ export type AppPage =
   | "detect"
   | "models"
   | "model-mapping"
+  | "mcp"
   | "skills"
   | "prompts"
   | "prompt-detail"
@@ -148,6 +149,23 @@ export interface ModelMappingTestResult {
   ok: boolean;
   status?: number | null;
   message: string;
+}
+
+export interface McpServerConfigInput {
+  type?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+}
+
+export interface McpServerTestResult {
+  ok: boolean;
+  status: string;
+  message: string;
+  detail?: string | null;
+  latency_ms?: number | null;
 }
 
 export interface ModelMappingLogEntry {

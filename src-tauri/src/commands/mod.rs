@@ -1,3 +1,4 @@
+pub mod mcp;
 pub mod model;
 pub mod model_mapping;
 pub mod model_config;
