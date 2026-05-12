@@ -4,6 +4,7 @@ import { CopyButton } from "../CopyButton";
 import { HintTooltip } from "../HintTooltip";
 import { Tooltip } from "../Tooltip";
 import {
+  BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
@@ -110,7 +111,7 @@ export function ModelsPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-5 pb-5">
+      <div className="shrink-0 px-6 pb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -155,7 +156,7 @@ export function ModelsPage({
           </div>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {batch.batchTesting && (
@@ -278,7 +279,7 @@ export function ModelsPage({
         </div>
 
         {providers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-4 shadow-[0_0_20px_4px_rgba(99,102,241,0.15)]">
               <ArrowRight className="w-6 h-6 text-indigo-400/60" />
             </div>
@@ -525,7 +526,7 @@ export function ModelsPage({
                             <Tooltip content="删除接口" placement="top">
                               <button
                                 onClick={() => setDeleteId(p.id)}
-                                className={`${BUTTON_ICON_GHOST_SM_CLASS} hover:text-red-300`}
+                                className={BUTTON_ICON_DANGER_SM_CLASS}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -553,8 +554,8 @@ export function ModelsPage({
       )}
 
       {batchDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 shadow-xl">
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
             <h3 className="text-sm font-semibold text-white mb-2">
               确认批量删除
             </h3>

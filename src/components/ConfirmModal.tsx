@@ -5,26 +5,26 @@ import {
   Trash2,
   X,
   ExternalLink,
-} from "lucide-react";
+} from "lucide-react"
 import {
   BUTTON_DANGER_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_SM_CLASS,
-} from "../lib/buttonStyles";
+} from "../lib/buttonStyles"
 
 export interface ConfirmModalProps {
-  title: string;
-  description: string;
-  chips?: string[];
-  primaryLabel: string;
-  secondaryLabel?: string;
-  tertiaryLabel?: string;
-  danger?: boolean;
-  busy?: boolean;
-  onPrimary: () => void;
-  onSecondary?: () => void;
-  onTertiary?: () => void;
+  title: string
+  description: string
+  chips?: string[]
+  primaryLabel: string
+  secondaryLabel?: string
+  tertiaryLabel?: string
+  danger?: boolean
+  busy?: boolean
+  onPrimary: () => void
+  onSecondary?: () => void
+  onTertiary?: () => void
 }
 
 function renderConfirmActionLabel(label: string) {
@@ -41,14 +41,14 @@ function renderConfirmActionLabel(label: string) {
               ? Link2
               : label.includes("切换")
                 ? ExternalLink
-                : null;
+                : null
 
   return (
     <>
       {Icon ? <Icon className="h-4 w-4" /> : null}
       {label}
     </>
-  );
+  )
 }
 
 export function ConfirmModal({
@@ -111,5 +111,5 @@ export function ConfirmModal({
         )}
       </div>
     </div>
-  );
+  )
 }

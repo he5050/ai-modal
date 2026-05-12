@@ -1,22 +1,23 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react"
 import {
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
+} from "../../lib/buttonStyles"
 
 interface ConfirmModalProps {
-  title: string;
-  description: string;
-  primaryLabel: string;
-  secondaryLabel?: string;
-  tertiaryLabel?: string;
-  emphasisText?: string;
-  primaryTone?: "danger" | "default";
-  onPrimary: () => void;
-  onSecondary?: () => void;
-  onTertiary?: () => void;
+  title: string
+  description: string
+  primaryLabel: string
+  secondaryLabel?: string
+  tertiaryLabel?: string
+  emphasisText?: string
+  primaryTone?: "danger" | "default"
+  showWarningIcon?: boolean
+  onPrimary: () => void
+  onSecondary?: () => void
+  onTertiary?: () => void
 }
 
 export function ConfigConfirmModal({
@@ -27,6 +28,7 @@ export function ConfigConfirmModal({
   tertiaryLabel,
   emphasisText,
   primaryTone = "default",
+  showWarningIcon = false,
   onPrimary,
   onSecondary,
   onTertiary,
@@ -34,15 +36,17 @@ export function ConfigConfirmModal({
   const primaryButtonClass =
     primaryTone === "danger"
       ? BUTTON_DANGER_OUTLINE_CLASS
-      : BUTTON_PRIMARY_CLASS;
+      : BUTTON_PRIMARY_CLASS
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
         <div className="flex items-start gap-4">
-          <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10 text-amber-300">
-            <AlertTriangle className="h-5 w-5" />
-          </div>
+          {showWarningIcon && (
+            <div className="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10 text-amber-300">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-semibold tracking-tight text-white">
               {title}
@@ -88,5 +92,5 @@ export function ConfigConfirmModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

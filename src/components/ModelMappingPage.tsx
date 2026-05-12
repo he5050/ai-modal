@@ -32,6 +32,7 @@ import {
   testModelMappingProvider,
 } from "../api";
 import {
+  BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_GHOST_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_PRIMARY_CLASS,
@@ -434,7 +435,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-5 pb-4">
+      <div className="shrink-0 px-6 pb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -711,7 +712,7 @@ function ProviderMappingCard({
             {provider.models.length} 模型
           </span>
         )}
-        <button onClick={onDelete} className={`${BUTTON_ICON_GHOST_SM_CLASS} hover:text-red-300`}>
+        <button onClick={onDelete} className={BUTTON_ICON_DANGER_SM_CLASS}>
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -902,7 +903,7 @@ function ModelMappingRow({
           {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
           测试
         </button>
-        <button onClick={() => onDeleteModel(modelIndex)} className={`${BUTTON_ICON_GHOST_SM_CLASS} h-10 w-8 hover:text-red-300`}>
+        <button onClick={() => onDeleteModel(modelIndex)} className={`${BUTTON_ICON_DANGER_SM_CLASS} h-10 w-8`}>
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>

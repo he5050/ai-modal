@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { BUTTON_ICON_SM_CLASS } from "../lib/buttonStyles";
+import {
+  BUTTON_ICON_SM_CLASS,
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_XS_CLASS,
+} from "../lib/buttonStyles"
 import { FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
 import { savePersistedJson } from "../lib/persistence";
 import { loadModelMappingSettings, saveModelMappingSettings } from "../api";
@@ -207,7 +211,7 @@ export function SettingsPage({
                 <button
                   onClick={() => void handleModelMappingPortSave()}
                   disabled={modelMappingPortBusy || modelMappingPort === String(modelMappingPortSaved)}
-                  className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-indigo-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   保存
                 </button>

@@ -155,7 +155,7 @@ export function SkillsPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-5 pb-5">
+      <div className="shrink-0 px-6 pb-6">
         <div className="flex items-center justify-end gap-3">
           <div className={ACTION_GROUP_WRAPPER_CLASS}>
             {(

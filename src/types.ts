@@ -168,6 +168,47 @@ export interface McpServerTestResult {
   latency_ms?: number | null;
 }
 
+export interface ModelscopeMcpServerSummary {
+  id: string;
+  name: string;
+  chineseName?: string | null;
+  path: string;
+  fromSiteUrl?: string | null;
+  pageUrl?: string | null;
+  originalAbstract?: string | null;
+  tags: string[];
+  category: string[];
+  fromSiteIcon?: string | null;
+  userHostStatus?: string | null;
+  platformCollected?: boolean | null;
+  transportTypes: string[];
+}
+
+export interface ModelscopeMcpServerDetail extends ModelscopeMcpServerSummary {
+  readme?: string | null;
+  transportConfigs: Record<string, McpServerConfigInput>;
+}
+
+export interface ModelscopeMcpSearchResponse {
+  query: string;
+  count: number;
+  durationMs: number;
+  servers: ModelscopeMcpServerSummary[];
+}
+
+export interface ModelscopeRequestProfile {
+  cookie?: string | null;
+  csrfToken?: string | null;
+  userAgent?: string | null;
+  referer?: string | null;
+  origin?: string | null;
+  acceptLanguage?: string | null;
+  xModelscopeAcceptLanguage?: string | null;
+  traceId?: string | null;
+  bxVersion?: string | null;
+  extraHeaders?: Record<string, string> | null;
+}
+
 export interface ModelMappingLogEntry {
   time: string;
   model: string;

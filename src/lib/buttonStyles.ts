@@ -37,3 +37,9 @@ export const BUTTON_ICON_GHOST_SM_CLASS =
 
 export const BUTTON_ICON_GHOST_MD_CLASS =
   `${BUTTON_GHOST_CLASS} h-8 w-8 rounded-md p-0 text-gray-500 hover:text-gray-300`;
+
+export const BUTTON_ICON_DANGER_SM_CLASS =
+  "inline-flex h-7 w-7 items-center justify-center rounded-md border border-red-500/30 bg-gray-900/80 text-red-200 transition-colors duration-150 hover:border-red-400/40 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
+
+export const BUTTON_ICON_DANGER_MD_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-gray-900/80 text-red-200 transition-colors duration-150 hover:border-red-400/40 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40";

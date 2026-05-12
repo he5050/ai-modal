@@ -1,16 +1,20 @@
 import { useEffect, useRef } from "react";
 import { animate, spring } from "animejs";
 import { AlertTriangle } from "lucide-react";
+import {
+  BUTTON_SECONDARY_CLASS,
+  BUTTON_SIZE_SM_CLASS,
+} from "../../lib/buttonStyles";
 
 export function LeaveConfirmDialog({
   onConfirm,
   onCancel,
 }: {
-  onConfirm: () => void;
-  onCancel: () => void;
+  onConfirm: () => void
+  onCancel: () => void
 }) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (overlayRef.current) {
@@ -18,7 +22,7 @@ export function LeaveConfirmDialog({
         opacity: [0, 1],
         duration: 180,
         ease: "outQuad",
-      });
+      })
     }
     if (cardRef.current) {
       animate(cardRef.current, {
@@ -27,9 +31,9 @@ export function LeaveConfirmDialog({
         scale: [0.96, 1],
         duration: 200,
         ease: spring({ stiffness: 300, damping: 24 }),
-      });
+      })
     }
-  }, []);
+  }, [])
 
   return (
     <div
@@ -56,7 +60,7 @@ export function LeaveConfirmDialog({
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200"
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
           >
             继续编辑
           </button>
@@ -69,7 +73,7 @@ export function LeaveConfirmDialog({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 export function PageFallback() {
@@ -82,5 +86,5 @@ export function PageFallback() {
         </p>
       </div>
     </div>
-  );
+  )
 }

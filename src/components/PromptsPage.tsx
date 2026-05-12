@@ -4,6 +4,7 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { Copy, Download, Eye, Plus, Search, Trash2, Upload } from "lucide-react";
 import {
   BUTTON_ICON_MD_CLASS,
+  BUTTON_ICON_DANGER_MD_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
@@ -104,7 +105,7 @@ export function PromptsPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-6 pb-5">
+      <div className="shrink-0 px-6 pb-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-xl">
             <h2 className="text-base font-semibold tracking-tight text-white">
@@ -193,26 +194,26 @@ export function PromptsPage({
 
           <div className="mt-4 overflow-hidden rounded-xl border border-gray-800/90 bg-black/10">
             {filtered.length === 0 ? (
-              <div className="px-4 py-8 text-sm text-gray-500">
+              <div className="px-6 py-8 text-sm text-gray-500">
                 {emptyListMessage}
               </div>
             ) : (
               <table className="w-full table-fixed text-sm">
                 <thead>
-                  <tr className="border-b border-gray-800/70 bg-gray-950/25">
-                    <th className="w-[24%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                  <tr className="border-b border-gray-800 bg-gray-950/25">
+                    <th className="w-[24%] px-4 py-2 text-left text-xs font-medium text-gray-400">
                       标题
                     </th>
-                    <th className="w-[32%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[32%] px-4 py-2 text-left text-xs font-medium text-gray-400">
                       内容
                     </th>
-                    <th className="w-[18%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[18%] px-4 py-2 text-left text-xs font-medium text-gray-400">
                       标签
                     </th>
-                    <th className="w-[12%] px-4 py-2 text-left text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[12%] px-4 py-2 text-left text-xs font-medium text-gray-400">
                       更新时间
                     </th>
-                    <th className="w-[14%] px-4 py-2 text-right text-[11px] font-medium tracking-wide text-gray-500">
+                    <th className="w-[14%] px-4 py-2 text-right text-xs font-medium text-gray-400">
                       操作
                     </th>
                   </tr>
@@ -227,12 +228,12 @@ export function PromptsPage({
                           : ""
                       }`}
                     >
-                      <td className="px-4 py-3 align-middle">
+                      <td className="px-4 py-2 align-middle">
                         <div className="truncate text-sm font-medium text-white">
                           {item.title}
                         </div>
                       </td>
-                      <td className="px-4 py-3 align-middle">
+                      <td className="px-4 py-2 align-middle">
                         {summarizePromptContent(item.content) ? (
                           <Tooltip
                             placement="bottom"
@@ -265,7 +266,7 @@ export function PromptsPage({
                           <span className="text-xs text-gray-600">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 align-middle">
+                      <td className="px-4 py-2 align-middle">
                         <div className="flex flex-wrap gap-1.5">
                           {item.tags.length > 0 ? (
                             item.tags.map((tag) => (
@@ -281,12 +282,12 @@ export function PromptsPage({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 align-middle text-xs text-gray-500">
+                      <td className="px-4 py-2 align-middle text-xs text-gray-500">
                         <span className="whitespace-nowrap">
                           {formatPromptTime(item.updatedAt)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 align-middle">
+                      <td className="px-4 py-2 align-middle">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => onOpenDetail(item.id, "detail")}
@@ -304,7 +305,7 @@ export function PromptsPage({
                           </button>
                           <button
                             onClick={() => setDeleteTarget(item)}
-                            className={`${BUTTON_ICON_MD_CLASS} border-red-500/30 text-red-200 hover:border-red-400/40 hover:text-white`}
+                            className={BUTTON_ICON_DANGER_MD_CLASS}
                             aria-label={`删除${item.title}`}
                           >
                             <Trash2 className="h-4 w-4" />

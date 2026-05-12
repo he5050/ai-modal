@@ -10,7 +10,7 @@ import {
   FIELD_SELECT_CLASS,
 } from "../../lib/formStyles";
 import {
-  BUTTON_ICON_GHOST_SM_CLASS,
+  BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_ICON_GHOST_MD_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_PRIMARY_CLASS,
@@ -274,7 +274,7 @@ export function DetectPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-5 pb-4">
+      <div className="shrink-0 px-6 pb-6">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold tracking-tight text-white">
             模型检测
@@ -282,7 +282,7 @@ export function DetectPage({
           <HintTooltip content="填写并测试当前 provider。" />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         {form.editingId && (
           <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 flex items-center gap-3">
             <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
@@ -629,14 +629,14 @@ export function DetectPage({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExport}
-                className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200"
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
                 导出 Markdown
               </button>
               {visibleResults.some((r) => r.available) && (
                 <button
                   onClick={handleCopyAvailable}
-                  className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-400"
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   复制可用模型
                 </button>
@@ -837,7 +837,7 @@ export function DetectPage({
               </table>
             </div>
           ) : (
-            <div className="mb-6 rounded-xl border border-dashed border-gray-800 bg-gray-900/60 px-5 py-7 text-center">
+            <div className="mb-6 rounded-xl border border-dashed border-gray-800 bg-gray-900/60 px-6 py-12 text-center">
               <p className="text-sm font-medium text-gray-300">
                 本次接口检测结果会显示在这里
               </p>
@@ -958,7 +958,7 @@ export function DetectPage({
                                   e.stopPropagation();
                                   setDeleteConfirmId(p.id);
                                 }}
-                                className={`${BUTTON_ICON_GHOST_SM_CLASS} hover:text-red-300`}
+                                className={BUTTON_ICON_DANGER_SM_CLASS}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>

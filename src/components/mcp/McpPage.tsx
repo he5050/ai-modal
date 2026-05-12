@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
-import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { exists, mkdir, readDir, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   CheckCircle2,
@@ -24,6 +24,7 @@ import {
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
+  BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
@@ -33,6 +34,8 @@ import { loadPersistedJson, savePersistedJson } from "../../lib/persistence";
 import { toast } from "../../lib/toast";
 import { logger } from "../../lib/devlog";
 import { HintTooltip } from "../HintTooltip";
+import { ModelscopeOnlineInstallPanel } from "./ModelscopeOnlineInstallPanel";
+import type { McpServerConfigInput } from "../../types";
 
 type McpServerConfig = {
   type?: "stdio" | "http" | string;
@@ -48,7 +51,12 @@ type McpConfig = {
   mcpServers: Record<string, McpServerConfig>;
 };
 
-type SyncMode = "json-replace" | "json-merge" | "codex-toml";
+type SyncMode =
+  | "json-replace"
+  | "json-merge"
+  | "json-mcpServers"
+  | "codex-toml"
+  | "opencode-json";
 
 type McpSyncTarget = {
   id: string;
@@ -64,6 +72,7 @@ type McpSyncStatus = {
   exists: boolean;
   syncedAt?: number;
   error?: string;
+  backupPath?: string;
 };
 
 type McpServiceTestState = {
@@ -79,6 +88,7 @@ type McpServiceTestState = {
 const MCP_SYNC_TARGETS_KEY = "ai-modal-mcp-sync-targets";
 const MCP_SYNC_TARGETS_DB_KEY = "mcp_sync_targets";
 const MCP_BATCH_TEST_CONCURRENCY = 4;
+const MCP_BACKUP_KEEP_COUNT = 3;
 
 function normalizeHomePath(path: string) {
   return path.replace(/\/$/, "");
@@ -94,7 +104,7 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       id: "claude",
       label: "Claude",
       path: `${homePath}/.claude.json`,
-      mode: "json-merge",
+      mode: "json-mcpServers",
       isBuiltin: true,
       enabled: true,
       accentClass: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200",
@@ -109,19 +119,28 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       accentClass: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
     },
     {
+      id: "gemini",
+      label: "Gemini",
+      path: `${homePath}/.gemini/settings.json`,
+      mode: "json-mcpServers",
+      isBuiltin: true,
+      enabled: true,
+      accentClass: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+    },
+    {
       id: "qwen",
       label: "Qwen",
-      path: `${homePath}/.qwen/mcp.json`,
-      mode: "json-replace",
+      path: `${homePath}/.qwen/settings.json`,
+      mode: "json-mcpServers",
       isBuiltin: true,
       enabled: true,
       accentClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
     },
     {
-      id: "snow",
-      label: "Snow",
-      path: `${homePath}/.snow/mcp-config.json`,
-      mode: "json-replace",
+      id: "opencode",
+      label: "OpenCode",
+      path: `${homePath}/.config/opencode/opencode.json`,
+      mode: "opencode-json",
       isBuiltin: true,
       enabled: true,
       accentClass: "border-sky-500/30 bg-sky-500/10 text-sky-100",
@@ -161,6 +180,53 @@ function stringifyConfig(config: McpConfig) {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
+function removeJsonTrailingCommas(text: string) {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      result += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      result += char;
+      continue;
+    }
+
+    if (char === ",") {
+      let nextIndex = index + 1;
+      while (nextIndex < text.length && /\s/.test(text[nextIndex])) {
+        nextIndex += 1;
+      }
+      if (text[nextIndex] === "}" || text[nextIndex] === "]") {
+        continue;
+      }
+    }
+
+    result += char;
+  }
+  return result;
+}
+
+function parseJsonObject(content: string, options?: { relaxed?: boolean }) {
+  const parsed = JSON.parse(options?.relaxed ? removeJsonTrailingCommas(content) : content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("配置根节点必须是 JSON 对象");
+  }
+  return parsed as Record<string, unknown>;
+}
+
 function defaultServerDraft(): McpServerConfig {
   return {
     type: "stdio",
@@ -173,6 +239,45 @@ function defaultServerDraft(): McpServerConfig {
 async function ensureParent(path: string) {
   const folder = await dirname(path);
   await mkdir(folder, { recursive: true });
+}
+
+function backupPathFor(path: string) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${path}.bak-ai-modal-mcp-${stamp}`;
+}
+
+function fileNameOf(path: string) {
+  return path.split("/").filter(Boolean).at(-1) ?? path;
+}
+
+async function cleanupOldBackups(path: string) {
+  const folder = await dirname(path);
+  const fileName = fileNameOf(path);
+  const prefix = `${fileName}.bak-ai-modal-mcp-`;
+  const entries = await readDir(folder);
+  const backups = entries
+    .filter((entry) => entry.isFile && entry.name.startsWith(prefix))
+    .map((entry) => `${folder}/${entry.name}`)
+    .sort()
+    .reverse();
+
+  for (const oldBackup of backups.slice(MCP_BACKUP_KEEP_COUNT)) {
+    await remove(oldBackup);
+  }
+}
+
+async function backupIfExists(path: string) {
+  if (!(await exists(path))) return null;
+  const content = await readTextFile(path);
+  const backupPath = backupPathFor(path);
+  await ensureParent(backupPath);
+  await writeTextFile(backupPath, content);
+  try {
+    await cleanupOldBackups(path);
+  } catch (error) {
+    logger.warn(`[MCP] 清理旧备份失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+  return backupPath;
 }
 
 function normalizeSyncTargets(
@@ -208,7 +313,9 @@ function normalizeSyncTargets(
         typeof item.mode === "string" &&
         (item.mode === "json-replace" ||
           item.mode === "json-merge" ||
-          item.mode === "codex-toml"),
+          item.mode === "json-mcpServers" ||
+          item.mode === "codex-toml" ||
+          item.mode === "opencode-json"),
     )
     .map((item) => ({
       ...item,
@@ -230,10 +337,47 @@ function countServerInfo(server: McpServerConfig) {
   };
 }
 
+function nonEmptyRecord(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value).filter(([, item]) => typeof item === "string");
+  if (entries.length === 0) return null;
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
+function buildOpenCodeMcp(servers: Record<string, McpServerConfig>) {
+  const next: Record<string, Record<string, unknown>> = {};
+  for (const [name, server] of Object.entries(servers)) {
+    if (server.type === "http") {
+      next[name] = {
+        type: "remote",
+        url: String(server.url ?? ""),
+        enabled: true,
+      };
+      continue;
+    }
+
+    const command = String(server.command ?? "");
+    const args = Array.isArray(server.args) ? server.args.map((item) => String(item)) : [];
+    const entry: Record<string, unknown> = {
+      type: "local",
+      command: [command, ...args].filter(Boolean),
+      enabled: true,
+    };
+    const env = nonEmptyRecord(server.env);
+    if (env) {
+      entry.environment = env;
+    }
+    next[name] = entry;
+  }
+  return next;
+}
+
 async function writeSyncTarget(
   target: McpSyncTarget,
   source: McpConfig,
-): Promise<void> {
+): Promise<string | null> {
+  const backupPath = await backupIfExists(target.path);
+
   if (target.mode === "codex-toml") {
     const tomlModule = await import("smol-toml");
     let root: Record<string, unknown> = {};
@@ -244,37 +388,72 @@ async function writeSyncTarget(
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
           root = parsed as Record<string, unknown>;
         }
-      } catch {
-        root = {};
+      } catch (error) {
+        throw new Error(`Codex TOML 解析失败，已停止写入：${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    root.mcp_servers = source.mcpServers;
+    const currentServers =
+      root.mcp_servers && typeof root.mcp_servers === "object" && !Array.isArray(root.mcp_servers)
+        ? (root.mcp_servers as Record<string, Record<string, unknown>>)
+        : {};
+    const nextServers: Record<string, Record<string, unknown>> = {};
+    for (const [name, server] of Object.entries(source.mcpServers)) {
+      const existing =
+        currentServers[name] && typeof currentServers[name] === "object" && !Array.isArray(currentServers[name])
+          ? currentServers[name]
+          : {};
+      const next: Record<string, unknown> = { ...existing };
+      for (const key of ["command", "args", "env", "cwd", "url", "type"] as const) {
+        delete next[key];
+      }
+      for (const [key, value] of Object.entries(server)) {
+        if (value !== undefined) {
+          next[key] = value;
+        }
+      }
+      nextServers[name] = next;
+    }
+    root.mcp_servers = nextServers;
     await ensureParent(target.path);
     await writeTextFile(target.path, `${tomlModule.stringify(root)}\n`);
-    return;
+    return backupPath;
   }
 
-  if (target.mode === "json-merge") {
+  if (target.mode === "json-merge" || target.mode === "json-mcpServers") {
     let root: Record<string, unknown> = {};
     if (await exists(target.path)) {
       const content = await readTextFile(target.path);
       try {
-        const parsed = JSON.parse(content);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          root = parsed as Record<string, unknown>;
-        }
-      } catch {
-        root = {};
+        root = parseJsonObject(content);
+      } catch (error) {
+        throw new Error(`JSON 配置解析失败，已停止写入：${error instanceof Error ? error.message : String(error)}`);
       }
     }
     root.mcpServers = source.mcpServers;
     await ensureParent(target.path);
     await writeTextFile(target.path, `${JSON.stringify(root, null, 2)}\n`);
-    return;
+    return backupPath;
+  }
+
+  if (target.mode === "opencode-json") {
+    let root: Record<string, unknown> = {};
+    if (await exists(target.path)) {
+      const content = await readTextFile(target.path);
+      try {
+        root = parseJsonObject(content, { relaxed: true });
+      } catch (error) {
+        throw new Error(`OpenCode 配置解析失败，已停止写入：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    root.mcp = buildOpenCodeMcp(source.mcpServers);
+    await ensureParent(target.path);
+    await writeTextFile(target.path, `${JSON.stringify(root, null, 2)}\n`);
+    return backupPath;
   }
 
   await ensureParent(target.path);
   await writeTextFile(target.path, stringifyConfig(source));
+  return backupPath;
 }
 
 export function McpPage({
@@ -288,7 +467,7 @@ export function McpPage({
   const [config, setConfig] = useState<McpConfig>(createEmptyConfig());
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] = useState<"list" | "sync">("list");
+  const [selectedTab, setSelectedTab] = useState<"list" | "sync" | "online">("list");
   const [targets, setTargets] = useState<McpSyncTarget[]>([]);
   const [statuses, setStatuses] = useState<Record<string, McpSyncStatus>>({});
   const [serverTests, setServerTests] = useState<Record<string, McpServiceTestState>>({});
@@ -429,18 +608,70 @@ export function McpPage({
     }
   }
 
+  async function persistSourceConfig(
+    nextConfig: McpConfig,
+    options?: { backup?: boolean },
+  ) {
+    if (options?.backup) {
+      await backupIfExists(sourcePath);
+    }
+    await ensureParent(sourcePath);
+    await writeTextFile(sourcePath, stringifyConfig(nextConfig));
+  }
+
   async function saveSource() {
     setBusy("save");
     logger.info("[MCP] 开始保存 source 配置");
     try {
-      await ensureParent(sourcePath);
-      await writeTextFile(sourcePath, stringifyConfig(config));
+      await persistSourceConfig(config, { backup: true });
       setDirty(false);
       toast("MCP 配置已保存", "success");
       logger.success("[MCP] source 配置保存成功");
     } catch (error) {
       toast("保存 MCP 配置失败", "error");
       logger.error(`[MCP] source 配置保存失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function importModelscopeServer(payload: {
+    name: string;
+    config: McpServerConfigInput;
+    sourceUrl?: string | null;
+  }) {
+    const previousConfig = config;
+    const previousDirty = dirty;
+    const nextConfig = {
+      mcpServers: {
+        ...config.mcpServers,
+        [payload.name]: payload.config as McpServerConfig,
+      },
+    } as McpConfig;
+    const isOverwrite = Object.prototype.hasOwnProperty.call(
+      config.mcpServers,
+      payload.name,
+    );
+    setConfig(nextConfig);
+    setDirty(false);
+    setBusy("save");
+    try {
+      await persistSourceConfig(nextConfig, { backup: true });
+      toast(
+        isOverwrite
+          ? `已覆盖导入 MCP：${payload.name}`
+          : `已导入 MCP：${payload.name}`,
+        "success",
+      );
+      logger.success(
+        `[MCP] 已导入 ModelScope MCP：${payload.name}${payload.sourceUrl ? ` <- ${payload.sourceUrl}` : ""}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast(`导入 MCP 失败：${message}`, "error");
+      logger.error(`[MCP] 导入 ModelScope MCP 失败：${message}`);
+      setConfig(previousConfig);
+      setDirty(previousDirty);
     } finally {
       setBusy(null);
     }
@@ -461,13 +692,16 @@ export function McpPage({
     try {
       for (const target of enabledTargets) {
         try {
-          await writeSyncTarget(target, config);
+          const backupPath = await writeSyncTarget(target, config);
           successCount += 1;
           nextStatuses[target.id] = {
             exists: true,
             syncedAt: Date.now(),
+            backupPath: backupPath ?? undefined,
           };
-          logger.success(`[MCP] 同步成功：${target.label} -> ${target.path}`);
+          logger.success(
+            `[MCP] 同步成功：${target.label} -> ${target.path}${backupPath ? `，备份=${backupPath}` : ""}`,
+          );
         } catch (error) {
           failCount += 1;
           const message = error instanceof Error ? error.message : String(error);
@@ -703,7 +937,7 @@ export function McpPage({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="shrink-0 px-5 pb-5">
+      <div className="shrink-0 px-6 pb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -757,6 +991,7 @@ export function McpPage({
               [
                 ["list", "服务列表"],
                 ["sync", "同步目标"],
+                ["online", "在线安装"],
               ] as const
             ).map(([tab, label]) => (
               <button
@@ -893,7 +1128,7 @@ export function McpPage({
                             </button>
                             <button
                               onClick={() => removeServer(name)}
-                              className={`${BUTTON_ICON_GHOST_SM_CLASS} hover:text-red-300`}
+                              className={BUTTON_ICON_DANGER_SM_CLASS}
                               title="删除"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -952,6 +1187,9 @@ export function McpPage({
                         <span className="ml-2">
                           {new Date(status.syncedAt).toLocaleTimeString("zh-CN", { hour12: false })}
                         </span>
+                      ) : null}
+                      {status?.backupPath ? (
+                        <span className="ml-2 text-cyan-400">已备份</span>
                       ) : null}
                     </div>
                   </div>
@@ -1062,8 +1300,10 @@ export function McpPage({
                     className={`${FIELD_SELECT_CLASS} w-40`}
                   >
                     <option value="json-replace">JSON 覆盖</option>
-                    <option value="json-merge">JSON 合并</option>
+                    <option value="json-merge">JSON mcpServers</option>
+                    <option value="json-mcpServers">JSON 设置 mcpServers</option>
                     <option value="codex-toml">Codex TOML</option>
+                    <option value="opencode-json">OpenCode JSON</option>
                   </select>
                   <button
                     onClick={async () => {
@@ -1089,6 +1329,13 @@ export function McpPage({
               )}
             </div>
           </section>
+        )}
+
+        {selectedTab === "online" && (
+          <ModelscopeOnlineInstallPanel
+            existingServerNames={new Set(Object.keys(config.mcpServers))}
+            onImportServer={importModelscopeServer}
+          />
         )}
       </div>
 

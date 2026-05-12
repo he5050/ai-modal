@@ -3,7 +3,10 @@
 mod commands;
 mod providers;
 
-use commands::mcp::test_mcp_server;
+use commands::mcp::{
+    extract_modelscope_mcp_server, extract_modelscope_mcp_server_with_profile,
+    inspect_modelscope_mcp_server, search_modelscope_mcp_servers, test_mcp_server,
+};
 use commands::model::{list_models, test_models};
 use commands::model_mapping::{
     apply_model_mapping_to_claude, ensure_model_mapping_claude_gateway,
@@ -116,6 +119,10 @@ pub fn run() {
             list_models,
             test_models,
             test_mcp_server,
+            search_modelscope_mcp_servers,
+            inspect_modelscope_mcp_server,
+            extract_modelscope_mcp_server,
+            extract_modelscope_mcp_server_with_profile,
             load_model_mapping_config,
             load_model_mapping_settings,
             save_model_mapping_config,
