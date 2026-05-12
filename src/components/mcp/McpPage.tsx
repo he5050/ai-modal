@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { exists, mkdir, readDir, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   CheckCircle2,
   FilePenLine,
@@ -24,7 +23,6 @@ import {
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
-  BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
@@ -66,6 +64,7 @@ type McpSyncTarget = {
   isBuiltin: boolean;
   enabled: boolean;
   accentClass: string;
+  syncServerNames: string[] | null;
 };
 
 type McpSyncStatus = {
@@ -108,6 +107,7 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       isBuiltin: true,
       enabled: true,
       accentClass: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200",
+      syncServerNames: null,
     },
     {
       id: "codex",
@@ -117,6 +117,7 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       isBuiltin: true,
       enabled: true,
       accentClass: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
+      syncServerNames: null,
     },
     {
       id: "gemini",
@@ -126,6 +127,7 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       isBuiltin: true,
       enabled: true,
       accentClass: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+      syncServerNames: null,
     },
     {
       id: "qwen",
@@ -135,6 +137,7 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       isBuiltin: true,
       enabled: true,
       accentClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+      syncServerNames: null,
     },
     {
       id: "opencode",
@@ -144,6 +147,7 @@ function buildBuiltinTargets(homePath: string): McpSyncTarget[] {
       isBuiltin: true,
       enabled: true,
       accentClass: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+      syncServerNames: null,
     },
   ];
 }
@@ -322,6 +326,7 @@ function normalizeSyncTargets(
       isBuiltin: false,
       enabled: item.enabled !== false,
       accentClass: "border-gray-700 bg-gray-950 text-gray-300",
+      syncServerNames: null,
     }));
 
   return [...mergedBuiltins, ...custom];
@@ -376,6 +381,15 @@ async function writeSyncTarget(
   target: McpSyncTarget,
   source: McpConfig,
 ): Promise<string | null> {
+  const filteredServers = target.syncServerNames
+    ? Object.fromEntries(
+        Object.entries(source.mcpServers).filter(([name]) =>
+          target.syncServerNames!.includes(name),
+        ),
+      )
+    : source.mcpServers;
+  const filteredConfig: McpConfig = { mcpServers: filteredServers };
+
   const backupPath = await backupIfExists(target.path);
 
   if (target.mode === "codex-toml") {
@@ -397,7 +411,7 @@ async function writeSyncTarget(
         ? (root.mcp_servers as Record<string, Record<string, unknown>>)
         : {};
     const nextServers: Record<string, Record<string, unknown>> = {};
-    for (const [name, server] of Object.entries(source.mcpServers)) {
+    for (const [name, server] of Object.entries(filteredConfig.mcpServers)) {
       const existing =
         currentServers[name] && typeof currentServers[name] === "object" && !Array.isArray(currentServers[name])
           ? currentServers[name]
@@ -429,7 +443,7 @@ async function writeSyncTarget(
         throw new Error(`JSON 配置解析失败，已停止写入：${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    root.mcpServers = source.mcpServers;
+    root.mcpServers = filteredConfig.mcpServers;
     await ensureParent(target.path);
     await writeTextFile(target.path, `${JSON.stringify(root, null, 2)}\n`);
     return backupPath;
@@ -445,14 +459,14 @@ async function writeSyncTarget(
         throw new Error(`OpenCode 配置解析失败，已停止写入：${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    root.mcp = buildOpenCodeMcp(source.mcpServers);
+    root.mcp = buildOpenCodeMcp(filteredConfig.mcpServers);
     await ensureParent(target.path);
     await writeTextFile(target.path, `${JSON.stringify(root, null, 2)}\n`);
     return backupPath;
   }
 
   await ensureParent(target.path);
-  await writeTextFile(target.path, stringifyConfig(source));
+  await writeTextFile(target.path, stringifyConfig(filteredConfig));
   return backupPath;
 }
 
@@ -473,7 +487,6 @@ export function McpPage({
   const [serverTests, setServerTests] = useState<Record<string, McpServiceTestState>>({});
   const [checkingTargets, setCheckingTargets] = useState(false);
   const [selectedTargetId, setSelectedTargetId] = useState("");
-  const [pathDraft, setPathDraft] = useState("");
   const [showCustomTargetForm, setShowCustomTargetForm] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
@@ -498,20 +511,10 @@ export function McpPage({
     [config.mcpServers],
   );
 
-  const selectedTarget = useMemo(
-    () => targets.find((item) => item.id === selectedTargetId) ?? null,
-    [selectedTargetId, targets],
-  );
-
   const testingCount = useMemo(
     () => Object.values(serverTests).filter((item) => item.running).length,
     [serverTests],
   );
-
-  useEffect(() => {
-    if (!selectedTarget) return;
-    setPathDraft(selectedTarget.path);
-  }, [selectedTarget?.id, selectedTarget?.path]);
 
   useEffect(() => {
     if (targets.length === 0) return;
@@ -873,29 +876,6 @@ export function McpPage({
     );
   }
 
-  function saveTargetPath() {
-    if (!selectedTarget) return;
-    const nextPath = toAbsolutePath(pathDraft, homePath);
-    if (!nextPath) {
-      toast("路径不能为空", "warning");
-      return;
-    }
-    setTargets((prev) =>
-      prev.map((item) =>
-        item.id === selectedTarget.id ? { ...item, path: nextPath } : item,
-      ),
-    );
-    toast("目标路径已更新", "success");
-  }
-
-  function removeCustomTarget(id: string) {
-    setTargets((prev) => prev.filter((item) => item.id !== id));
-    if (selectedTargetId === id) {
-      const next = targets.find((item) => item.id !== id);
-      if (next) setSelectedTargetId(next.id);
-    }
-  }
-
   function addCustomTarget() {
     const label = customLabel.trim();
     const path = toAbsolutePath(customPath, homePath);
@@ -915,10 +895,10 @@ export function McpPage({
       isBuiltin: false,
       enabled: true,
       accentClass: "border-gray-700 bg-gray-950 text-gray-300",
+      syncServerNames: null,
     };
     setTargets((prev) => [...prev, next]);
     setSelectedTargetId(next.id);
-    setPathDraft(next.path);
     setCustomLabel("");
     setCustomPath("");
     setCustomMode("json-replace");
@@ -1036,110 +1016,101 @@ export function McpPage({
                 <p className="text-sm text-gray-400">当前没有 MCP 服务配置。</p>
               </div>
             ) : (
-              <table className="w-full table-fixed text-sm">
-                <thead>
-                  <tr className="border-b border-gray-800">
-                    <th className="w-[22%] px-4 py-2.5 text-left text-xs text-gray-500">服务名</th>
-                    <th className="w-[88px] px-4 py-2.5 text-left text-xs text-gray-500">类型</th>
-                    <th className="px-4 py-2.5 text-left text-xs text-gray-500">启动信息</th>
-                    <th className="w-[110px] px-4 py-2.5 text-left text-xs text-gray-500">参数</th>
-                    <th className="w-[230px] px-4 py-2.5 text-left text-xs text-gray-500">测试状态</th>
-                    <th className="w-[190px] px-4 py-2.5 text-center text-xs text-gray-500">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {serverEntries.map(([name, server], index) => {
-                    const info = countServerInfo(server);
-                    const testState = serverTests[name];
-                    return (
-                      <tr
-                        key={name}
-                        className={`hover:bg-gray-800/35 ${index < serverEntries.length - 1 ? "border-b border-gray-800/50" : ""}`}
-                      >
-                        <td className="px-4 py-2 align-middle">
-                          <span className="truncate font-mono text-xs text-gray-200">{name}</span>
-                        </td>
-                        <td className="px-4 py-2 align-middle">
-                          <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300">
+              <div className="grid grid-cols-1 gap-2.5 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                {serverEntries.map(([name, server]) => {
+                  const info = countServerInfo(server);
+                  const testState = serverTests[name];
+                  return (
+                    <div
+                      key={name}
+                      className="rounded-xl border border-gray-800 bg-black/10 px-3 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-100">
+                            {name}
+                          </p>
+                          <p className="mt-1 truncate text-[11px] text-gray-500">
+                            {server.type === "http"
+                              ? String(server.url ?? "—")
+                              : [server.command, ...(server.args ?? [])].filter(Boolean).join(" ")}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] text-gray-400">
                             {server.type ?? "stdio"}
                           </span>
-                        </td>
-                        <td className="px-4 py-2 align-middle">
-                          {server.type === "http" ? (
-                            <span className="block truncate font-mono text-xs text-cyan-300">
-                              {String(server.url ?? "—")}
-                            </span>
-                          ) : (
-                            <div className="space-y-0.5">
-                              <span className="block truncate font-mono text-xs text-gray-300">
-                                {String(server.command ?? "—")}
-                              </span>
-                              {Array.isArray(server.args) && server.args.length > 0 && (
-                                <span className="block truncate font-mono text-[11px] text-gray-500">
-                                  {server.args.join(" ")}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 align-middle">
-                          <span className="text-xs text-gray-500">
-                            args {info.args} / env {info.env}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 align-middle">
                           {testState?.running ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-cyan-300">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              测试中...
-                            </span>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-300" />
                           ) : testState?.checkedAt ? (
-                            <div className="space-y-0.5">
-                              <span className={`block text-xs ${testState.ok ? "text-emerald-300" : "text-red-300"}`}>
-                                {testState.ok ? "可用" : "不可用"} · {testState.status ?? "unknown"}
-                                {typeof testState.latency_ms === "number" ? ` · ${testState.latency_ms}ms` : ""}
-                              </span>
-                              <span className="block truncate text-[11px] text-gray-500">
-                                {testState.message}
-                                {testState.detail ? `：${testState.detail}` : ""}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-600">未测试</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 align-middle whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => void runServerTest(name, server)}
-                              disabled={!!testState?.running}
-                              className={`${BUTTON_SECONDARY_CLASS} h-7 px-2.5 text-[11px] whitespace-nowrap`}
-                              title="测试"
-                            >
-                              {testState?.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                              测试
-                            </button>
-                            <button
-                              onClick={() => openServerEditor(name)}
-                              className={BUTTON_ICON_GHOST_SM_CLASS}
-                              title="编辑"
-                            >
-                              <FilePenLine className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => removeServer(name)}
-                              className={BUTTON_ICON_DANGER_SM_CLASS}
-                              title="删除"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            testState.ok ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                            ) : (
+                              <X className="h-3.5 w-3.5 text-red-400" />
+                            )
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-400">
+                          args {info.args} / env {info.env}
+                        </span>
+                        {testState?.checkedAt && (
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] ${
+                            testState.ok
+                              ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                              : "border border-red-500/30 bg-red-500/10 text-red-200"
+                          }`}>
+                            {testState.ok ? "可用" : "不可用"}
+                            {typeof testState.latency_ms === "number" ? ` · ${testState.latency_ms}ms` : ""}
+                          </span>
+                        )}
+                        {!testState?.checkedAt && !testState?.running && (
+                          <span className="rounded-full border border-gray-800 bg-gray-900 px-2 py-0.5 text-[10px] text-gray-600">
+                            未测试
+                          </span>
+                        )}
+                      </div>
+
+                      {testState?.checkedAt && testState.message && (
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">
+                          {testState.message}
+                          {testState.detail ? `：${testState.detail}` : ""}
+                        </p>
+                      )}
+
+                      <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-gray-800 pt-2">
+                        <button
+                          onClick={() => void runServerTest(name, server)}
+                          disabled={!!testState?.running}
+                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                          title="测试"
+                        >
+                          {testState?.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          测试
+                        </button>
+                        <button
+                          onClick={() => openServerEditor(name)}
+                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                          title="编辑"
+                        >
+                          <FilePenLine className="h-3.5 w-3.5" />
+                          编辑
+                        </button>
+                        <button
+                          onClick={() => removeServer(name)}
+                          className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                          title="删除"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </section>
         )}
@@ -1164,6 +1135,10 @@ export function McpPage({
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               {targets.map((target) => {
                 const status = statuses[target.id];
+                const syncNames = target.syncServerNames;
+                const totalServers = Object.keys(config.mcpServers).length;
+                const selectedCount = syncNames ? syncNames.length : totalServers;
+                const isEditing = selectedTargetId === target.id;
                 return (
                   <div key={target.id} className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5">
                     <div className="flex items-center justify-between gap-2">
@@ -1192,68 +1167,74 @@ export function McpPage({
                         <span className="ml-2 text-cyan-400">已备份</span>
                       ) : null}
                     </div>
+                    <button
+                      onClick={() => setSelectedTargetId(isEditing ? "" : target.id)}
+                      className="mt-2 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1 text-[10px] text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200"
+                    >
+                      {syncNames
+                        ? `${selectedCount}/${totalServers} 个服务`
+                        : `全部 ${totalServers} 个服务`}
+                    </button>
+                    {isEditing && (
+                      <div className="mt-2 max-h-[200px] space-y-1 overflow-y-auto">
+                        <button
+                          onClick={() => {
+                            setTargets((prev) =>
+                              prev.map((t) =>
+                                t.id === target.id ? { ...t, syncServerNames: null } : t,
+                              ),
+                            );
+                          }}
+                          className={`block w-full rounded px-2 py-1 text-left text-[10px] transition-colors ${
+                            syncNames === null
+                              ? "bg-indigo-500/15 text-indigo-200"
+                              : "text-gray-400 hover:bg-gray-800/50"
+                          }`}
+                        >
+                          全部同步
+                        </button>
+                        {serverEntries.map(([name]) => (
+                          <label
+                            key={`${target.id}-${name}`}
+                            className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] text-gray-400 hover:bg-gray-800/50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={syncNames ? syncNames.includes(name) : true}
+                              onChange={() => {
+                                setTargets((prev) =>
+                                  prev.map((t) => {
+                                    if (t.id !== target.id) return t;
+                                    const current = t.syncServerNames;
+                                    if (current === null) {
+                                      return {
+                                        ...t,
+                                        syncServerNames: serverEntries
+                                          .map(([n]) => n)
+                                          .filter((n) => n !== name),
+                                      };
+                                    }
+                                    const next = current.includes(name)
+                                      ? current.filter((n) => n !== name)
+                                      : [...current, name];
+                                    return {
+                                      ...t,
+                                      syncServerNames: next.length === totalServers ? null : next,
+                                    };
+                                  }),
+                                );
+                              }}
+                              className="h-3 w-3 rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/30"
+                            />
+                            <span className="truncate font-mono">{name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-
-            {selectedTarget && (
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedTargetId}
-                  onChange={(event) => setSelectedTargetId(event.target.value)}
-                  className={`w-40 ${FIELD_SELECT_CLASS}`}
-                >
-                  {targets.map((target) => (
-                    <option key={target.id} value={target.id}>
-                      {target.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={pathDraft}
-                  onChange={(event) => setPathDraft(event.target.value)}
-                  className={`${FIELD_MONO_INPUT_CLASS} min-w-[280px] flex-1`}
-                  placeholder="~/path/to/mcp-config.json"
-                />
-                <button
-                  onClick={async () => {
-                    const selected = await pickPath({
-                      directory: false,
-                      defaultPath: selectedTarget.path || homePath || undefined,
-                    });
-                    if (typeof selected === "string") setPathDraft(selected);
-                  }}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  选择文件
-                </button>
-                <button
-                  onClick={saveTargetPath}
-                  className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  保存路径
-                </button>
-                <button
-                  onClick={() => void openPath(selectedTarget.path)}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  打开
-                </button>
-                {!selectedTarget.isBuiltin && (
-                  <button
-                    onClick={() => removeCustomTarget(selectedTarget.id)}
-                    className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    删除
-                  </button>
-                )}
-              </div>
-            )}
 
             <div className="mt-4 rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-3">
               <div className="flex items-center justify-between">

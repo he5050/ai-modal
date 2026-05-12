@@ -7,6 +7,7 @@ import {
   Loader2,
   RefreshCcw,
   Search,
+  Settings2,
 } from "lucide-react";
 import {
   extractModelscopeMcpServer,
@@ -28,6 +29,8 @@ import { loadPersistedJson, savePersistedJson } from "../../lib/persistence";
 import { toast } from "../../lib/toast";
 import { HintTooltip } from "../HintTooltip";
 import type { ModelscopeRequestProfile } from "../../types";
+import { RequestConfigDialog } from "./RequestConfigDialog";
+import { InstallDialog } from "./InstallDialog";
 
 const MODELSCOPE_REQUEST_PROFILE_KEY = "ai-modal-modelscope-request-profile";
 const MODELSCOPE_REQUEST_PROFILE_DB_KEY = "modelscope_request_profile";
@@ -61,32 +64,6 @@ function transportPreview(config: McpServerConfigInput | undefined) {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-function parseCurlCommand(curlText: string): ModelscopeRequestProfile {
-  const profile: ModelscopeRequestProfile = { extraHeaders: {} };
-  const cookieMatch = curlText.match(/-b\s+'([^']+)'/s) ?? curlText.match(/-b\s+"([^"]+)"/s);
-  const headerMatches = [...curlText.matchAll(/-H\s+'([^']+)'/gs), ...curlText.matchAll(/-H\s+"([^"]+)"/gs)];
-  if (cookieMatch?.[1]) profile.cookie = cookieMatch[1];
-  for (const match of headerMatches) {
-    const raw = match[1];
-    const separator = raw.indexOf(":");
-    if (separator <= 0) continue;
-    const key = raw.slice(0, separator).trim().toLowerCase();
-    const value = raw.slice(separator + 1).trim();
-    if (key === "x-csrf-token") profile.csrfToken = value;
-    else if (key === "user-agent") profile.userAgent = value;
-    else if (key === "referer") profile.referer = value;
-    else if (key === "origin") profile.origin = value;
-    else if (key === "accept-language") profile.acceptLanguage = value;
-    else if (key === "x-modelscope-accept-language") profile.xModelscopeAcceptLanguage = value;
-    else if (key === "x-modelscope-trace-id") profile.traceId = value;
-    else if (key === "bx-v") profile.bxVersion = value;
-    if (profile.extraHeaders) {
-      profile.extraHeaders[key] = value;
-    }
-  }
-  return profile;
-}
-
 export function ModelscopeOnlineInstallPanel({
   existingServerNames,
   onImportServer,
@@ -98,7 +75,7 @@ export function ModelscopeOnlineInstallPanel({
   const [searchResults, setSearchResults] = useState<ModelscopeMcpServerSummary[]>([]);
   const [searchNonce, setSearchNonce] = useState(0);
   const [requestProfile, setRequestProfile] = useState<ModelscopeRequestProfile>({});
-  const [curlDraft, setCurlDraft] = useState("");
+  const [showRequestConfig, setShowRequestConfig] = useState(false);
   const [selectedServerId, setSelectedServerId] = useState("");
   const [details, setDetails] = useState<Record<string, ModelscopeMcpServerDetail>>({});
   const [loadingDetailIds, setLoadingDetailIds] = useState<Set<string>>(new Set());
@@ -107,6 +84,7 @@ export function ModelscopeOnlineInstallPanel({
   const [extractUrl, setExtractUrl] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [installTarget, setInstallTarget] = useState<ModelscopeMcpServerDetail | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -199,13 +177,11 @@ export function ModelscopeOnlineInstallPanel({
         const message = error instanceof Error ? error.message : String(error);
         setDetailErrors((prev) => ({ ...prev, [currentSummary.id]: message }));
       } finally {
-        if (!cancelled) {
-          setLoadingDetailIds((prev) => {
-            const next = new Set(prev);
-            next.delete(currentSummary.id);
-            return next;
-          });
-        }
+        setLoadingDetailIds((prev) => {
+          const next = new Set(prev);
+          next.delete(currentSummary.id);
+          return next;
+        });
       }
     }
 
@@ -241,6 +217,29 @@ export function ModelscopeOnlineInstallPanel({
     }
   }
 
+  async function handleStartInstall(server: ModelscopeMcpServerSummary) {
+    setImporting(true);
+    try {
+      const existing = details[server.id];
+      if (existing) {
+        setInstallTarget(existing);
+        return;
+      }
+      const detail = await inspectModelscopeMcpServer(
+        server.path,
+        server.name,
+        requestProfile,
+      );
+      setDetails((prev) => ({ ...prev, [detail.id]: detail }));
+      setInstallTarget(detail);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast(`加载详情失败：${message}`, "error");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function handleExtractImport() {
     const trimmedUrl = extractUrl.trim();
     if (!trimmedUrl) {
@@ -251,18 +250,11 @@ export function ModelscopeOnlineInstallPanel({
     setExtracting(true);
     try {
       const detail = await extractModelscopeMcpServer(trimmedUrl, requestProfile);
-      const transport = preferredTransport(detail);
-      const config = detail.transportConfigs[transport];
-      if (!config) {
+      if (Object.keys(detail.transportConfigs).length === 0) {
         toast("提取成功，但没有可导入的配置", "warning");
         return;
       }
-      await onImportServer({
-        name: detail.name,
-        config,
-        sourceUrl: trimmedUrl,
-      });
-      setExtractUrl("");
+      setInstallTarget(detail);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast(`URL 提取失败：${message}`, "error");
@@ -285,26 +277,33 @@ export function ModelscopeOnlineInstallPanel({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => void openPath("https://www.modelscope.cn/mcp")}
-            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            打开社区
-          </button>
-          <button
-            onClick={() => setSearchNonce((prev) => prev + 1)}
-            disabled={loadingSearch}
-            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-          >
-            {loadingSearch ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-3.5 w-3.5" />
-            )}
-            刷新
-          </button>
-        </div>
+            <button
+              onClick={() => setShowRequestConfig(true)}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              请求配置
+            </button>
+            <button
+              onClick={() => void openPath("https://www.modelscope.cn/mcp")}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              打开社区
+            </button>
+            <button
+              onClick={() => setSearchNonce((prev) => prev + 1)}
+              disabled={loadingSearch}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              {loadingSearch ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-3.5 w-3.5" />
+              )}
+              刷新
+            </button>
+          </div>
       </div>
 
       <div className="mt-4 rounded-xl border border-gray-800/70 bg-black/15 px-4 py-3">
@@ -355,36 +354,10 @@ export function ModelscopeOnlineInstallPanel({
         )}
       </div>
 
-      <div className="mt-3 rounded-xl border border-gray-800/70 bg-black/10 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-gray-400">请求配置</div>
-          <button
-            onClick={() => {
-              const next = parseCurlCommand(curlDraft);
-              setRequestProfile(next);
-              toast("已解析请求配置", "success");
-            }}
-            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-          >
-            解析 curl
-          </button>
-        </div>
-        <textarea
-          value={curlDraft}
-          onChange={(event) => setCurlDraft(event.target.value)}
-          placeholder="粘贴浏览器里的 curl（可选）"
-          className={`${FIELD_MONO_INPUT_CLASS} mt-2 min-h-[110px] w-full resize-y`}
-        />
-        <div className="mt-2 text-[11px] text-gray-500">
-          {requestProfile.cookie ? "已配置 Cookie" : "未配置请求 Cookie"}
-          {requestProfile.csrfToken ? " · 已配置 CSRF" : ""}
-        </div>
-      </div>
-
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2.5">
           {searchResults.length === 0 && !loadingSearch ? (
-            <div className="rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-8 text-sm text-gray-500">
+            <div className="col-span-2 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-8 text-sm text-gray-500">
               当前没有可展示的社区 MCP 结果。
             </div>
           ) : (
@@ -392,63 +365,78 @@ export function ModelscopeOnlineInstallPanel({
               const active = server.id === selectedServerId;
               const installed = existingServerNames.has(server.name);
               return (
-                <button
+                <div
                   key={server.id}
-                  type="button"
                   onClick={() => setSelectedServerId(server.id)}
-                  className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                  className={`cursor-pointer rounded-xl border px-3 py-3 transition-colors ${
                     active
-                      ? "border-indigo-500/50 bg-indigo-500/10"
-                      : "border-gray-800 bg-black/10 hover:border-gray-700 hover:bg-gray-900/60"
+                      ? "border-indigo-500/50 bg-indigo-500/8"
+                      : "border-gray-800 bg-black/10 hover:border-gray-700"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-medium text-gray-100">
-                          {server.name}
-                        </span>
-                        {server.chineseName && (
-                          <span className="truncate text-xs text-gray-400">
-                            {server.chineseName}
-                          </span>
-                        )}
-                        {installed && (
-                          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
-                            已在源配置
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 text-[11px] text-gray-500">
-                        {server.path}
-                      </div>
-                      {server.originalAbstract && (
-                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-300">
-                          {server.originalAbstract}
-                        </p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {server.transportTypes.map((transport) => (
-                          <span
-                            key={`${server.id}-${transport}`}
-                            className="rounded-full border border-gray-700 bg-gray-950 px-1.5 py-0.5 font-mono text-[10px] text-gray-400"
-                          >
-                            {prettyTransportLabel(transport)}
-                          </span>
-                        ))}
-                        {server.tags.slice(0, 3).map((tag) => (
-                          <span
-                            key={`${server.id}-${tag}`}
-                            className="rounded-full border border-gray-800 bg-gray-900 px-1.5 py-0.5 text-[10px] text-gray-500"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className={`truncate text-sm font-medium ${active ? "text-white" : "text-gray-100"}`}>
+                        {server.chineseName || server.name}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-gray-500">
+                        {server.path}/{server.name}
+                      </p>
                     </div>
-                    <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-gray-600" />
+                    {installed && (
+                      <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                        已导入
+                      </span>
+                    )}
                   </div>
-                </button>
+                  {server.originalAbstract && (
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-400">
+                      {server.originalAbstract}
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {server.transportTypes.map((transport) => (
+                      <span
+                        key={`${server.id}-${transport}`}
+                        className="rounded-full border border-gray-700 bg-gray-950 px-1.5 py-0.5 font-mono text-[10px] text-gray-400"
+                      >
+                        {prettyTransportLabel(transport)}
+                      </span>
+                    ))}
+                    {server.tags.slice(0, 3).map((tag) => (
+                      <span
+                        key={`${server.id}-${tag}`}
+                        className="rounded-full border border-gray-800 bg-gray-900 px-1.5 py-0.5 text-[10px] text-gray-500"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-gray-800 pt-2">
+                    {!installed && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleStartInstall(server);
+                        }}
+                        disabled={importing}
+                        className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                      >
+                        {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        安装
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedServerId(server.id);
+                      }}
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      详情
+                    </button>
+                  </div>
+                </div>
               );
             })
           )}
@@ -457,122 +445,145 @@ export function ModelscopeOnlineInstallPanel({
         <div className="rounded-xl border border-gray-800 bg-black/15 p-4">
           {selectedSummary == null ? (
             <div className="text-sm text-gray-500">选择左侧服务查看详情。</div>
-          ) : loadingDetailIds.has(selectedSummary.id) ? (
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              正在加载社区详情...
-            </div>
-          ) : detailErrors[selectedSummary.id] ? (
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-red-200">详情加载失败</div>
-              <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs leading-5 text-red-200">
-                {detailErrors[selectedSummary.id]}
-              </div>
-            </div>
-          ) : selectedDetail ? (
+          ) : (
             <div className="space-y-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="text-sm font-semibold text-white">
-                    {selectedDetail.name}
+                    {selectedSummary.name}
                   </h4>
-                  {selectedDetail.chineseName && (
+                  {selectedSummary.chineseName && (
                     <span className="text-xs text-gray-400">
-                      {selectedDetail.chineseName}
+                      {selectedSummary.chineseName}
                     </span>
                   )}
                 </div>
                 <div className="mt-1 text-[11px] text-gray-500">
-                  {selectedDetail.path}
+                  {selectedSummary.path}
                 </div>
               </div>
 
-              <div className="space-y-1 text-xs text-gray-300">
-                {selectedDetail.originalAbstract && (
-                  <p className="leading-5">{selectedDetail.originalAbstract}</p>
-                )}
-                {selectedDetail.fromSiteUrl && (
-                  <p className="break-all text-gray-500">
-                    source: {selectedDetail.fromSiteUrl}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                {Object.keys(selectedDetail.transportConfigs).map((transport) => (
-                  <button
-                    key={`${selectedDetail.id}-${transport}`}
-                    type="button"
-                    onClick={() => setSelectedTransport(transport)}
-                    className={`rounded-full border px-2 py-1 text-[10px] font-mono transition ${
-                      selectedTransport === transport
-                        ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200"
-                        : "border-gray-700 bg-gray-950 text-gray-400 hover:border-gray-600 hover:text-gray-200"
-                    }`}
-                  >
-                    {prettyTransportLabel(transport)}
-                  </button>
-                ))}
-              </div>
-
-              <div>
-                <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">
-                  配置预览
+              {loadingDetailIds.has(selectedSummary.id) ? (
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在加载详情...
                 </div>
-                <pre className="max-h-[280px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/80 px-3 py-2 font-mono text-[11px] leading-5 text-gray-300">
-                  {transportPreview(
-                    selectedDetail.transportConfigs[selectedTransport] ??
-                      selectedDetail.transportConfigs[
-                        preferredTransport(selectedDetail)
-                      ],
-                  )}
-                </pre>
-              </div>
-
-              {selectedDetail.readme && (
+              ) : detailErrors[selectedSummary.id] ? (
                 <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">
-                    Readme 摘要
-                  </div>
-                  <div className="max-h-[160px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs leading-5 text-gray-300">
-                    {selectedDetail.readme}
+                  <div className="text-sm font-medium text-red-200">详情加载失败</div>
+                  <div className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs leading-5 text-red-200">
+                    {detailErrors[selectedSummary.id]}
                   </div>
                 </div>
-              )}
+              ) : selectedDetail ? (
+                <>
+                  <div className="space-y-1 text-xs text-gray-300">
+                    {selectedDetail.originalAbstract && (
+                      <p className="leading-5">{selectedDetail.originalAbstract}</p>
+                    )}
+                    {selectedDetail.fromSiteUrl && (
+                      <p className="break-all text-gray-500">
+                        source: {selectedDetail.fromSiteUrl}
+                      </p>
+                    )}
+                  </div>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => void handleImportDetail(selectedDetail)}
-                  disabled={importing}
-                  className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  {importing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Download className="h-3.5 w-3.5" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.keys(selectedDetail.transportConfigs).map((transport) => (
+                      <button
+                        key={`${selectedDetail.id}-${transport}`}
+                        type="button"
+                        onClick={() => setSelectedTransport(transport)}
+                        className={`rounded-full border px-2 py-1 text-[10px] font-mono transition ${
+                          selectedTransport === transport
+                            ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200"
+                            : "border-gray-700 bg-gray-950 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                        }`}
+                      >
+                        {prettyTransportLabel(transport)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                      配置预览
+                    </div>
+                    <pre className="max-h-[280px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/80 px-3 py-2 font-mono text-[11px] leading-5 text-gray-300">
+                      {transportPreview(
+                        selectedDetail.transportConfigs[selectedTransport] ??
+                          selectedDetail.transportConfigs[
+                            preferredTransport(selectedDetail)
+                          ],
+                      )}
+                    </pre>
+                  </div>
+
+                  {selectedDetail.readme && (
+                    <div>
+                      <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                        Readme 摘要
+                      </div>
+                      <div className="max-h-[160px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs leading-5 text-gray-300">
+                        {selectedDetail.readme}
+                      </div>
+                    </div>
                   )}
-                  导入当前配置
-                </button>
-                <button
-                  onClick={() =>
-                    void openPath(
-                      selectedDetail.pageUrl ||
-                        selectedDetail.fromSiteUrl ||
-                        "https://www.modelscope.cn/mcp",
-                    )
-                  }
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  打开详情页
-                </button>
-              </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => void handleImportDetail(selectedDetail)}
+                      disabled={importing}
+                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      {importing ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      导入当前配置
+                    </button>
+                    <button
+                      onClick={() =>
+                        void openPath(
+                          selectedDetail.pageUrl ||
+                            selectedDetail.fromSiteUrl ||
+                            "https://www.modelscope.cn/mcp",
+                        )
+                      }
+                      className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      打开详情页
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-gray-500">暂无详情数据。</div>
+              )}
             </div>
-          ) : (
-            <div className="text-sm text-gray-500">暂无详情数据。</div>
           )}
         </div>
       </div>
+
+      {showRequestConfig && (
+        <RequestConfigDialog
+          requestProfile={requestProfile}
+          onApply={(next) => {
+            setRequestProfile(next);
+            setShowRequestConfig(false);
+          }}
+          onClose={() => setShowRequestConfig(false)}
+        />
+      )}
+
+      {installTarget && (
+        <InstallDialog
+          detail={installTarget}
+          onImport={onImportServer}
+          onClose={() => setInstallTarget(null)}
+        />
+      )}
     </section>
   );
 }
