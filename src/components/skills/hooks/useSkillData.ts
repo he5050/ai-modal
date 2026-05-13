@@ -114,15 +114,15 @@ export function useSkillData() {
 
         const builtins = buildBuiltinTargets(home);
         const stored = parseStoredTargets(raw);
-        const mergedBuiltins = builtins.map((builtin) => ({
-          ...builtin,
-          path:
-            stored.find((item) => item.id === builtin.id)?.path?.trim() ||
-            builtin.path,
-          enabled:
-            stored.find((item) => item.id === builtin.id)?.enabled ??
-            builtin.enabled,
-        }));
+        const mergedBuiltins = builtins.map((builtin) => {
+          const match = stored.find((item) => item.id === builtin.id);
+          return {
+            ...builtin,
+            path: match?.path?.trim() || builtin.path,
+            enabled: match?.enabled ?? builtin.enabled,
+            syncSkillNames: match?.syncSkillNames ?? builtin.syncSkillNames,
+          };
+        });
         const customTargets = stored.filter((item) => !item.isBuiltin);
 
         setHomePath(home);
@@ -321,6 +321,27 @@ export function useSkillData() {
     }
   }
 
+  async function handleSyncSingleTarget(target: SkillTargetConfig): Promise<boolean> {
+    setSyncing(true);
+    try {
+      const result = await syncSkillTargets([target]);
+      const targetResult = result[0];
+      if (targetResult && targetResult.errors.length > 0) {
+        toast(`${target.label} 同步失败：${targetResult.errors.join(" | ")}`, "error");
+        return false;
+      }
+      toast(`${target.label} 同步成功`, "success");
+      await refreshTargetStatuses();
+      return true;
+    } catch (error) {
+      console.error("Failed to sync skill target", error);
+      toast(`${target.label} 同步失败`, "error");
+      return false;
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   // ─── Target CRUD ───────────────────────────────────────────────
   function setTargetEnabled(id: string, enabled: boolean) {
     setTargets((prev) =>
@@ -330,38 +351,6 @@ export function useSkillData() {
 
   function handleDeleteCustomTarget(id: string) {
     setTargets((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  async function handlePickTargetPath(selectedTarget: SkillTargetConfig | null) {
-    const selected = await pickPath({
-      directory: true,
-      defaultPath: selectedTarget?.path || homePath || undefined,
-    });
-    if (typeof selected === "string") {
-      return selected;
-    }
-    return null;
-  }
-
-  function handleSaveTargetPath(
-    selectedTarget: SkillTargetConfig | null,
-    pathDraft: string,
-  ) {
-    if (!selectedTarget) return false;
-
-    const path = toAbsolutePath(pathDraft, homePath);
-    if (!path) {
-      toast("路径不能为空", "warning");
-      return false;
-    }
-
-    setTargets((prev) =>
-      prev.map((item) =>
-        item.id === selectedTarget.id ? { ...item, path } : item,
-      ),
-    );
-    toast("路径已更新", "success");
-    return true;
   }
 
   async function handlePickLocalSource() {
@@ -394,6 +383,7 @@ export function useSkillData() {
       path: absolutePath,
       isBuiltin: false,
       enabled: true,
+      syncSkillNames: null,
     };
 
     setTargets((prev) => [...prev, nextTarget]);
@@ -421,10 +411,9 @@ export function useSkillData() {
     refreshCatalog,
     refreshTargetStatuses,
     handleSyncEnabledTargets,
+    handleSyncSingleTarget,
     setTargetEnabled,
     handleDeleteCustomTarget,
-    handlePickTargetPath,
-    handleSaveTargetPath,
     handlePickLocalSource,
     handleAddCustomTarget,
   };

@@ -46,10 +46,6 @@ export function SkillsPage({
   const [query, setQuery] = useState("");
   const [annotationModalOpen, setAnnotationModalOpen] = useState(false);
 
-  // ─── Target selection state (SyncTargetsSection needs these) ────
-  const [selectedTargetId, setSelectedTargetId] = useState("");
-  const [pathDraft, setPathDraft] = useState("");
-
   // ─── Hooks ─────────────────────────────────────────────────────
   const skillData = useSkillData();
   const llm = useLlmProfile();
@@ -114,27 +110,6 @@ export function SkillsPage({
     setCommandResult: command.setCommandResult,
   });
 
-  // ─── Target selection sync ─────────────────────────────────────
-  useEffect(() => {
-    if (skillData.targets.length === 0) {
-      setSelectedTargetId("");
-      setPathDraft("");
-      return;
-    }
-    setSelectedTargetId((prev) =>
-      skillData.targets.some((item) => item.id === prev)
-        ? prev
-        : skillData.targets[0].id,
-    );
-  }, [skillData.targets]);
-
-  useEffect(() => {
-    const selected = skillData.targets.find(
-      (item) => item.id === selectedTargetId,
-    );
-    setPathDraft(selected?.path ?? "");
-  }, [selectedTargetId, skillData.targets]);
-
   // ─── Dirty tracking ────────────────────────────────────────────
   useEffect(() => {
     onDirtyChange(false);
@@ -161,7 +136,8 @@ export function SkillsPage({
             {(
               [
                 ["list", "技能列表"],
-                ["manage", "同步与安装"],
+                ["sync", "技能同步"],
+                ["install", "技能安装"],
               ] as const
             ).map(([tab, label]) => (
               <button
@@ -308,41 +284,36 @@ export function SkillsPage({
           </section>
         )}
 
-        {selectedTab === "manage" && (
-          <div className="space-y-4">
-            <SyncTargetsSection
-              targets={skillData.targets}
-              targetStatuses={skillData.targetStatuses}
-              checkingTargets={skillData.checkingTargets}
-              syncing={skillData.syncing}
-              homePath={skillData.homePath}
-              selectedTargetId={selectedTargetId}
-              pathDraft={pathDraft}
-              onSetTargetEnabled={skillData.setTargetEnabled}
-              onDeleteCustomTarget={skillData.handleDeleteCustomTarget}
-              onSaveTargetPath={() =>
-                skillData.handleSaveTargetPath(
-                  skillData.targets.find((t) => t.id === selectedTargetId) ??
-                    null,
-                  pathDraft,
-                )
-              }
-              onAddCustomTarget={skillData.handleAddCustomTarget}
-              onSelectTargetId={setSelectedTargetId}
-              onSetPathDraft={setPathDraft}
-              onRefreshTargetStatuses={() =>
-                void skillData.refreshTargetStatuses()
-              }
-              onSyncEnabledTargets={() =>
-                void skillData.handleSyncEnabledTargets()
-              }
-            />
+        {selectedTab === "sync" && (
+          <SyncTargetsSection
+            targets={skillData.targets}
+            targetStatuses={skillData.targetStatuses}
+            checkingTargets={skillData.checkingTargets}
+            syncing={skillData.syncing}
+            homePath={skillData.homePath}
+            skills={localSkills}
+            onSetTargetEnabled={skillData.setTargetEnabled}
+            onSetTargets={skillData.setTargets}
+            onDeleteCustomTarget={skillData.handleDeleteCustomTarget}
+            onAddCustomTarget={skillData.handleAddCustomTarget}
+            onRefreshTargetStatuses={() =>
+              void skillData.refreshTargetStatuses()
+            }
+            onSyncEnabledTargets={() =>
+              void skillData.handleSyncEnabledTargets()
+            }
+            onSyncSingleTarget={(target) =>
+              skillData.handleSyncSingleTarget(target)
+            }
+          />
+        )}
 
-            <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-medium text-gray-100">在线安装</h3>
-                <HintTooltip content="浏览仓库查看技能列表、搜索 skills.sh 技能库，或通过 GitHub / 本地目录安装。安装后自动同步到已启用的目标工具。" />
-              </div>
+        {selectedTab === "install" && (
+          <section className="rounded-2xl border border-gray-800 bg-gray-900/80 px-5 py-5">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-medium text-gray-100">技能安装</h3>
+              <HintTooltip content="搜索 skills.sh 技能库，或通过 GitHub / 本地目录安装技能。" />
+            </div>
 
               {command.commandProgress && (
                 <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 text-sm text-indigo-100">
@@ -435,7 +406,6 @@ export function SkillsPage({
                 commandWarnings={command.commandWarnings}
               />
             </section>
-          </div>
         )}
       </div>
 

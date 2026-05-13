@@ -288,6 +288,7 @@ const builtinTargets: SkillTargetConfig[] = [
     path: "/Users/test/.codex/skills",
     isBuiltin: true,
     enabled: true,
+    syncSkillNames: null,
   },
   {
     id: "snow",
@@ -295,6 +296,7 @@ const builtinTargets: SkillTargetConfig[] = [
     path: "/Users/test/.snow/skills",
     isBuiltin: true,
     enabled: true,
+    syncSkillNames: null,
   },
 ];
 

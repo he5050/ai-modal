@@ -168,45 +168,32 @@ export interface McpServerTestResult {
   latency_ms?: number | null;
 }
 
-export interface ModelscopeMcpServerSummary {
+export interface ModelscopeServerItem {
+  id: string;
+  publisher: string;
+  name: string;
+  chinese_name: string;
+  description: string;
+  tags: string[];
+  logo_url: string;
+  view_count: number;
+  categories: string[];
+  locales?: Record<string, { name?: string; description?: string }>;
+}
+
+export interface ModelscopeServerDetail {
   id: string;
   name: string;
-  chineseName?: string | null;
-  path: string;
-  fromSiteUrl?: string | null;
-  pageUrl?: string | null;
-  originalAbstract?: string | null;
-  tags: string[];
-  category: string[];
-  fromSiteIcon?: string | null;
-  userHostStatus?: string | null;
-  platformCollected?: boolean | null;
-  transportTypes: string[];
-}
-
-export interface ModelscopeMcpServerDetail extends ModelscopeMcpServerSummary {
-  readme?: string | null;
-  transportConfigs: Record<string, McpServerConfigInput>;
-}
-
-export interface ModelscopeMcpSearchResponse {
-  query: string;
-  count: number;
-  durationMs: number;
-  servers: ModelscopeMcpServerSummary[];
-}
-
-export interface ModelscopeRequestProfile {
-  cookie?: string | null;
-  csrfToken?: string | null;
-  userAgent?: string | null;
-  referer?: string | null;
-  origin?: string | null;
-  acceptLanguage?: string | null;
-  xModelscopeAcceptLanguage?: string | null;
-  traceId?: string | null;
-  bxVersion?: string | null;
-  extraHeaders?: Record<string, string> | null;
+  chinese_name: string;
+  description: string;
+  source_url?: string;
+  readme?: string;
+  server_config: Array<{ mcpServers: Record<string, McpServerConfigInput> }>;
+  env_schema?: { properties?: Record<string, unknown>; required?: string[]; type?: string };
+  logo_url?: string;
+  categories?: string[];
+  is_hosted?: boolean;
+  view_count?: number;
 }
 
 export interface ModelMappingLogEntry {
@@ -375,6 +362,7 @@ export interface SkillTargetConfig {
   path: string;
   isBuiltin: boolean;
   enabled: boolean;
+  syncSkillNames: string[] | null;
 }
 
 export interface SkillTargetStatus {

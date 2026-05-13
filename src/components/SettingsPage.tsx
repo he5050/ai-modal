@@ -2,20 +2,23 @@ import { useEffect, useState } from "react";
 import {
   BUTTON_ICON_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
-  BUTTON_SIZE_XS_CLASS,
+  BUTTON_SIZE_MD_CLASS,
 } from "../lib/buttonStyles"
 import { FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
-import { savePersistedJson } from "../lib/persistence";
+import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { loadModelMappingSettings, saveModelMappingSettings } from "../api";
 import { HintTooltip } from "./HintTooltip";
 import { ModelConfigSection } from "./ModelConfigSection";
 import { toast } from "../lib/toast";
+import { Loader2 } from "lucide-react";
 import type { Provider } from "../types";
 
 export const DEBUG_KEY = "ai-modal-debug";
 export const DEBUG_DB_KEY = "debug_enabled";
 export const CONCURRENCY_KEY = "ai-modal-concurrency";
 export const CONCURRENCY_DB_KEY = "concurrency";
+export const MODELSCOPE_API_KEY = "ai-modal-modelscope-api-key";
+export const MODELSCOPE_API_DB_KEY = "modelscope_api_key";
 const DEFAULT_CONCURRENCY = 5;
 const MAX_CONCURRENCY = 20;
 const DEFAULT_MODEL_MAPPING_PORT = 5678;
@@ -41,6 +44,9 @@ export function SettingsPage({
   onDirtyChange,
 }: Props) {
   const [concurrency, setConcurrency] = useState<number>(getConcurrency);
+  const [modelscopeKey, setModelscopeKey] = useState("");
+  const [modelscopeKeySaved, setModelscopeKeySaved] = useState(false);
+  const [modelscopeKeyBusy, setModelscopeKeyBusy] = useState(false);
   const [modelMappingPort, setModelMappingPort] = useState(String(DEFAULT_MODEL_MAPPING_PORT));
   const [modelMappingPortSaved, setModelMappingPortSaved] = useState(DEFAULT_MODEL_MAPPING_PORT);
   const [modelMappingPortBusy, setModelMappingPortBusy] = useState(false);
@@ -59,6 +65,18 @@ export function SettingsPage({
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    loadPersistedJson<string>(MODELSCOPE_API_DB_KEY, MODELSCOPE_API_KEY, "")
+      .then((key) => {
+        if (!active) return;
+        setModelscopeKey(key ?? "");
+        setModelscopeKeySaved(!!(key && key.trim()));
+      })
+      .catch(() => {});
+    return () => { active = false; };
   }, []);
 
   async function handleToggle() {
@@ -105,6 +123,21 @@ export function SettingsPage({
       toast("模型映射代理端口更新失败", "error");
     } finally {
       setModelMappingPortBusy(false);
+    }
+  }
+
+  async function handleModelscopeKeySave() {
+    const key = modelscopeKey.trim();
+    setModelscopeKeyBusy(true);
+    try {
+      await savePersistedJson(MODELSCOPE_API_DB_KEY, key, MODELSCOPE_API_KEY);
+      setModelscopeKeySaved(!!key);
+      toast(key ? "ModelScope API Key 已保存" : "ModelScope API Key 已清除", "success");
+    } catch (error) {
+      console.error("Failed to save modelscope key", error);
+      toast("ModelScope API Key 保存失败", "error");
+    } finally {
+      setModelscopeKeyBusy(false);
     }
   }
 
@@ -211,8 +244,39 @@ export function SettingsPage({
                 <button
                   onClick={() => void handleModelMappingPortSave()}
                   disabled={modelMappingPortBusy || modelMappingPort === String(modelMappingPortSaved)}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
                 >
+                  保存
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-200">
+                    ModelScope API Key
+                  </p>
+                  <HintTooltip content="用于访问 ModelScope MCP 服务列表和安装配置的 API Key，可在 modelscope.cn 获取。" />
+                </div>
+                <p className="mt-1 text-xs text-gray-600">
+                  {modelscopeKeySaved ? "已配置" : "未配置 — MCP 在线安装将不可用"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={modelscopeKey}
+                  onChange={(event) => setModelscopeKey(event.target.value)}
+                  className={`${FIELD_MONO_INPUT_CLASS} w-72`}
+                  type="password"
+                  placeholder="ms-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                />
+                <button
+                  onClick={() => void handleModelscopeKeySave()}
+                  disabled={modelscopeKeyBusy}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
+                >
+                  {modelscopeKeyBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   保存
                 </button>
               </div>

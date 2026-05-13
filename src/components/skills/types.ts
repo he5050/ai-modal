@@ -1,7 +1,7 @@
 import type { LlmRequestKind } from "../../types";
 
 export type InstallMode = "search" | "github" | "local" | "update" | "remove";
-export type SkillsTab = "list" | "manage";
+export type SkillsTab = "list" | "sync" | "install";
 
 export type PersistedModelConfig = {
   baseUrl: string;

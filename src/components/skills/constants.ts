@@ -125,6 +125,7 @@ export function buildBuiltinTargets(homePath: string): SkillTargetConfig[] {
     path: `${homePath}/${target.relativePath}`,
     isBuiltin: true,
     enabled: true,
+    syncSkillNames: null,
   }));
 }
 
@@ -143,6 +144,7 @@ export function parseStoredTargets(raw: unknown): SkillTargetConfig[] {
       path: item.path,
       isBuiltin: item.isBuiltin === true,
       enabled: item.enabled !== false,
+      syncSkillNames: Array.isArray(item.syncSkillNames) ? item.syncSkillNames : null,
     }));
 }
 

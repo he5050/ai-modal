@@ -4,12 +4,15 @@ import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { exists, mkdir, readDir, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   CheckCircle2,
+  Download,
   FilePenLine,
   FolderOpen,
   Loader2,
   Plus,
   RefreshCcw,
   Save,
+  Search,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -29,11 +32,11 @@ import {
 } from "../../lib/buttonStyles";
 import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../../lib/formStyles";
 import { loadPersistedJson, savePersistedJson } from "../../lib/persistence";
+import { MODELSCOPE_API_KEY, MODELSCOPE_API_DB_KEY } from "../SettingsPage";
 import { toast } from "../../lib/toast";
 import { logger } from "../../lib/devlog";
 import { HintTooltip } from "../HintTooltip";
-import { ModelscopeOnlineInstallPanel } from "./ModelscopeOnlineInstallPanel";
-import type { McpServerConfigInput } from "../../types";
+import type { ModelscopeServerItem, ModelscopeServerDetail } from "../../types";
 
 type McpServerConfig = {
   type?: "stdio" | "http" | string;
@@ -486,7 +489,6 @@ export function McpPage({
   const [statuses, setStatuses] = useState<Record<string, McpSyncStatus>>({});
   const [serverTests, setServerTests] = useState<Record<string, McpServiceTestState>>({});
   const [checkingTargets, setCheckingTargets] = useState(false);
-  const [selectedTargetId, setSelectedTargetId] = useState("");
   const [showCustomTargetForm, setShowCustomTargetForm] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
@@ -517,13 +519,6 @@ export function McpPage({
   );
 
   useEffect(() => {
-    if (targets.length === 0) return;
-    if (!targets.some((item) => item.id === selectedTargetId)) {
-      setSelectedTargetId(targets[0].id);
-    }
-  }, [selectedTargetId, targets]);
-
-  useEffect(() => {
     let active = true;
     async function bootstrap() {
       try {
@@ -545,7 +540,6 @@ export function McpPage({
         setSourcePath(nextSourcePath);
         setConfig(nextConfig);
         setTargets(nextTargets);
-        setSelectedTargetId(nextTargets[0]?.id ?? "");
         setDirty(false);
         logger.info(
           `[MCP] 配置加载完成：source=${nextSourcePath} servers=${Object.keys(nextConfig.mcpServers).length}`,
@@ -638,48 +632,6 @@ export function McpPage({
     }
   }
 
-  async function importModelscopeServer(payload: {
-    name: string;
-    config: McpServerConfigInput;
-    sourceUrl?: string | null;
-  }) {
-    const previousConfig = config;
-    const previousDirty = dirty;
-    const nextConfig = {
-      mcpServers: {
-        ...config.mcpServers,
-        [payload.name]: payload.config as McpServerConfig,
-      },
-    } as McpConfig;
-    const isOverwrite = Object.prototype.hasOwnProperty.call(
-      config.mcpServers,
-      payload.name,
-    );
-    setConfig(nextConfig);
-    setDirty(false);
-    setBusy("save");
-    try {
-      await persistSourceConfig(nextConfig, { backup: true });
-      toast(
-        isOverwrite
-          ? `已覆盖导入 MCP：${payload.name}`
-          : `已导入 MCP：${payload.name}`,
-        "success",
-      );
-      logger.success(
-        `[MCP] 已导入 ModelScope MCP：${payload.name}${payload.sourceUrl ? ` <- ${payload.sourceUrl}` : ""}`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      toast(`导入 MCP 失败：${message}`, "error");
-      logger.error(`[MCP] 导入 ModelScope MCP 失败：${message}`);
-      setConfig(previousConfig);
-      setDirty(previousDirty);
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function syncEnabledTargets() {
     const enabledTargets = targets.filter((item) => item.enabled);
     if (enabledTargets.length === 0) {
@@ -721,6 +673,42 @@ export function McpPage({
         `MCP 同步完成：成功 ${successCount}，失败 ${failCount}`,
         failCount === 0 ? "success" : "warning",
       );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function syncSingleTarget(target: McpSyncTarget) {
+    const tag = `sync-${target.id}`;
+    setBusy(tag);
+    logger.info(`[MCP] 开始同步单个目标：${target.label}`);
+    try {
+      const backupPath = await writeSyncTarget(target, config);
+      setStatuses((prev) => ({
+        ...prev,
+        [target.id]: {
+          exists: true,
+          syncedAt: Date.now(),
+          backupPath: backupPath ?? undefined,
+        },
+      }));
+      toast(`${target.label} 同步成功`, "success");
+      logger.success(
+        `[MCP] 同步成功：${target.label} -> ${target.path}${backupPath ? `，备份=${backupPath}` : ""}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const targetExists = await exists(target.path);
+      setStatuses((prev) => ({
+        ...prev,
+        [target.id]: {
+          exists: targetExists,
+          syncedAt: Date.now(),
+          error: message,
+        },
+      }));
+      toast(`${target.label} 同步失败：${message}`, "error");
+      logger.error(`[MCP] 同步失败：${target.label} -> ${message}`);
     } finally {
       setBusy(null);
     }
@@ -898,12 +886,105 @@ export function McpPage({
       syncServerNames: null,
     };
     setTargets((prev) => [...prev, next]);
-    setSelectedTargetId(next.id);
     setCustomLabel("");
     setCustomPath("");
     setCustomMode("json-replace");
     setShowCustomTargetForm(false);
     toast("已新增自定义同步目标", "success");
+  }
+
+  // ─── Online install (ModelScope OpenAPI) ─────────────────────────
+  const [msApiKey, setMsApiKey] = useState("");
+  const [msSearchQuery, setMsSearchQuery] = useState("");
+  const [msResults, setMsResults] = useState<ModelscopeServerItem[]>([]);
+  const [msLoading, setMsLoading] = useState(false);
+  const [msError, setMsError] = useState<string | null>(null);
+  const [msTotal, setMsTotal] = useState(0);
+  const [msPage, setMsPage] = useState(1);
+  const [msSelectedId, setMsSelectedId] = useState("");
+  const [msDetail, setMsDetail] = useState<ModelscopeServerDetail | null>(null);
+  const [msDetailLoading, setMsDetailLoading] = useState(false);
+  const [msImporting, setMsImporting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    loadPersistedJson<string>(MODELSCOPE_API_DB_KEY, MODELSCOPE_API_KEY, "")
+      .then((key) => { if (active) setMsApiKey(key ?? ""); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!msApiKey.trim()) { setMsResults([]); setMsTotal(0); return; }
+    const timer = window.setTimeout(async () => {
+      setMsLoading(true);
+      setMsError(null);
+      try {
+        const res = await fetch("https://modelscope.cn/openapi/v1/mcp/servers", {
+          method: "PUT",
+          headers: { "Authorization": `Bearer ${msApiKey.trim()}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ PageSize: 20, PageNumber: msPage, Search: msSearchQuery.trim() || undefined }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || "请求失败");
+        setMsResults(json.data.mcp_server_list ?? []);
+        setMsTotal(json.data.total_count ?? 0);
+        setMsSelectedId((prev) => (json.data.mcp_server_list ?? []).some((s: ModelscopeServerItem) => s.id === prev) ? prev : (json.data.mcp_server_list?.[0]?.id ?? ""));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setMsResults([]);
+        setMsTotal(0);
+        setMsError(message);
+      } finally {
+        setMsLoading(false);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [msApiKey, msSearchQuery, msPage]);
+
+  useEffect(() => {
+    if (!msSelectedId || !msApiKey.trim()) { setMsDetail(null); return; }
+    let cancelled = false;
+    async function load() {
+      setMsDetailLoading(true);
+      try {
+        const res = await fetch(`https://modelscope.cn/openapi/v1/mcp/servers/${encodeURIComponent(msSelectedId)}`, {
+          headers: { "Authorization": `Bearer ${msApiKey.trim()}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!cancelled) setMsDetail(json.data ?? null);
+      } catch {
+        if (!cancelled) setMsDetail(null);
+      } finally {
+        if (!cancelled) setMsDetailLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [msSelectedId, msApiKey]);
+
+  async function handleImportOnline(serverDetail: ModelscopeServerDetail) {
+    const configs = serverDetail.server_config?.[0]?.mcpServers;
+    if (!configs || Object.keys(configs).length === 0) {
+      toast("该服务没有可导入的配置", "warning");
+      return;
+    }
+    const [name, cfg] = Object.entries(configs)[0];
+    setMsImporting(true);
+    try {
+      const nextConfig = { mcpServers: { ...config.mcpServers, [name]: cfg as McpServerConfig } };
+      await persistSourceConfig(nextConfig, { backup: true });
+      setConfig(nextConfig);
+      const isOverwrite = Object.prototype.hasOwnProperty.call(config.mcpServers, name);
+      toast(isOverwrite ? `已覆盖导入 MCP：${name}` : `已导入 MCP：${name}`, "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast(`导入 MCP 失败：${message}`, "error");
+    } finally {
+      setMsImporting(false);
+    }
   }
 
   if (loading) {
@@ -1120,83 +1201,95 @@ export function McpPage({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-medium text-gray-100">同步目标</h3>
-                <HintTooltip content="启用后会把源配置同步到目标文件。Codex 目标会写入 config.toml 的 mcp_servers 字段，其它目标写 JSON。" />
+                <HintTooltip content="启用后会把源配置同步到目标文件。Codex 目标会写入 config.toml 的 mcp_servers 字段，其它目标写 JSON。每个目标可以单独勾选需要同步的 MCP 服务。" />
               </div>
-              <button
-                onClick={() => void refreshTargetStatuses()}
-                disabled={checkingTargets}
-                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-              >
-                {checkingTargets ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
-                检查
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void refreshTargetStatuses()}
+                  disabled={checkingTargets}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  {checkingTargets ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
+                  检查
+                </button>
+                <button
+                  onClick={() => void syncEnabledTargets()}
+                  disabled={busy != null}
+                  className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  {busy === "sync" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  一键同步全部
+                </button>
+              </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {targets.map((target) => {
                 const status = statuses[target.id];
                 const syncNames = target.syncServerNames;
                 const totalServers = Object.keys(config.mcpServers).length;
                 const selectedCount = syncNames ? syncNames.length : totalServers;
-                const isEditing = selectedTargetId === target.id;
+                const syncingThis = busy === `sync-${target.id}`;
                 return (
-                  <div key={target.id} className="rounded-xl border border-gray-800 bg-black/10 px-3 py-2.5">
+                  <div key={target.id} className="rounded-xl border border-gray-800 bg-black/10 px-3 py-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${target.accentClass}`}>
                         {target.label}
                       </span>
-                      <button
-                        onClick={() => setTargetEnabled(target.id, !target.enabled)}
-                        className={`relative inline-flex h-4 w-7 rounded-full transition-colors ${target.enabled ? "bg-indigo-600" : "bg-gray-700"}`}
-                        role="switch"
-                        aria-checked={target.enabled}
-                      >
-                        <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ${target.enabled ? "translate-x-3" : "translate-x-0"}`} />
-                      </button>
-                    </div>
-                    <div className="mt-2 text-[10px] text-gray-500">
-                      <span className={status?.exists ? "text-emerald-400" : "text-red-400"}>
-                        {status?.exists ? "存在" : "缺失"}
-                      </span>
-                      {status?.syncedAt ? (
-                        <span className="ml-2">
-                          {new Date(status.syncedAt).toLocaleTimeString("zh-CN", { hour12: false })}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-500">
+                          <span className={status?.exists ? "text-emerald-400" : "text-red-400"}>
+                            {status?.exists ? "存在" : "缺失"}
+                          </span>
+                          {status?.syncedAt && (
+                            <span className="ml-1">
+                              {new Date(status.syncedAt).toLocaleTimeString("zh-CN", { hour12: false })}
+                            </span>
+                          )}
                         </span>
-                      ) : null}
-                      {status?.backupPath ? (
-                        <span className="ml-2 text-cyan-400">已备份</span>
-                      ) : null}
+                        <button
+                          onClick={() => setTargetEnabled(target.id, !target.enabled)}
+                          className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border border-transparent transition-colors ${target.enabled ? "bg-indigo-600" : "bg-gray-700"}`}
+                          role="switch"
+                          aria-checked={target.enabled}
+                        >
+                          <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-200 ${target.enabled ? "translate-x-3" : "translate-x-0"}`} />
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => setSelectedTargetId(isEditing ? "" : target.id)}
-                      className="mt-2 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1 text-[10px] text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200"
-                    >
+
+                    <div className="mt-2 text-[10px] text-gray-500">
                       {syncNames
                         ? `${selectedCount}/${totalServers} 个服务`
                         : `全部 ${totalServers} 个服务`}
-                    </button>
-                    {isEditing && (
-                      <div className="mt-2 max-h-[200px] space-y-1 overflow-y-auto">
-                        <button
-                          onClick={() => {
-                            setTargets((prev) =>
-                              prev.map((t) =>
-                                t.id === target.id ? { ...t, syncServerNames: null } : t,
-                              ),
-                            );
-                          }}
-                          className={`block w-full rounded px-2 py-1 text-left text-[10px] transition-colors ${
-                            syncNames === null
-                              ? "bg-indigo-500/15 text-indigo-200"
-                              : "text-gray-400 hover:bg-gray-800/50"
-                          }`}
-                        >
-                          全部同步
-                        </button>
+                      {status?.error && (
+                        <span className="ml-2 text-red-400">失败</span>
+                      )}
+                    </div>
+
+                    {config.mcpServers && Object.keys(config.mcpServers).length > 0 && (
+                      <div className="mt-2 max-h-[200px] space-y-1 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950/40 px-2 py-2">
+                        <label className="flex items-center gap-2 rounded px-1 py-1 text-xs text-gray-400 hover:bg-gray-800/50">
+                          <input
+                            type="checkbox"
+                            checked={syncNames === null}
+                            onChange={() => {
+                              setTargets((prev) =>
+                                prev.map((t) =>
+                                  t.id === target.id
+                                    ? { ...t, syncServerNames: t.syncServerNames === null ? [] : null }
+                                    : t,
+                                ),
+                              );
+                            }}
+                            className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/30"
+                          />
+                          <span className="text-gray-300">全部同步</span>
+                        </label>
                         {serverEntries.map(([name]) => (
                           <label
                             key={`${target.id}-${name}`}
-                            className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] text-gray-400 hover:bg-gray-800/50"
+                            className="flex items-center gap-2 rounded px-1 py-1 text-xs text-gray-400 hover:bg-gray-800/50"
                           >
                             <input
                               type="checkbox"
@@ -1224,13 +1317,24 @@ export function McpPage({
                                   }),
                                 );
                               }}
-                              className="h-3 w-3 rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/30"
+                              className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/30"
                             />
                             <span className="truncate font-mono">{name}</span>
                           </label>
                         ))}
                       </div>
                     )}
+
+                    <div className="mt-2 flex items-center justify-end border-t border-gray-800 pt-2">
+                      <button
+                        onClick={() => void syncSingleTarget(target)}
+                        disabled={!target.enabled || syncingThis || busy != null}
+                        className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                      >
+                        {syncingThis ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        同步
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -1313,10 +1417,192 @@ export function McpPage({
         )}
 
         {selectedTab === "online" && (
-          <ModelscopeOnlineInstallPanel
-            existingServerNames={new Set(Object.keys(config.mcpServers))}
-            onImportServer={importModelscopeServer}
-          />
+          <section className="rounded-xl border border-gray-800 bg-gray-900/80 px-5 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-medium text-gray-100">在线安装</h3>
+                <HintTooltip content="从 ModelScope 社区搜索 MCP 服务，查看配置详情，并直接导入到当前源配置。需要在系统配置中设置 ModelScope API Key。" />
+              </div>
+              {!msApiKey.trim() && (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">
+                  请先在系统配置中设置 API Key
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-xl border border-gray-800/70 bg-black/15 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                  <input
+                    value={msSearchQuery}
+                    onChange={(event) => { setMsSearchQuery(event.target.value); setMsPage(1); }}
+                    placeholder="搜索 MCP 服务..."
+                    disabled={!msApiKey.trim()}
+                    className={`${FIELD_MONO_INPUT_CLASS} pl-9`}
+                  />
+                </div>
+              </div>
+              <div className="mt-2 text-[11px] text-gray-500">
+                {msLoading ? "正在查询..." : msTotal > 0 ? `${msTotal} 个结果` : msApiKey.trim() ? "输入关键词搜索或留空浏览列表" : "未配置 API Key"}
+              </div>
+              {msError && (
+                <div className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-200">
+                  {msError}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="grid grid-cols-2 gap-2.5">
+                {msResults.length === 0 && !msLoading && msApiKey.trim() && (
+                  <div className="col-span-2 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-8 text-sm text-gray-500">
+                    {msSearchQuery.trim() ? "没有匹配的搜索结果。" : "加载中..."}
+                  </div>
+                )}
+                {msResults.map((server) => {
+                  const active = server.id === msSelectedId;
+                  const installed = Object.prototype.hasOwnProperty.call(config.mcpServers, server.id.split("/").pop() ?? server.id);
+                  return (
+                    <div
+                      key={server.id}
+                      onClick={() => setMsSelectedId(server.id)}
+                      className={`cursor-pointer rounded-xl border px-3 py-3 transition-colors ${
+                        active ? "border-indigo-500/50 bg-indigo-500/8" : "border-gray-800 bg-black/10 hover:border-gray-700"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className={`truncate text-sm font-medium ${active ? "text-white" : "text-gray-100"}`}>
+                            {server.chinese_name || server.name}
+                          </p>
+                          <p className="mt-1 truncate text-[11px] text-gray-500">
+                            {server.id}
+                          </p>
+                        </div>
+                        {installed && (
+                          <span className="shrink-0 rounded-full border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">
+                            已导入
+                          </span>
+                        )}
+                      </div>
+                      {server.description && (
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-400">
+                          {server.description}
+                        </p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {server.categories.slice(0, 3).map((cat) => (
+                          <span key={cat} className="rounded-full border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] text-gray-400">
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-gray-800 pt-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (msDetail && msDetail.id === server.id) {
+                              void handleImportOnline(msDetail);
+                            }
+                          }}
+                          disabled={msImporting}
+                          className={`${installed ? BUTTON_SECONDARY_CLASS : BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                        >
+                          {msImporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                          {installed ? "更新" : "安装"}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMsSelectedId(server.id); }}
+                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                        >
+                          详情
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-xl border border-gray-800 bg-black/15 p-4">
+                {!msSelectedId ? (
+                  <div className="text-sm text-gray-500">选择左侧服务查看详情。</div>
+                ) : msDetailLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-300">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在加载详情...
+                  </div>
+                ) : msDetail ? (
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">
+                        {msDetail.chinese_name || msDetail.name}
+                      </h4>
+                      <p className="mt-1 text-[11px] text-gray-500">{msDetail.id}</p>
+                    </div>
+                    {msDetail.description && (
+                      <p className="text-xs leading-5 text-gray-300">{msDetail.description}</p>
+                    )}
+                    {msDetail.source_url && (
+                      <p className="break-all text-[11px] text-gray-500">
+                        来源：{msDetail.source_url}
+                      </p>
+                    )}
+                    {msDetail.server_config?.length > 0 && (
+                      <div>
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">配置预览</div>
+                        <pre className="max-h-[280px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/80 px-3 py-2 font-mono text-[11px] leading-5 text-gray-300">
+                          {JSON.stringify(msDetail.server_config[0], null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {msDetail.readme && (
+                      <div>
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">Readme</div>
+                        <div className="max-h-[160px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs leading-5 text-gray-300">
+                          {msDetail.readme.slice(0, 2000)}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => void handleImportOnline(msDetail)}
+                        disabled={msImporting || !msDetail.server_config?.length}
+                        className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                      >
+                        {msImporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        导入当前配置
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">暂无详情数据。</div>
+                )}
+              </div>
+            </div>
+
+            {msTotal > 20 && (
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setMsPage((p) => Math.max(1, p - 1))}
+                  disabled={msPage <= 1 || msLoading}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  上一页
+                </button>
+                <span className="text-xs text-gray-500">
+                  第 {msPage} 页 · 共 {Math.ceil(msTotal / 20)} 页
+                </span>
+                <button
+                  onClick={() => setMsPage((p) => p + 1)}
+                  disabled={msPage >= Math.ceil(msTotal / 20) || msLoading}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                >
+                  下一页
+                </button>
+              </div>
+            )}
+          </section>
         )}
       </div>
 
