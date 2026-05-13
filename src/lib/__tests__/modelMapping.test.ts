@@ -2,18 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   countMappingModels,
   getActiveMappingModels,
-  makeModelSlot,
+  getModelSlot,
+  normalizeModelMappingConfig,
   providerToMappingProvider,
 } from "../modelMapping";
 import type { Provider } from "../../types";
 
 describe("modelMapping", () => {
-  it("matches ModelLink slot naming", () => {
-    expect(makeModelSlot("kimi-k2.6")).toBe("claude-kimi-k2.6");
-    expect(makeModelSlot("glm 5 turbo")).toBe("claude-glm-5-turbo");
-    expect(makeModelSlot("模型/测试")).toBe("claude------");
-  });
-
   it("imports only available tested models from existing providers", () => {
     const provider: Provider = {
       id: "provider-1",
@@ -36,18 +31,164 @@ describe("modelMapping", () => {
       },
     };
 
-    const imported = providerToMappingProvider(provider);
+    const imported = normalizeModelMappingConfig({
+      providers: [providerToMappingProvider(provider)],
+    }).providers[0];
 
     expect(imported.target_url).toBe("https://openrouter.ai/api");
     expect(imported.id).toBe("provider-1");
     expect(imported.models).toHaveLength(1);
     expect(imported.models[0]).toMatchObject({
       name: "available-model",
+      slot: "anthropic/claude-claude-openrouter-1",
+      display_name: "OpenRouter-available-model",
       to_1m: "",
       enabled: false,
       protocol: "claude",
     });
     expect(typeof imported.models[0].id).toBe("string");
+  });
+
+  it("fills missing slots with sequential routes and preserves manual overrides", () => {
+    const normalized = normalizeModelMappingConfig({
+      providers: [
+        {
+          id: "custom",
+          name: "Custom",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [
+            {
+              name: "deepseek-v4-flash",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+            {
+              name: "deepseek-v4-pro",
+              slot: "anthropic/claude-sonnet-4-5",
+              display_name: "Custom Plus",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+            {
+              name: "glm-5-turbo",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+          ],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-custom-1");
+    expect(normalized.providers[0].models[0].display_name).toBe("Custom-deepseek-v4-flash");
+    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-4-5");
+    expect(normalized.providers[0].models[1].display_name).toBe("Custom Plus");
+    expect(normalized.providers[0].models[2].slot).toBe("anthropic/claude-claude-custom-3");
+    expect(normalized.providers[0].models[2].display_name).toBe("Custom-glm-5-turbo");
+  });
+
+  it("upgrades old auto-generated slots to provider-scoped sequential routes", () => {
+    const normalized = normalizeModelMappingConfig({
+      providers: [
+        {
+          id: "custom",
+          name: "Custom",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [
+            {
+              name: "glm-5-turbo",
+              slot: "anthropic/claude-glm-5-turbo",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+            {
+              name: "kimi-k2.6",
+              slot: "anthropic/claude-claude-kimi-k2.6",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+          ],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-custom-1");
+    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-claude-custom-2");
+  });
+
+  it("fills missing display names with provider-model and preserves manual display name", () => {
+    const normalized = normalizeModelMappingConfig({
+      providers: [
+        {
+          id: "custom",
+          name: "Iruidong",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [
+            {
+              name: "claude-opus-4",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+            {
+              name: "claude-sonnet-4-5",
+              display_name: "My Sonnet Alias",
+              to_1m: "",
+              enabled: true,
+              protocol: "claude",
+            },
+          ],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(normalized.providers[0].models[0].display_name).toBe("Iruidong-claude-opus-4");
+    expect(normalized.providers[0].models[1].display_name).toBe("My Sonnet Alias");
+  });
+
+  it("restarts numbering for each provider", () => {
+    const normalized = normalizeModelMappingConfig({
+      providers: [
+        {
+          id: "a",
+          name: "DeepSeek",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [
+            { name: "a-1", to_1m: "", enabled: true, protocol: "claude" },
+            { name: "a-2", to_1m: "", enabled: true, protocol: "claude" },
+          ],
+          thinking_effort: "",
+        },
+        {
+          id: "b",
+          name: "GLM 智谱",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [{ name: "b-1", to_1m: "", enabled: true, protocol: "claude" }],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-deepseek-1");
+    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-claude-deepseek-2");
+    expect(normalized.providers[1].models[0].slot).toBe("anthropic/claude-claude-glm-1");
+  });
+
+  it("returns the normalized slot value for display", () => {
+    expect(getModelSlot({ name: "x", slot: "anthropic/claude-claude-deepseek-7" })).toBe("anthropic/claude-claude-deepseek-7");
   });
 
   it("imports all latest available models but keeps them disabled by default", () => {

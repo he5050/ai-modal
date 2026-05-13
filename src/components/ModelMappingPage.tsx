@@ -50,9 +50,9 @@ import {
   THINKING_EFFORT_LABELS,
   countMappingModels,
   getActiveMappingModels,
+  getModelSlot,
   getPresetModels,
   getThinkingOptions,
-  makeModelSlot,
   normalizeModelMappingConfig,
   providerToMappingProvider,
   toMappingEntry,
@@ -138,8 +138,9 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
     () =>
       getActiveMappingModels(config).map(({ provider, model }) => ({
         provider: provider.name || "未命名服务商",
-        source: makeModelSlot(model.name),
+        source: getModelSlot(model),
         target: model.name,
+        displayName: model.display_name?.trim() || `${provider.name || "provider"}-${model.name}`,
         supports1m: Boolean(model.to_1m),
         thinking: provider.thinking_effort || "",
       })),
@@ -196,7 +197,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
   function updateModel(
     providerIndex: number,
     modelIndex: number,
-    patch: { name?: string; to_1m?: string; enabled?: boolean; protocol?: string },
+    patch: { name?: string; slot?: string; to_1m?: string; enabled?: boolean; protocol?: string },
   ) {
     const provider = config.providers[providerIndex];
     updateProvider(providerIndex, {
@@ -674,7 +675,7 @@ function ProviderMappingCard({
   onTestAllModels: () => void;
   onSetProtocol: (protocol: string) => void;
   onSetEnabled: (enabled: boolean) => void;
-  onUpdateModel: (modelIndex: number, patch: { name?: string; to_1m?: string; enabled?: boolean; protocol?: string }) => void;
+  onUpdateModel: (modelIndex: number, patch: { name?: string; slot?: string; to_1m?: string; enabled?: boolean; protocol?: string }) => void;
   onDeleteModel: (modelIndex: number) => void;
   onTestModel: (modelIndex: number) => void;
   testingAll: boolean;
@@ -840,7 +841,7 @@ function ModelMappingRow({
   presetModels: readonly string[];
   testResult?: ModelMappingTestResult;
   testing: boolean;
-  onUpdateModel: (modelIndex: number, patch: { name?: string; to_1m?: string; enabled?: boolean; protocol?: string }) => void;
+  onUpdateModel: (modelIndex: number, patch: { name?: string; slot?: string; to_1m?: string; enabled?: boolean; protocol?: string }) => void;
   onDeleteModel: (modelIndex: number) => void;
   onTestModel: (modelIndex: number) => void;
 }) {
@@ -863,9 +864,12 @@ function ModelMappingRow({
             </datalist>
           )}
         </div>
-        <div className="flex h-10 min-w-0 items-center rounded-lg border border-gray-800 bg-gray-950 px-3 font-mono text-xs text-gray-500">
-          <span className="truncate">{model.name ? makeModelSlot(model.name) : "claude-..."}</span>
-        </div>
+        <input
+          value={model.slot ?? ""}
+          onChange={(event) => onUpdateModel(modelIndex, { slot: event.target.value })}
+          className={FIELD_MONO_INPUT_CLASS}
+          placeholder="anthropic/claude-claude-..."
+        />
         <select
           value={model.protocol || "claude"}
           onChange={(event) => onUpdateModel(modelIndex, { protocol: event.target.value })}
@@ -921,7 +925,7 @@ function MappedModelsPanel({
   configPath,
   claudeDir,
 }: {
-  rows: Array<{ provider: string; source: string; target: string; supports1m: boolean; thinking: string }>;
+  rows: Array<{ provider: string; source: string; target: string; displayName: string; supports1m: boolean; thinking: string }>;
   configPath?: string;
   claudeDir?: string | null;
 }) {
@@ -952,6 +956,7 @@ function MappedModelsPanel({
                   <p className="truncate font-mono text-xs text-indigo-300">{row.source}</p>
                   {row.supports1m && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">1M</span>}
                 </div>
+                <p className="mt-1 truncate text-xs text-gray-400">{row.displayName}</p>
                 <p className="mt-1 truncate text-xs text-gray-500">{row.target}</p>
                 <p className="mt-1 truncate text-[11px] text-gray-700">{row.provider}</p>
               </div>

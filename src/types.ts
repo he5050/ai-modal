@@ -103,6 +103,8 @@ export type ModelMappingThinkingEffort = "" | "off" | "high" | "max";
 export interface ModelMappingEntry {
   id?: string;
   name: string;
+  slot?: string;
+  display_name?: string;
   to_1m: string;
   enabled?: boolean;
   protocol?: LlmRequestKind | "openrouter" | string;
@@ -128,6 +130,7 @@ export interface ModelMappingSettings {
 export interface ModelMappingFlatEntry {
   slot: string;
   name: string;
+  display_name: string;
   provider_name: string;
   target_url: string;
   supports_1m: boolean;

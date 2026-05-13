@@ -45,6 +45,10 @@ pub struct ModelMappingEntry {
     #[serde(default)]
     pub name: String,
     #[serde(default)]
+    pub slot: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
     pub to_1m: String,
     #[serde(default)]
     pub enabled: bool,
@@ -66,6 +70,7 @@ pub struct ModelMappingLogEntry {
 pub struct ModelMappingFlatEntry {
     pub slot: String,
     pub name: String,
+    pub display_name: String,
     pub provider_name: String,
     pub target_url: String,
     pub supports_1m: bool,
@@ -248,8 +253,10 @@ fn current_port() -> u16 {
     load_settings_file().port
 }
 
-pub fn make_slot(name: &str) -> String {
+fn sanitize_model_name(name: &str) -> String {
     let safe: String = name
+        .trim()
+        .to_ascii_lowercase()
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
@@ -259,7 +266,142 @@ pub fn make_slot(name: &str) -> String {
             }
         })
         .collect();
+    let collapsed = safe
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if collapsed.is_empty() {
+        "provider".to_string()
+    } else {
+        collapsed
+    }
+}
+
+fn make_model_display_name(provider_name: &str, model_name: &str) -> String {
+    let provider = provider_name.trim();
+    let model = model_name.trim();
+    if provider.is_empty() {
+        if model.is_empty() {
+            "provider".to_string()
+        } else {
+            model.to_string()
+        }
+    } else if model.is_empty() {
+        provider.to_string()
+    } else {
+        format!("{}-{}", provider, model)
+    }
+}
+
+pub fn make_slot(provider_name: &str, order: usize) -> String {
+    format!(
+        "anthropic/claude-claude-{}-{}",
+        sanitize_model_name(provider_name),
+        order
+    )
+}
+
+fn legacy_slot(name: &str) -> String {
+    let safe = sanitize_model_name(name);
     format!("claude-{}", safe)
+}
+
+fn is_auto_generated_slot(slot: &str, name: &str) -> bool {
+    let safe_name = sanitize_model_name(name);
+    let lower = slot.trim().to_ascii_lowercase();
+    (lower.starts_with("anthropic/claude-claude-")
+        && lower
+            .trim_start_matches("anthropic/claude-claude-")
+            .rsplit('-')
+            .next()
+            .map(|tail| !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit()))
+            .unwrap_or(false))
+        || (lower.starts_with("claude-claude-")
+            && lower
+                .trim_start_matches("claude-claude-")
+                .rsplit('-')
+                .next()
+                .map(|tail| !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit()))
+                .unwrap_or(false))
+        || lower == format!("anthropic/claude-{}", safe_name)
+        || lower == format!("claude-{}", safe_name)
+        || lower == format!("anthropic/claude-claude-{}", safe_name)
+        || lower == format!("claude-claude-{}", safe_name)
+}
+
+fn normalize_slot(slot: &str, name: &str, provider_name: &str, order: usize) -> String {
+    let trimmed = slot.trim();
+    if trimmed.is_empty() || is_auto_generated_slot(trimmed, name) {
+        return make_slot(provider_name, order);
+    }
+    let normalized = trimmed
+        .strip_prefix("anthropic/")
+        .or_else(|| trimmed.strip_prefix("Anthropic/"))
+        .unwrap_or(trimmed);
+    let safe: String = normalized
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if safe.starts_with("claude-") {
+        format!("anthropic/{}", safe)
+    } else {
+        format!("anthropic/claude-claude-{}", safe)
+    }
+}
+
+fn effective_slot(model: &ModelMappingEntry) -> String {
+    model.slot.trim().to_string()
+}
+
+fn effective_display_name(model: &ModelMappingEntry, provider_name: &str) -> String {
+    let trimmed = model.display_name.trim();
+    if trimmed.is_empty() {
+        make_model_display_name(provider_name, model.name.trim())
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
+    ModelMappingConfig {
+        providers: config
+            .providers
+            .into_iter()
+            .map(|provider| ModelMappingProvider {
+                models: provider
+                    .models
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, model)| {
+                        let provider_label = if provider.name.trim().is_empty() {
+                            provider.id.as_deref().unwrap_or("provider")
+                        } else {
+                            provider.name.as_str()
+                        };
+                        let normalized_slot = normalize_slot(
+                            &model.slot,
+                            model.name.trim(),
+                            provider_label,
+                            index + 1,
+                        );
+                        ModelMappingEntry {
+                            slot: normalized_slot,
+                            display_name: effective_display_name(&model, provider_label),
+                            ..model
+                        }
+                    })
+                    .collect(),
+                ..provider
+            })
+            .collect(),
+    }
 }
 
 fn protocol_to_string(protocol: MappingProtocol) -> String {
@@ -304,15 +446,17 @@ fn infer_mapping_protocol(target_url: &str, _model: &str) -> MappingProtocol {
 }
 
 fn flatten_config(config: &ModelMappingConfig) -> Vec<ModelMappingFlatEntry> {
+    let normalized = normalize_config(config.clone());
     let mut result = Vec::new();
-    for provider in &config.providers {
+    for provider in &normalized.providers {
         for model in &provider.models {
             if !model.enabled || model.name.trim().is_empty() {
                 continue;
             }
             result.push(ModelMappingFlatEntry {
-                slot: make_slot(model.name.trim()),
+                slot: effective_slot(model),
                 name: model.name.trim().to_string(),
+                display_name: effective_display_name(model, &provider.name),
                 provider_name: provider.name.clone(),
                 target_url: provider.target_url.clone(),
                 supports_1m: !model.to_1m.trim().is_empty(),
@@ -556,7 +700,7 @@ fn resolve_model(model: &str, config: &ModelMappingConfig) -> ResolvedModel {
             if !entry.enabled {
                 continue;
             }
-            if base_model == make_slot(entry.name.trim()) {
+            if base_model == effective_slot(entry) || base_model == legacy_slot(entry.name.trim()) {
                 let target_model = if wants_1m && !entry.to_1m.trim().is_empty() {
                     format!("{}[1m]", entry.name.trim())
                 } else {
@@ -631,13 +775,13 @@ async fn gateway_models_handler(State(state): State<Arc<GatewayState>>) -> Json<
         .flat_map(|entry| {
             let mut values = vec![serde_json::json!({
                 "id": entry.slot,
-                "display_name": entry.name,
+                "display_name": entry.display_name,
                 "created": 0
             })];
             if entry.supports_1m {
                 values.push(serde_json::json!({
                     "id": format!("{}[1m]", entry.slot),
-                    "display_name": format!("{} (1M)", entry.name),
+                    "display_name": format!("{} (1M)", entry.display_name),
                     "created": 0
                 }));
             }
@@ -1029,7 +1173,7 @@ async fn run_gateway_until_shutdown(
 
 #[tauri::command]
 pub fn load_model_mapping_config() -> Result<ModelMappingConfig, String> {
-    Ok(load_config_file())
+    Ok(normalize_config(load_config_file()))
 }
 
 #[tauri::command]
@@ -1056,11 +1200,12 @@ pub fn save_model_mapping_config(
     manager: tauri::State<'_, Arc<ModelMappingManager>>,
     config: ModelMappingConfig,
 ) -> Result<ModelMappingStatus, String> {
-    validate_config(&config)?;
-    save_config_file(&config)?;
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = config.clone();
+    let normalized = normalize_config(config);
+    validate_config(&normalized)?;
+    save_config_file(&normalized)?;
+    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = normalized.clone();
     let running = manager.runtime.read().unwrap_or_else(|err| err.into_inner()).running;
-    Ok(build_status(running, Some(config)))
+    Ok(build_status(running, Some(normalized)))
 }
 
 #[tauri::command]
@@ -1068,9 +1213,10 @@ pub fn apply_model_mapping_to_claude(
     manager: tauri::State<'_, Arc<ModelMappingManager>>,
     config: ModelMappingConfig,
 ) -> Result<String, String> {
-    save_config_file(&config)?;
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = config.clone();
-    let message = apply_to_claude_desktop(&config)?;
+    let normalized = normalize_config(config);
+    save_config_file(&normalized)?;
+    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = normalized.clone();
+    let message = apply_to_claude_desktop(&normalized)?;
     restart_claude_desktop();
     Ok(format!("{}，Claude Desktop 正在重启", message))
 }
@@ -1091,13 +1237,14 @@ pub async fn start_model_mapping_gateway(
     manager: tauri::State<'_, Arc<ModelMappingManager>>,
     config: ModelMappingConfig,
 ) -> Result<ModelMappingStatus, String> {
-    validate_config(&config)?;
-    save_config_file(&config)?;
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = config.clone();
+    let normalized = normalize_config(config);
+    validate_config(&normalized)?;
+    save_config_file(&normalized)?;
+    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = normalized.clone();
     let shutdown_receiver = {
         let mut runtime = manager.runtime.write().unwrap_or_else(|err| err.into_inner());
         if runtime.running {
-            return Ok(build_status(true, Some(config)));
+            return Ok(build_status(true, Some(normalized)));
         }
         let (shutdown_sender, shutdown_receiver) = oneshot::channel();
         runtime.shutdown = Some(shutdown_sender);
@@ -1116,7 +1263,7 @@ pub async fn start_model_mapping_gateway(
         runtime.shutdown = None;
     });
 
-    Ok(build_status(true, Some(config)))
+    Ok(build_status(true, Some(normalized)))
 }
 
 #[tauri::command]
@@ -1132,7 +1279,7 @@ pub fn stop_model_mapping_gateway(
 }
 
 pub fn start_model_mapping_gateway_on_startup(manager: Arc<ModelMappingManager>) {
-    let config = load_config_file();
+    let config = normalize_config(load_config_file());
     *manager.config.write().unwrap_or_else(|err| err.into_inner()) = config;
     let port = current_port();
     let shutdown_receiver = {
@@ -1742,10 +1889,16 @@ mod tests {
     }
 
     #[test]
-    fn slot_naming_matches_modellink() {
-        assert_eq!(make_slot("kimi-k2.6"), "claude-kimi-k2.6");
-        assert_eq!(make_slot("glm 5 turbo"), "claude-glm-5-turbo");
-        assert_eq!(make_slot("模型/测试"), "claude------");
+    fn slot_naming_matches_provider_scoped_route() {
+        assert_eq!(
+            make_slot("DeepSeek", 1),
+            "anthropic/claude-claude-deepseek-1"
+        );
+        assert_eq!(make_slot("GLM 智谱", 2), "anthropic/claude-claude-glm-2");
+        assert_eq!(
+            make_slot("", 12),
+            "anthropic/claude-claude-provider-12"
+        );
     }
 
     #[test]
@@ -1753,6 +1906,8 @@ mod tests {
         let models = (0..10)
             .map(|index| ModelMappingEntry {
                 name: format!("model-{index}"),
+                slot: String::new(),
+                display_name: String::new(),
                 to_1m: "auto".to_string(),
                 enabled: true,
                 protocol: "openai-chat".to_string(),
@@ -1765,8 +1920,154 @@ mod tests {
         let flat = flatten_config(&config);
 
         assert_eq!(flat.len(), 10);
-        assert_eq!(flat[0].slot, "claude-model-0");
-        assert_eq!(flat[9].slot, "claude-model-9");
+        assert_eq!(flat[0].slot, "anthropic/claude-claude-test-1");
+        assert_eq!(flat[9].slot, "anthropic/claude-claude-test-10");
+    }
+
+    #[test]
+    fn flatten_config_preserves_manual_slot_override() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "deepseek-v4-flash".to_string(),
+                slot: "anthropic/claude-sonnet-4-5".to_string(),
+                display_name: "Manual Alias".to_string(),
+                to_1m: String::new(),
+                enabled: true,
+                protocol: "claude".to_string(),
+            }])],
+        };
+
+        let flat = flatten_config(&config);
+
+        assert_eq!(flat[0].slot, "anthropic/claude-sonnet-4-5");
+    }
+
+    #[test]
+    fn normalize_config_upgrades_old_auto_slot_to_provider_scoped_default() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "glm-5-turbo".to_string(),
+                slot: "anthropic/claude-glm-5-turbo".to_string(),
+                display_name: String::new(),
+                to_1m: String::new(),
+                enabled: true,
+                protocol: "claude".to_string(),
+            }, ModelMappingEntry {
+                name: "kimi-k2.6".to_string(),
+                slot: "anthropic/claude-claude-kimi-k2.6".to_string(),
+                display_name: String::new(),
+                to_1m: String::new(),
+                enabled: true,
+                protocol: "claude".to_string(),
+            }])],
+        };
+
+        let normalized = normalize_config(config);
+
+        assert_eq!(
+            normalized.providers[0].models[0].slot,
+            "anthropic/claude-claude-test-1"
+        );
+        assert_eq!(
+            normalized.providers[0].models[1].slot,
+            "anthropic/claude-claude-test-2"
+        );
+    }
+
+    #[test]
+    fn normalize_config_restarts_numbering_for_each_provider() {
+        let config = ModelMappingConfig {
+            providers: vec![
+                ModelMappingProvider {
+                    name: "DeepSeek".to_string(),
+                    target_url: "https://example.com/anthropic".to_string(),
+                    api_key: "secret".to_string(),
+                    models: vec![
+                        ModelMappingEntry {
+                            name: "a-1".to_string(),
+                            slot: String::new(),
+                            display_name: String::new(),
+                            to_1m: String::new(),
+                            enabled: true,
+                            protocol: "claude".to_string(),
+                        },
+                        ModelMappingEntry {
+                            name: "a-2".to_string(),
+                            slot: String::new(),
+                            display_name: String::new(),
+                            to_1m: String::new(),
+                            enabled: true,
+                            protocol: "claude".to_string(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+                ModelMappingProvider {
+                    name: "GLM 智谱".to_string(),
+                    target_url: "https://example.com/anthropic".to_string(),
+                    api_key: "secret".to_string(),
+                    models: vec![ModelMappingEntry {
+                        name: "b-1".to_string(),
+                        slot: String::new(),
+                        display_name: String::new(),
+                        to_1m: String::new(),
+                        enabled: true,
+                        protocol: "claude".to_string(),
+                    }],
+                    ..Default::default()
+                },
+            ],
+        };
+
+        let normalized = normalize_config(config);
+
+        assert_eq!(
+            normalized.providers[0].models[0].slot,
+            "anthropic/claude-claude-deepseek-1"
+        );
+        assert_eq!(
+            normalized.providers[0].models[1].slot,
+            "anthropic/claude-claude-deepseek-2"
+        );
+        assert_eq!(
+            normalized.providers[1].models[0].slot,
+            "anthropic/claude-claude-glm-1"
+        );
+    }
+
+    #[test]
+    fn normalize_config_sets_provider_model_display_name_and_keeps_manual_alias() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![
+                ModelMappingEntry {
+                    name: "claude-opus-4".to_string(),
+                    slot: String::new(),
+                    display_name: String::new(),
+                    to_1m: String::new(),
+                    enabled: true,
+                    protocol: "claude".to_string(),
+                },
+                ModelMappingEntry {
+                    name: "claude-sonnet-4-5".to_string(),
+                    slot: String::new(),
+                    display_name: "My Sonnet Alias".to_string(),
+                    to_1m: String::new(),
+                    enabled: true,
+                    protocol: "claude".to_string(),
+                },
+            ])],
+        };
+
+        let normalized = normalize_config(config);
+
+        assert_eq!(
+            normalized.providers[0].models[0].display_name,
+            "Test-claude-opus-4"
+        );
+        assert_eq!(
+            normalized.providers[0].models[1].display_name,
+            "My Sonnet Alias"
+        );
     }
 
     #[test]
@@ -1774,6 +2075,8 @@ mod tests {
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![ModelMappingEntry {
                 name: "kimi-k2.6".to_string(),
+                slot: String::new(),
+                display_name: String::new(),
                 to_1m: "auto".to_string(),
                 enabled: true,
                 protocol: "claude".to_string(),
@@ -1783,6 +2086,24 @@ mod tests {
         let resolved = resolve_model("unknown[1m]", &config);
 
         assert_eq!(resolved.target_model, "kimi-k2.6[1m]");
+    }
+
+    #[test]
+    fn resolve_model_matches_manual_slot_override() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "deepseek-v4-flash".to_string(),
+                slot: "anthropic/claude-sonnet-4-5".to_string(),
+                display_name: "Manual Alias".to_string(),
+                to_1m: String::new(),
+                enabled: true,
+                protocol: "claude".to_string(),
+            }])],
+        };
+
+        let resolved = resolve_model("anthropic/claude-sonnet-4-5", &config);
+
+        assert_eq!(resolved.target_model, "deepseek-v4-flash");
     }
 
     #[test]

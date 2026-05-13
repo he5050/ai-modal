@@ -221,7 +221,7 @@ export function SettingsPage({
             </div>
 
             <div className="flex items-center justify-between gap-4 px-5 py-4">
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-medium text-gray-200">
                     模型映射代理端口
@@ -232,7 +232,7 @@ export function SettingsPage({
                   当前地址：http://127.0.0.1:{modelMappingPortSaved}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <input
                   value={modelMappingPort}
                   onChange={(event) => setModelMappingPort(event.target.value.replace(/[^\d]/g, "").slice(0, 5))}
@@ -244,7 +244,7 @@ export function SettingsPage({
                 <button
                   onClick={() => void handleModelMappingPortSave()}
                   disabled={modelMappingPortBusy || modelMappingPort === String(modelMappingPortSaved)}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS} min-w-[4.5rem]`}
                 >
                   保存
                 </button>
@@ -252,7 +252,7 @@ export function SettingsPage({
             </div>
 
             <div className="flex items-center justify-between gap-4 px-5 py-4">
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-medium text-gray-200">
                     ModelScope API Key
@@ -263,7 +263,7 @@ export function SettingsPage({
                   {modelscopeKeySaved ? "已配置" : "未配置 — MCP 在线安装将不可用"}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <input
                   value={modelscopeKey}
                   onChange={(event) => setModelscopeKey(event.target.value)}
@@ -274,7 +274,7 @@ export function SettingsPage({
                 <button
                   onClick={() => void handleModelscopeKeySave()}
                   disabled={modelscopeKeyBusy}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS}`}
+                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS} min-w-[4.5rem]`}
                 >
                   {modelscopeKeyBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   保存

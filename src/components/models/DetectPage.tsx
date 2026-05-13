@@ -7,7 +7,6 @@ import { Tooltip } from "../Tooltip";
 import { logger } from "../../lib/devlog";
 import {
   FIELD_INPUT_CLASS,
-  FIELD_SELECT_CLASS,
 } from "../../lib/formStyles";
 import {
   BUTTON_ICON_DANGER_SM_CLASS,
@@ -26,9 +25,9 @@ import {
   Loader2,
   RotateCcw,
   Save,
-  Search,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 import {
   ModelProtocolDialog,
@@ -38,17 +37,20 @@ import {
   getModelProtocolLabel,
   getProtocolResultDetails,
 } from "../ProtocolTestUI";
+import type { ModelTestProtocol } from "../../lib/protocolUtils";
 import { RECENT_PAGE_SIZE } from "./constants";
 import type { LiveResult } from "./types";
 import {
   getResultDetails,
   maskPreviewText,
-  getUniqueModelOptions,
   buildTestSignature,
+  friendlyError,
 } from "./utils";
 import { DeleteDialog, StatusBadge } from "./components/SharedDialogs";
+import { ModelSelectionDialog } from "./components/ModelSelectionDialog";
 import { useDetectForm } from "./hooks/useDetectForm";
 import { useModelDetection } from "./hooks/useModelDetection";
+import { listModels } from "../../api";
 
 interface Props {
   providers: Provider[];
@@ -85,8 +87,13 @@ export function DetectPage({
   const [detailDialogResult, setDetailDialogResult] =
     useState<import("../../types").ModelResult | null>(null);
 
-  const form = useDetectForm(providers, editTarget, onClearEditTarget, onDirtyChange);
+  // ─── 一键测试：模型选择弹窗状态 ────────────────────────────────
+  const [modelSelectionOpen, setModelSelectionOpen] = useState(false);
+  const [modelSelectionLoading, setModelSelectionLoading] = useState(false);
+  const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
 
+  const form = useDetectForm(providers, editTarget, onClearEditTarget, onDirtyChange);
   const detection = useModelDetection();
 
   // editTarget 回填检测状态
@@ -116,10 +123,6 @@ export function DetectPage({
   const visibleResultTimestamp = hasCurrentResults
     ? detection.resultTimestamp
     : null;
-  const manualModelOptions =
-    visibleResults.length > 0
-      ? getUniqueModelOptions(visibleResults)
-      : getUniqueModelOptions(form.editingProvider?.lastResult?.results ?? []);
 
   const recentProviders = [...providers].sort(
     (a, b) =>
@@ -167,7 +170,12 @@ export function DetectPage({
     toast(`已复制 ${avail.length} 个可用模型`, "success");
   }
 
-  function handleTest() {
+  // ─── 一键测试流程 ────────────────────────────────────────────
+
+  async function handleQuickTest() {
+    if (!form.baseUrl.trim()) return;
+
+    // 编辑模式下已有结果 → 弹 retest scope dialog
     if (
       form.editingId &&
       form.editingProvider?.lastResult?.results &&
@@ -176,22 +184,57 @@ export function DetectPage({
       detection.setRetestScopeDialogOpen(true);
       return;
     }
+
+    await fetchModelsAndShowDialog();
+  }
+
+  async function fetchModelsAndShowDialog() {
+    setModelSelectionOpen(true);
+    setModelSelectionLoading(true);
+    setModelSelectionError(null);
+    setFetchedModels([]);
+
+    try {
+      const models = await listModels(form.baseUrl.trim(), form.apiKey.trim());
+      const sorted = [...models].sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase()),
+      );
+      setFetchedModels(sorted);
+      setModelSelectionLoading(false);
+      logger.success(`[一键测试] v1/models 获取到 ${sorted.length} 个模型`);
+    } catch (e) {
+      const msg = friendlyError(e);
+      logger.error(`[一键测试] v1/models 获取失败：${msg}`);
+      setModelSelectionError(msg);
+      setModelSelectionLoading(false);
+    }
+  }
+
+  /** 用户选完模型和协议后，开始测试 */
+  function handleModelSelectionConfirm(selectedModels: string[], protocols: ModelTestProtocol[]) {
+    setModelSelectionOpen(false);
+    setFetchedModels([]);
+    setModelSelectionError(null);
     void detection.runModelDetection(
       form.baseUrl,
       form.apiKey,
       form.name,
+      selectedModels,
+      protocols.length > 0 ? protocols : undefined,
     );
   }
 
-  async function handleTestSingleModel() {
-    if (!form.baseUrl.trim() || !form.manualModel.trim()) return;
-    await detection.handleTestSingleModel(
+  /** 用户手动输入模型和选完协议后，开始测试 */
+  function handleManualModelConfirm(models: string[], protocols: ModelTestProtocol[]) {
+    setModelSelectionOpen(false);
+    setFetchedModels([]);
+    setModelSelectionError(null);
+    void detection.runModelDetection(
       form.baseUrl,
       form.apiKey,
       form.name,
-      form.manualModel,
-      detection.results,
-      detection.lastTestSignature,
+      models,
+      protocols.length > 0 ? protocols : undefined,
     );
   }
 
@@ -222,10 +265,7 @@ export function DetectPage({
       baseUrl: form.baseUrl.trim(),
       apiKey: form.apiKey.trim(),
     };
-    const currentConfigSignature = buildTestSignature(
-      data.baseUrl,
-      data.apiKey,
-    );
+    const currentConfigSignature = buildTestSignature(data.baseUrl, data.apiKey);
     const storedSignature = buildTestSignature(form.origBaseUrl, form.origApiKey);
     const hasFreshResultsForCurrentConfig =
       detection.lastTestSignature === currentConfigSignature &&
@@ -433,82 +473,8 @@ export function DetectPage({
               </div>
             </div>
           </div>
-          <div>
-            <div className="mb-1 flex items-center gap-1.5">
-              <label className="block text-xs text-gray-400">
-                指定模型名测试
-              </label>
-              <HintTooltip content="可直接手动输入模型名，也可以从当前接口已拉取的模型列表里直接选。" />
-            </div>
-            <div className="space-y-2">
-              {manualModelOptions.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <div className="w-[220px] flex-shrink-0">
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (!e.target.value) return;
-                        form.setManualModel(e.target.value);
-                      }}
-                      className={FIELD_SELECT_CLASS}
-                    >
-                      <option value="">从已拉取模型中选择</option>
-                      {manualModelOptions.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    当前共 {manualModelOptions.length} 个候选模型
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    value={form.manualModel}
-                    onChange={(e) => form.setManualModel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        !isLoading &&
-                        form.baseUrl.trim() &&
-                        form.manualModel.trim()
-                      ) {
-                        handleTestSingleModel();
-                      }
-                    }}
-                    placeholder="如：gpt-4.1-mini / claude-3-7-sonnet / gemini-2.5-flash"
-                    className={`${FIELD_INPUT_CLASS} pr-8 font-mono text-xs`}
-                  />
-                  {form.manualModel && (
-                    <button
-                      onClick={() => form.setManualModel("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300"
-                      tabIndex={-1}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                <button
-                  onClick={handleTestSingleModel}
-                  disabled={
-                    isLoading ||
-                    !form.baseUrl.trim() ||
-                    !!form.urlError ||
-                    !form.manualModel.trim()
-                  }
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  <Search className="h-3.5 w-3.5" />
-                  测试指定模型
-                </button>
-              </div>
-            </div>
-          </div>
+
+          {/* ─── 操作按钮 ────────────────────────────────────── */}
           <div className="flex items-center justify-between pt-1">
             <div>
               {form.editingId ? (
@@ -525,7 +491,7 @@ export function DetectPage({
                   )}
                 </div>
               ) : (
-                <span className="text-xs text-gray-600">填写后点击测试</span>
+                <span className="text-xs text-gray-600">填写后点击一键测试</span>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -546,13 +512,13 @@ export function DetectPage({
                       duration: 300,
                     });
                   }
-                  handleTest();
+                  handleQuickTest();
                 }}
                 disabled={isLoading || !form.baseUrl.trim() || !!form.urlError}
                 className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
-                <Search className="h-3.5 w-3.5" />
-                {isLoading ? "检测中..." : "检测全部模型"}
+                <Zap className="h-3.5 w-3.5" />
+                {isLoading ? "检测中..." : "一键测试"}
               </button>
               {(isDone || form.editingId) && (
                 <Tooltip
@@ -683,38 +649,22 @@ export function DetectPage({
               </div>
               <div className="grid gap-2 border-b border-gray-800 bg-gray-950/40 px-4 py-3 md:grid-cols-4">
                 <div className="rounded-lg border border-gray-800 bg-gray-900/70 px-3 py-2.5">
-                  <p className="text-xs uppercase tracking-widest text-gray-500">
-                    Model 总数
-                  </p>
-                  <p className="mt-1.5 text-lg font-semibold text-white">
-                    {totalCount}
-                  </p>
+                  <p className="text-xs uppercase tracking-widest text-gray-500">Model 总数</p>
+                  <p className="mt-1.5 text-lg font-semibold text-white">{totalCount}</p>
                 </div>
                 <div className="rounded-lg border border-gray-800 bg-gray-900/70 px-3 py-2.5">
-                  <p className="text-xs uppercase tracking-widest text-gray-500">
-                    可用模型
-                  </p>
-                  <p className="mt-1.5 text-lg font-semibold text-emerald-400">
-                    {availableCount}
-                  </p>
+                  <p className="text-xs uppercase tracking-widest text-gray-500">可用模型</p>
+                  <p className="mt-1.5 text-lg font-semibold text-emerald-400">{availableCount}</p>
                 </div>
                 <div className="rounded-lg border border-gray-800 bg-gray-900/70 px-3 py-2.5">
-                  <p className="text-xs uppercase tracking-widest text-gray-500">
-                    不可用模型
-                  </p>
-                  <p className="mt-1.5 text-lg font-semibold text-red-400">
-                    {unavailableCount}
-                  </p>
+                  <p className="text-xs uppercase tracking-widest text-gray-500">不可用模型</p>
+                  <p className="mt-1.5 text-lg font-semibold text-red-400">{unavailableCount}</p>
                 </div>
                 <div className="rounded-lg border border-gray-800 bg-gray-900/70 px-3 py-2.5">
-                  <p className="text-xs uppercase tracking-widest text-gray-500">
-                    最近检测
-                  </p>
+                  <p className="text-xs uppercase tracking-widest text-gray-500">最近检测</p>
                   <p className="mt-1.5 text-sm font-medium text-gray-200">
                     {visibleResultTimestamp
-                      ? new Date(visibleResultTimestamp).toLocaleString("zh-CN", {
-                          hour12: false,
-                        })
+                      ? new Date(visibleResultTimestamp).toLocaleString("zh-CN", { hour12: false })
                       : "—"}
                   </p>
                 </div>
@@ -722,21 +672,11 @@ export function DetectPage({
               <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="w-[24%] px-4 py-2.5 text-left text-xs text-gray-400">
-                      模型
-                    </th>
-                    <th className="w-[112px] px-4 py-2.5 text-left text-xs text-gray-400">
-                      状态
-                    </th>
-                    <th className="w-[108px] px-4 py-2.5 text-left text-xs text-gray-400">
-                      延迟
-                    </th>
-                    <th className="px-4 py-2.5 text-left text-xs text-gray-400">
-                      返回结果
-                    </th>
-                    <th className="w-[92px] px-4 py-2.5 text-center text-xs text-gray-400">
-                      测试
-                    </th>
+                    <th className="w-[24%] px-4 py-2.5 text-left text-xs text-gray-400">模型</th>
+                    <th className="w-[112px] px-4 py-2.5 text-left text-xs text-gray-400">状态</th>
+                    <th className="w-[108px] px-4 py-2.5 text-left text-xs text-gray-400">延迟</th>
+                    <th className="px-4 py-2.5 text-left text-xs text-gray-400">返回结果</th>
+                    <th className="w-[92px] px-4 py-2.5 text-center text-xs text-gray-400">测试</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -753,9 +693,7 @@ export function DetectPage({
                     >
                       <td className="px-4 py-2 align-middle">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs text-gray-200 truncate max-w-[160px]">
-                            {r.model}
-                          </span>
+                          <span className="font-mono text-xs text-gray-200 truncate max-w-[160px]">{r.model}</span>
                           {r.status === "done" && <CopyButton text={r.model} />}
                         </div>
                       </td>
@@ -789,31 +727,20 @@ export function DetectPage({
                                 <CopyButton
                                   text={(r.protocol_results ?? [])
                                     .filter((item) => item.available)
-                                    .map(
-                                      (item) =>
-                                        `${getModelProtocolLabel(item.protocol)}: ${getProtocolResultDetails(
-                                          item,
-                                        )}`,
-                                    )
+                                    .map((item) => `${getModelProtocolLabel(item.protocol)}: ${getProtocolResultDetails(item)}`)
                                     .join("\n\n")}
                                   message="已复制协议返回结果"
                                 />
                               </div>
                             ) : (
                               <div className="flex items-start gap-1.5">
-                                <Tooltip
-                                  content={getResultDetails(r)}
-                                  placement="top"
-                                >
+                                <Tooltip content={getResultDetails(r)} placement="top">
                                   <span className="max-w-[320px] truncate leading-5 text-gray-500 cursor-default">
                                     {getResultDetails(r)}
                                   </span>
                                 </Tooltip>
                                 {getResultDetails(r) !== "—" && (
-                                  <CopyButton
-                                    text={getResultDetails(r)}
-                                    message="已复制返回结果"
-                                  />
+                                  <CopyButton text={getResultDetails(r)} message="已复制返回结果" />
                                 )}
                               </div>
                             )}
@@ -839,10 +766,10 @@ export function DetectPage({
           ) : (
             <div className="mb-6 rounded-xl border border-dashed border-gray-800 bg-gray-900/60 px-6 py-12 text-center">
               <p className="text-sm font-medium text-gray-300">
-                本次接口检测结果会显示在这里
+                点击「一键测试」选择模型和协议后，检测结果会显示在这里
               </p>
               <p className="mt-1.5 text-xs text-gray-500">
-                点击"检测全部模型"或"测试指定模型"后显示结果明细。
+                系统会从 v1/models 获取模型列表，你可以选择要测试的模型和协议。
               </p>
             </div>
           );
@@ -858,9 +785,7 @@ export function DetectPage({
                 <HintTooltip content="展示全部记录，按最近时间倒序；本地分页为每页 20 条。" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">
-                  共 {recentProviders.length} 条
-                </span>
+                <span className="text-xs text-gray-500">共 {recentProviders.length} 条</span>
                 <button
                   onClick={onOpenModels}
                   className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
@@ -874,24 +799,12 @@ export function DetectPage({
               <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="w-12 px-4 py-2.5 text-left text-xs text-gray-400">
-                      #
-                    </th>
-                    <th className="w-[76px] px-4 py-2.5 text-left text-xs text-gray-400">
-                      状态
-                    </th>
-                    <th className="w-[24%] px-4 py-2.5 text-left text-xs text-gray-400">
-                      名称
-                    </th>
-                    <th className="w-[28%] px-4 py-2.5 text-left text-xs text-gray-400">
-                      Base URL
-                    </th>
-                    <th className="w-[140px] px-4 py-2.5 text-left text-xs text-gray-400">
-                      上次检测
-                    </th>
-                    <th className="w-[72px] px-4 py-2.5 text-center text-xs text-gray-400">
-                      操作
-                    </th>
+                    <th className="w-12 px-4 py-2.5 text-left text-xs text-gray-400">#</th>
+                    <th className="w-[76px] px-4 py-2.5 text-left text-xs text-gray-400">状态</th>
+                    <th className="w-[24%] px-4 py-2.5 text-left text-xs text-gray-400">名称</th>
+                    <th className="w-[28%] px-4 py-2.5 text-left text-xs text-gray-400">Base URL</th>
+                    <th className="w-[140px] px-4 py-2.5 text-left text-xs text-gray-400">上次检测</th>
+                    <th className="w-[72px] px-4 py-2.5 text-center text-xs text-gray-400">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -925,13 +838,9 @@ export function DetectPage({
                         </td>
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-gray-200 text-sm font-medium">
-                              {p.name}
-                            </span>
+                            <span className="text-gray-200 text-sm font-medium">{p.name}</span>
                             {i === 0 && p.lastResult && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400">
-                                最新
-                              </span>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400">最新</span>
                             )}
                           </div>
                         </td>
@@ -944,20 +853,14 @@ export function DetectPage({
                         </td>
                         <td className="px-4 py-2 text-xs text-gray-500">
                           {p.lastResult
-                            ? new Date(p.lastResult.timestamp).toLocaleString(
-                                "zh-CN",
-                                { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" },
-                              )
+                            ? new Date(p.lastResult.timestamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
                             : "—"}
                         </td>
                         <td className="px-4 py-2">
                           <div className="flex justify-center">
                             <Tooltip content="删除接口" placement="top">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteConfirmId(p.id);
-                                }}
+                                onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p.id); }}
                                 className={BUTTON_ICON_DANGER_SM_CLASS}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -974,49 +877,22 @@ export function DetectPage({
             {recentProviders.length > RECENT_PAGE_SIZE && (
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-xs text-gray-500">
-                  第 {recentPage} / {recentTotalPages} 页，每页{" "}
-                  {RECENT_PAGE_SIZE} 条
+                  第 {recentPage} / {recentTotalPages} 页，每页 {RECENT_PAGE_SIZE} 条
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setRecentPage(1)}
-                    disabled={recentPage === 1}
-                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                  >
-                    首页
-                  </button>
-                  <button
-                    onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
-                    disabled={recentPage === 1}
-                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                  >
-                    上一页
-                  </button>
-                  <span className="text-xs text-gray-500">
-                    {recentPage} / {recentTotalPages}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setRecentPage((p) => Math.min(recentTotalPages, p + 1))
-                    }
-                    disabled={recentPage === recentTotalPages}
-                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                  >
-                    下一页
-                  </button>
-                  <button
-                    onClick={() => setRecentPage(recentTotalPages)}
-                    disabled={recentPage === recentTotalPages}
-                    className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                  >
-                    末页
-                  </button>
+                  <button onClick={() => setRecentPage(1)} disabled={recentPage === 1} className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>首页</button>
+                  <button onClick={() => setRecentPage((p) => Math.max(1, p - 1))} disabled={recentPage === 1} className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>上一页</button>
+                  <span className="text-xs text-gray-500">{recentPage} / {recentTotalPages}</span>
+                  <button onClick={() => setRecentPage((p) => Math.min(recentTotalPages, p + 1))} disabled={recentPage === recentTotalPages} className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>下一页</button>
+                  <button onClick={() => setRecentPage(recentTotalPages)} disabled={recentPage === recentTotalPages} className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>末页</button>
                 </div>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* ─── 弹窗集合 ────────────────────────────────────────────── */}
 
       {(() => {
         const target = providers.find((p) => p.id === deleteConfirmId);
@@ -1033,38 +909,46 @@ export function DetectPage({
           />
         ) : null;
       })()}
+
       {detection.retestScopeDialogOpen && form.editingProvider?.lastResult?.results && (
         <RetestScopeDialog
           totalCount={form.editingProvider.lastResult.results.length}
-          availableCount={
-            form.editingProvider.lastResult.results.filter((item) => item.available)
-              .length
-          }
-          unavailableCount={
-            form.editingProvider.lastResult.results.filter((item) => !item.available)
-              .length
-          }
+          availableCount={form.editingProvider.lastResult.results.filter((item) => item.available).length}
+          unavailableCount={form.editingProvider.lastResult.results.filter((item) => !item.available).length}
           onAll={() => {
             detection.setRetestScopeDialogOpen(false);
-            void detection.runModelDetection(form.baseUrl, form.apiKey, form.name);
+            void fetchModelsAndShowDialog();
           }}
           onAvailableOnly={() => {
-            const models = form.editingProvider!
-              .lastResult!.results.filter((item) => item.available)
-              .map((item) => item.model);
+            const models = form.editingProvider!.lastResult!.results.filter((item) => item.available).map((item) => item.model);
             detection.setRetestScopeDialogOpen(false);
             void detection.runModelDetection(form.baseUrl, form.apiKey, form.name, models);
           }}
           onUnavailableOnly={() => {
-            const models = form.editingProvider!
-              .lastResult!.results.filter((item) => !item.available)
-              .map((item) => item.model);
+            const models = form.editingProvider!.lastResult!.results.filter((item) => !item.available).map((item) => item.model);
             detection.setRetestScopeDialogOpen(false);
             void detection.runModelDetection(form.baseUrl, form.apiKey, form.name, models);
           }}
           onCancel={() => detection.setRetestScopeDialogOpen(false)}
         />
       )}
+
+      {modelSelectionOpen && (
+        <ModelSelectionDialog
+          models={fetchedModels}
+          loading={modelSelectionLoading}
+          fetchError={modelSelectionError}
+          onConfirm={handleModelSelectionConfirm}
+          onManualConfirm={handleManualModelConfirm}
+          onRetry={fetchModelsAndShowDialog}
+          onClose={() => {
+            setModelSelectionOpen(false);
+            setFetchedModels([]);
+            setModelSelectionError(null);
+          }}
+        />
+      )}
+
       {detection.protocolDialogModel && (
         <ModelProtocolDialog
           model={detection.protocolDialogModel}

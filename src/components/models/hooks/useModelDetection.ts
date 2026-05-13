@@ -41,7 +41,13 @@ export function useModelDetection() {
   const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
 
   const runModelDetection = useCallback(
-    async (baseUrl: string, apiKey: string, name: string, targetModels?: string[]) => {
+    async (
+      baseUrl: string,
+      apiKey: string,
+      name: string,
+      targetModels?: string[],
+      protocols?: string[],
+    ) => {
       if (!baseUrl.trim()) return;
       setError(null);
       setLiveResults([]);
@@ -49,7 +55,7 @@ export function useModelDetection() {
       setProgress(targetModels ? "正在准备重测模型..." : "正在获取模型列表...");
       setLastTestMode("all");
       logger.info(
-        `[${name || baseUrl}] 开始检测，baseUrl: ${baseUrl}${targetModels ? `，指定模型=${targetModels.join(", ")}` : ""}`,
+        `[${name || baseUrl}] 开始检测，baseUrl: ${baseUrl}${targetModels ? `，指定模型=${targetModels.join(", ")}` : ""}${protocols?.length ? `，协议=${protocols.join(",")}` : ""}`,
       );
       const concurrency = getConcurrency();
       const detectionResult = await runDetection({
@@ -57,6 +63,7 @@ export function useModelDetection() {
         apiKey,
         targetModels,
         concurrency,
+        protocols,
         onStart: ({ models, initialResults, fromListApi }) => {
           if (fromListApi) {
             logger.success(`获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`);

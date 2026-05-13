@@ -21,6 +21,8 @@ export interface DetectionRunnerOptions {
   apiKey: string;
   targetModels?: string[];
   concurrency: number;
+  /** 要测试的协议，为空则不指定（走默认逻辑） */
+  protocols?: string[];
   onStart?: (payload: DetectionRunnerStartPayload) => void;
   onProgress?: (payload: DetectionRunnerProgressPayload) => void;
 }
@@ -90,7 +92,13 @@ export async function runModelDetection(
 
     const { model, index } = item;
     try {
-      const result = await testSingleModelByProvider(baseUrl, apiKey, model);
+      // 传入 protocols 参数，为空则走默认逻辑
+      const result = await testSingleModelByProvider(
+        baseUrl,
+        apiKey,
+        model,
+        options.protocols,
+      );
       finalResults[index] = {
         ...result,
         protocol_results: result.protocol_results ?? [],
