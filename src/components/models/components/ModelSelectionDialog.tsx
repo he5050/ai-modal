@@ -14,6 +14,8 @@ const PROTOCOL_CONFIG: Record<ModelTestProtocol, { label: string; color: string;
 };
 
 interface ModelSelectionDialogProps {
+  /** 弹窗模式：test 用于测试流程，select 用于仅选择模型 */
+  mode?: "test" | "select";
   /** 模型列表，已按 A-Z 排序 */
   models: string[];
   /** 编辑状态下的已保存模型；只默认勾选当前仍存在的交集 */
@@ -23,9 +25,11 @@ interface ModelSelectionDialogProps {
   /** 加载失败的错误信息，为 null 表示加载成功或未开始 */
   fetchError: string | null;
   /** 确认选择：{ models, protocols } */
-  onConfirm: (models: string[], protocols: ModelTestProtocol[]) => void;
+  onConfirm?: (models: string[], protocols: ModelTestProtocol[]) => void;
   /** 手动输入模型后确认：{ models, protocols } */
-  onManualConfirm: (models: string[], protocols: ModelTestProtocol[]) => void;
+  onManualConfirm?: (models: string[], protocols: ModelTestProtocol[]) => void;
+  /** 仅选择模型后确认 */
+  onSelectConfirm?: (models: string[]) => void;
   /** 关闭弹窗 */
   onClose: () => void;
   /** 重新尝试获取模型列表 */
@@ -35,12 +39,14 @@ interface ModelSelectionDialogProps {
 type DialogStep = "models" | "protocols" | "manual";
 
 export function ModelSelectionDialog({
+  mode = "test",
   models,
   initialSelectedModels = [],
   loading,
   fetchError,
   onConfirm,
   onManualConfirm,
+  onSelectConfirm,
   onClose,
   onRetry,
 }: ModelSelectionDialogProps) {
@@ -117,6 +123,10 @@ export function ModelSelectionDialog({
 
   function goNextStep() {
     if (selectedModels.size > 0) {
+      if (mode === "select") {
+        handleSelectConfirm();
+        return;
+      }
       setStep("protocols");
     }
   }
@@ -126,7 +136,14 @@ export function ModelSelectionDialog({
       a.toLowerCase().localeCompare(b.toLowerCase()),
     );
     const protocolsArr = Array.from(selectedProtocols);
-    onConfirm(selectedArr, protocolsArr);
+    onConfirm?.(selectedArr, protocolsArr);
+  }
+
+  function handleSelectConfirm() {
+    const selectedArr = Array.from(selectedModels).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
+    onSelectConfirm?.(selectedArr);
   }
 
   function handleManualConfirm() {
@@ -136,14 +153,14 @@ export function ModelSelectionDialog({
       .filter(Boolean);
     const protocolsArr = Array.from(selectedProtocols);
     if (parsedModels.length > 0) {
-      onManualConfirm(parsedModels, protocolsArr);
+      onManualConfirm?.(parsedModels, protocolsArr);
     }
   }
 
   // ─── 渲染步骤 ────────────────────────────────────────────────────
 
   const stepTitles: Record<DialogStep, string> = {
-    models: "选择要测试的模型",
+    models: mode === "select" ? "选择要导入的模型" : "选择要测试的模型",
     protocols: "选择测试协议",
     manual: "手动输入模型名称",
   };
@@ -160,8 +177,34 @@ export function ModelSelectionDialog({
     }
 
     // ─── 错误状态：手动输入 ───
-    if (fetchError) {
+    if (fetchError && mode === "test") {
       return renderManualStep();
+    }
+
+    if (fetchError) {
+      return (
+        <div className="flex flex-col gap-4 px-6 py-6">
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+            <p className="text-sm text-red-300">模型列表加载失败：{fetchError}</p>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+              >
+                重试
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      );
     }
 
     // ─── 模型选择 ───
@@ -221,20 +264,20 @@ export function ModelSelectionDialog({
                   <button
                     key={model}
                     onClick={() => toggleModel(model)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-mono transition-all ${
+                    className={`group inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-mono transition-all ${
                       isSelected
                         ? "border-indigo-400/60 bg-indigo-500/20 text-white shadow-[0_0_0_1px_rgba(129,140,248,0.2)]"
                         : "border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-500 hover:bg-gray-700/80 hover:text-gray-200"
                     }`}
                   >
                     <span
-                      className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border ${
+                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
                         isSelected
-                          ? "border-indigo-400 bg-indigo-500 text-white"
-                          : "border-gray-600 bg-gray-900"
+                          ? "border-indigo-500 bg-indigo-600 text-white"
+                          : "border-gray-600 bg-gray-800 text-transparent group-hover:border-indigo-500/60"
                       }`}
                     >
-                      {isSelected && <Check className="h-2.5 w-2.5" />}
+                      {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
                     </span>
                     {model}
                   </button>
@@ -261,7 +304,9 @@ export function ModelSelectionDialog({
               disabled={selectedModels.size === 0}
               className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
             >
-              下一步：选择协议 ({selectedModels.size})
+              {mode === "select"
+                ? `导入所选模型 (${selectedModels.size})`
+                : `下一步：选择协议 (${selectedModels.size})`}
             </button>
           </div>
         </div>
@@ -437,7 +482,9 @@ export function ModelSelectionDialog({
             </h3>
             {step === "models" && (
               <p className="mt-1 text-xs text-gray-500">
-                从 v1/models 获取到 {models.length} 个模型，已按 A-Z 排序。勾选需要测试的模型。
+                {mode === "select"
+                  ? `从当前 Provider 最近可用模型里找到 ${models.length} 个模型，已按 A-Z 排序。勾选要导入到模型映射的模型。`
+                  : `从 v1/models 获取到 ${models.length} 个模型，已按 A-Z 排序。勾选需要测试的模型。`}
               </p>
             )}
             {step === "protocols" && (

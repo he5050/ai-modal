@@ -221,8 +221,15 @@ export function getActiveMappingModels(config: ModelMappingConfig) {
   );
 }
 
-export function providerToMappingProvider(provider: Provider): ModelMappingProvider {
-  const availableModels = provider.lastResult?.results.filter((result) => result.available) ?? [];
+export function providerToMappingProvider(
+  provider: Provider,
+  selectedModels?: string[],
+): ModelMappingProvider {
+  const selectedSet = selectedModels ? new Set(selectedModels) : null;
+  const availableModels =
+    provider.lastResult?.results.filter(
+      (result) => result.available && (!selectedSet || selectedSet.has(result.model)),
+    ) ?? [];
   return {
     id: provider.id,
     name: provider.name,

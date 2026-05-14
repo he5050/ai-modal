@@ -292,6 +292,52 @@ describe("modelMapping", () => {
     expect(active).toHaveLength(0);
   });
 
+  it("imports only the selected available models when a subset is provided", () => {
+    const provider: Provider = {
+      id: "provider-selected",
+      name: "Selected",
+      baseUrl: "https://example.com",
+      apiKey: "secret",
+      createdAt: 1,
+      lastResult: {
+        timestamp: 2,
+        results: [
+          {
+            model: "alpha",
+            available: true,
+            latency_ms: 10,
+            error: null,
+            supported_protocols: ["openApi"],
+          },
+          {
+            model: "beta",
+            available: true,
+            latency_ms: 11,
+            error: null,
+            supported_protocols: ["claude"],
+          },
+          {
+            model: "gamma",
+            available: false,
+            latency_ms: null,
+            error: "failed",
+          },
+        ],
+      },
+    };
+
+    const imported = normalizeModelMappingConfig({
+      providers: [providerToMappingProvider(provider, ["beta", "missing-model"])],
+    }).providers[0];
+
+    expect(imported.models).toHaveLength(1);
+    expect(imported.models[0]).toMatchObject({
+      name: "beta",
+      display_name: "Selected-beta",
+      source_protocol: "claude",
+    });
+  });
+
   it("counts mapped models across providers", () => {
     const count = countMappingModels({
       providers: [

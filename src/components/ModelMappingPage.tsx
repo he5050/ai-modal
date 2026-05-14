@@ -72,6 +72,7 @@ import type {
 } from "../types";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
+import { ModelSelectionDialog } from "./models/components/ModelSelectionDialog";
 
 interface Props {
   providers: Provider[];
@@ -97,6 +98,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<"mapping" | "slots" | "logs">("mapping");
+  const [importSelectionProvider, setImportSelectionProvider] = useState<Provider | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -165,8 +167,33 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
     });
   }
 
-  function importProvider(provider: Provider) {
-    const nextProvider = providerToMappingProvider(provider);
+  function getImportableModelNames(provider: Provider) {
+    return (provider.lastResult?.results ?? [])
+      .filter((result) => result.available)
+      .map((result) => result.model)
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }
+
+  function getImportedModelNames(providerId: string) {
+    return (
+      config.providers
+        .find((item) => item.id === providerId)
+        ?.models.map((model) => model.name)
+        .filter(Boolean) ?? []
+    );
+  }
+
+  function openImportProviderDialog(provider: Provider) {
+    const importableModels = getImportableModelNames(provider);
+    if (importableModels.length === 0) {
+      toast("当前 Provider 没有可导入的可用模型", "warning");
+      return;
+    }
+    setImportSelectionProvider(provider);
+  }
+
+  function importProvider(provider: Provider, selectedModels?: string[]) {
+    const nextProvider = providerToMappingProvider(provider, selectedModels);
     const existingIndex = config.providers.findIndex((item) => item.id === provider.id);
     if (existingIndex >= 0) {
       updateConfig({
@@ -181,6 +208,12 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
     }
     updateConfig({ providers: [...config.providers, nextProvider] });
     logger.info(`[模型映射] 新增导入 provider：${provider.name} (${provider.id})`);
+  }
+
+  function handleImportProviderConfirm(selectedModels: string[]) {
+    if (!importSelectionProvider) return;
+    importProvider(importSelectionProvider, selectedModels);
+    setImportSelectionProvider(null);
   }
 
   function deleteProvider(index: number) {
@@ -552,7 +585,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {selectedTab === "mapping" && (
           <div className="space-y-4">
-            <SourceActions providers={providers} onImportProvider={importProvider} />
+            <SourceActions providers={providers} onImportProvider={openImportProviderDialog} />
 
             {config.providers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-5 py-10 text-center">
@@ -593,6 +626,18 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
           <LogsPanel logs={logs} running={Boolean(status?.running)} onRefresh={() => void refreshLogs()} />
         )}
       </div>
+
+      {importSelectionProvider && (
+        <ModelSelectionDialog
+          mode="select"
+          models={getImportableModelNames(importSelectionProvider)}
+          initialSelectedModels={getImportedModelNames(importSelectionProvider.id)}
+          loading={false}
+          fetchError={null}
+          onSelectConfirm={handleImportProviderConfirm}
+          onClose={() => setImportSelectionProvider(null)}
+        />
+      )}
     </div>
   );
 }
@@ -618,19 +663,26 @@ function SourceActions({
         label="导入现有 Provider"
         disabled={providers.length === 0}
       >
-        {providers.map((provider) => (
-          <button
-            key={provider.id}
-            onClick={() => {
-              onImportProvider(provider);
-              setProviderOpen(false);
-            }}
-            className="block w-full px-3 py-2 text-left text-xs text-gray-300 transition-colors hover:bg-gray-800"
-          >
-            <span className="block truncate font-medium text-gray-200">{provider.name}</span>
-            <span className="block truncate text-gray-600">{provider.baseUrl}</span>
-          </button>
-        ))}
+        {providers.map((provider) => {
+          const importableCount =
+            provider.lastResult?.results.filter((result) => result.available).length ?? 0;
+          return (
+            <button
+              key={provider.id}
+              onClick={() => {
+                onImportProvider(provider);
+                setProviderOpen(false);
+              }}
+              className="block w-full px-3 py-2 text-left text-xs text-gray-300 transition-colors hover:bg-gray-800"
+            >
+              <span className="block truncate font-medium text-gray-200">{provider.name}</span>
+              <span className="block truncate text-gray-600">{provider.baseUrl}</span>
+              <span className="mt-1 block text-[11px] text-gray-500">
+                {importableCount > 0 ? `${importableCount} 个可导入模型` : "暂无可导入模型"}
+              </span>
+            </button>
+          );
+        })}
       </DropdownButton>
     </div>
   );
