@@ -16,6 +16,8 @@ const PROTOCOL_CONFIG: Record<ModelTestProtocol, { label: string; color: string;
 interface ModelSelectionDialogProps {
   /** 模型列表，已按 A-Z 排序 */
   models: string[];
+  /** 编辑状态下的已保存模型；只默认勾选当前仍存在的交集 */
+  initialSelectedModels?: string[];
   /** 是否正在加载模型列表 */
   loading: boolean;
   /** 加载失败的错误信息，为 null 表示加载成功或未开始 */
@@ -34,6 +36,7 @@ type DialogStep = "models" | "protocols" | "manual";
 
 export function ModelSelectionDialog({
   models,
+  initialSelectedModels = [],
   loading,
   fetchError,
   onConfirm,
@@ -42,17 +45,18 @@ export function ModelSelectionDialog({
   onRetry,
 }: ModelSelectionDialogProps) {
   const [step, setStep] = useState<DialogStep>("models");
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(() => new Set(models));
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(() => new Set());
   const [selectedProtocols, setSelectedProtocols] = useState<Set<ModelTestProtocol>>(() => new Set(MODEL_TEST_PROTOCOLS));
   const [search, setSearch] = useState("");
   const [manualInput, setManualInput] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // 当 models 更新时默认全选
+  // 当 models 更新时，只默认勾选“已保存模型”与“当前模型列表”的交集；新模型默认不勾选
   useEffect(() => {
-    setSelectedModels(new Set(models));
-  }, [models.join(",")]);
+    const saved = new Set(initialSelectedModels);
+    setSelectedModels(new Set(models.filter((model) => saved.has(model))));
+  }, [models.join(","), initialSelectedModels.join(",")]);
 
   const filteredModels = useMemo(() => {
     if (!search.trim()) return models;

@@ -42,9 +42,11 @@ describe("modelMapping", () => {
       name: "available-model",
       slot: "anthropic/claude-claude-openrouter-1",
       display_name: "OpenRouter-available-model",
+      supported_protocols: ["openai-chat"],
+      source_protocol: "openai-chat",
+      target_protocol: "claude",
       to_1m: "",
       enabled: false,
-      protocol: "claude",
     });
     expect(typeof imported.models[0].id).toBe("string");
   });
@@ -60,23 +62,27 @@ describe("modelMapping", () => {
           models: [
             {
               name: "deepseek-v4-flash",
+              supported_protocols: ["claude", "gemini"],
+              source_protocol: "gemini",
+              target_protocol: "claude",
               to_1m: "",
               enabled: true,
-              protocol: "claude",
             },
             {
               name: "deepseek-v4-pro",
               slot: "anthropic/claude-sonnet-4-5",
               display_name: "Custom Plus",
+              supported_protocols: ["claude", "openai-chat"],
+              source_protocol: "claude",
+              target_protocol: "claude",
               to_1m: "",
               enabled: true,
-              protocol: "claude",
             },
             {
               name: "glm-5-turbo",
+              supported_protocols: ["gemini"],
               to_1m: "",
               enabled: true,
-              protocol: "claude",
             },
           ],
           thinking_effort: "",
@@ -86,10 +92,14 @@ describe("modelMapping", () => {
 
     expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-custom-1");
     expect(normalized.providers[0].models[0].display_name).toBe("Custom-deepseek-v4-flash");
+    expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
+    expect(normalized.providers[0].models[0].target_protocol).toBe("claude");
     expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-4-5");
     expect(normalized.providers[0].models[1].display_name).toBe("Custom Plus");
     expect(normalized.providers[0].models[2].slot).toBe("anthropic/claude-claude-custom-3");
     expect(normalized.providers[0].models[2].display_name).toBe("Custom-glm-5-turbo");
+    expect(normalized.providers[0].models[2].source_protocol).toBe("gemini");
+    expect(normalized.providers[0].models[2].target_protocol).toBe("claude");
   });
 
   it("upgrades old auto-generated slots to provider-scoped sequential routes", () => {
@@ -104,16 +114,18 @@ describe("modelMapping", () => {
             {
               name: "glm-5-turbo",
               slot: "anthropic/claude-glm-5-turbo",
+              supported_protocols: ["gemini"],
               to_1m: "",
               enabled: true,
-              protocol: "claude",
+              protocol: "gemini",
             },
             {
               name: "kimi-k2.6",
               slot: "anthropic/claude-claude-kimi-k2.6",
+              supported_protocols: ["openai-responses"],
               to_1m: "",
               enabled: true,
-              protocol: "claude",
+              protocol: "openai-responses",
             },
           ],
           thinking_effort: "",
@@ -123,6 +135,8 @@ describe("modelMapping", () => {
 
     expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-custom-1");
     expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-claude-custom-2");
+    expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
+    expect(normalized.providers[0].models[1].source_protocol).toBe("openai-responses");
   });
 
   it("fills missing display names with provider-model and preserves manual display name", () => {
@@ -136,16 +150,16 @@ describe("modelMapping", () => {
           models: [
             {
               name: "claude-opus-4",
+              supported_protocols: ["claude"],
               to_1m: "",
               enabled: true,
-              protocol: "claude",
             },
             {
               name: "claude-sonnet-4-5",
               display_name: "My Sonnet Alias",
+              supported_protocols: ["claude"],
               to_1m: "",
               enabled: true,
-              protocol: "claude",
             },
           ],
           thinking_effort: "",
@@ -157,6 +171,67 @@ describe("modelMapping", () => {
     expect(normalized.providers[0].models[1].display_name).toBe("My Sonnet Alias");
   });
 
+  it("normalizes source and target protocols from legacy and explicit values", () => {
+    const normalized = normalizeModelMappingConfig({
+      providers: [
+        {
+          id: "legacy",
+          name: "Legacy",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [
+            {
+              name: "a",
+              supported_protocols: ["gemini", "openai-responses"],
+              protocol: "gemini",
+              enabled: true,
+              to_1m: "",
+            },
+            {
+              name: "b",
+              supported_protocols: ["claude"],
+              source_protocol: "claude",
+              target_protocol: "openai-responses",
+              enabled: true,
+              to_1m: "",
+            },
+          ],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
+    expect(normalized.providers[0].models[0].target_protocol).toBe("claude");
+    expect(normalized.providers[0].models[1].source_protocol).toBe("claude");
+    expect(normalized.providers[0].models[1].target_protocol).toBe("openai-responses");
+  });
+
+  it("defaults source protocol to claude when claude is supported", () => {
+    const normalized = normalizeModelMappingConfig({
+      providers: [
+        {
+          id: "default-claude",
+          name: "DefaultClaude",
+          target_url: "https://example.com/anthropic",
+          api_key: "secret",
+          models: [
+            {
+              name: "hybrid",
+              supported_protocols: ["gemini", "claude"],
+              enabled: true,
+              to_1m: "",
+            },
+          ],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(normalized.providers[0].models[0].source_protocol).toBe("claude");
+    expect(normalized.providers[0].models[0].target_protocol).toBe("claude");
+  });
+
   it("restarts numbering for each provider", () => {
     const normalized = normalizeModelMappingConfig({
       providers: [
@@ -166,8 +241,8 @@ describe("modelMapping", () => {
           target_url: "https://example.com/anthropic",
           api_key: "secret",
           models: [
-            { name: "a-1", to_1m: "", enabled: true, protocol: "claude" },
-            { name: "a-2", to_1m: "", enabled: true, protocol: "claude" },
+            { name: "a-1", to_1m: "", enabled: true, source_protocol: "claude", target_protocol: "claude" },
+            { name: "a-2", to_1m: "", enabled: true, source_protocol: "claude", target_protocol: "claude" },
           ],
           thinking_effort: "",
         },
@@ -176,7 +251,7 @@ describe("modelMapping", () => {
           name: "GLM 智谱",
           target_url: "https://example.com/anthropic",
           api_key: "secret",
-          models: [{ name: "b-1", to_1m: "", enabled: true, protocol: "claude" }],
+          models: [{ name: "b-1", to_1m: "", enabled: true, source_protocol: "claude", target_protocol: "claude" }],
           thinking_effort: "",
         },
       ],
@@ -225,7 +300,7 @@ describe("modelMapping", () => {
           name: "Custom",
           target_url: "",
           api_key: "",
-          models: [{ name: "x", to_1m: "", enabled: true, protocol: "claude" }],
+          models: [{ name: "x", to_1m: "", enabled: true, source_protocol: "claude", target_protocol: "claude" }],
           thinking_effort: "",
         },
       ],

@@ -19,8 +19,19 @@ function hasTauriRuntime() {
 function readLocalStorageJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw == null ? fallback : (JSON.parse(raw) as T);
+    return raw == null ? fallback : parsePersistedValue(raw, fallback);
   } catch {
+    return fallback;
+  }
+}
+
+function parsePersistedValue<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    if (typeof fallback === "string") {
+      return raw as T;
+    }
     return fallback;
   }
 }
@@ -51,12 +62,12 @@ export async function loadPersistedJson<T>(
       [dbKey],
     );
     if (rows.length > 0) {
-      return JSON.parse(rows[0].value) as T;
+      return parsePersistedValue(rows[0].value, fallback);
     }
 
     const legacyRaw = localStorage.getItem(legacyKey);
     if (legacyRaw != null) {
-      const parsed = JSON.parse(legacyRaw) as T;
+      const parsed = parsePersistedValue(legacyRaw, fallback);
       await savePersistedJson(dbKey, parsed, legacyKey);
       return parsed;
     }

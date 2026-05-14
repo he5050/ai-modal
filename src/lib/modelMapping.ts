@@ -6,6 +6,7 @@ import type {
   ModelResult,
   Provider,
 } from "../types";
+import { normalizeSupportedProtocolTag } from "./protocolUtils";
 
 function createMappingEntryId() {
   return `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -77,10 +78,67 @@ export const THINKING_EFFORT_LABELS: Record<string, string> = {
   max: "Max",
 };
 
+export const MODEL_MAPPING_TARGET_PROTOCOLS = [
+  "claude",
+  "openai-chat",
+  "openai-responses",
+  "gemini",
+] as const;
+
 function makeModelDisplayName(providerName: string, modelName: string) {
   const provider = providerName.trim() || "provider";
   const model = modelName.trim();
   return model ? `${provider}-${model}` : provider;
+}
+
+function getDefaultTargetProtocol() {
+  return "claude";
+}
+
+function normalizeProtocolList(protocols: Array<string | null | undefined> | undefined) {
+  const result: string[] = [];
+  for (const protocol of protocols ?? []) {
+    if (!protocol) continue;
+    const normalized = normalizeProtocol(protocol) ?? normalizeSupportedProtocolTag(protocol);
+    if (!normalized) continue;
+    if (!result.includes(normalized)) result.push(normalized);
+  }
+  return result;
+}
+
+function resolveSupportedProtocols(model: Pick<ModelMappingEntry, "supported_protocols" | "source_protocol" | "protocol">) {
+  const values = normalizeProtocolList([
+    ...(model.supported_protocols ?? []),
+    model.source_protocol,
+    model.protocol,
+  ]);
+  return values;
+}
+
+function pickSourceProtocol(
+  model: Pick<ModelMappingEntry, "supported_protocols" | "source_protocol" | "protocol">,
+  targetProtocol: string,
+) {
+  const supported = resolveSupportedProtocols(model);
+  const explicit = normalizeProtocol(model.source_protocol ?? model.protocol ?? "");
+  if (explicit && supported.includes(explicit)) return explicit;
+  if (explicit) return explicit;
+  if (supported.includes(targetProtocol)) return targetProtocol;
+  if (supported.includes("claude")) return "claude";
+  if (supported.length > 0) return supported[0];
+  return "claude";
+}
+
+function pickTargetProtocol(targetProtocol: string | undefined | null) {
+  const explicit = normalizeProtocol(targetProtocol ?? "");
+  if (
+    explicit &&
+    explicit !== "openrouter" &&
+    MODEL_MAPPING_TARGET_PROTOCOLS.includes(explicit as (typeof MODEL_MAPPING_TARGET_PROTOCOLS)[number])
+  ) {
+    return explicit;
+  }
+  return getDefaultTargetProtocol();
 }
 
 function sanitizeRouteSegment(value: string) {
@@ -158,7 +216,7 @@ export function countMappingModels(config: ModelMappingConfig) {
 export function getActiveMappingModels(config: ModelMappingConfig) {
   return config.providers.flatMap((provider) =>
     provider.models
-      .filter((model) => model.name.trim() && Boolean(model.enabled))
+      .filter((model) => model.name.trim() && Boolean(model.enabled) && (model.target_protocol || "claude") === "claude")
       .map((model) => ({ provider, model })),
   );
 }
@@ -176,7 +234,18 @@ export function providerToMappingProvider(provider: Provider): ModelMappingProvi
 }
 
 export function toMappingEntry(name: string, protocol = "claude"): ModelMappingEntry {
-  return { id: createMappingEntryId(), name, slot: "", display_name: "", to_1m: "", enabled: false, protocol };
+  return {
+    id: createMappingEntryId(),
+    name,
+    slot: "",
+    display_name: "",
+    supported_protocols: normalizeProtocolList([protocol]),
+    source_protocol: "",
+    target_protocol: getDefaultTargetProtocol(),
+    to_1m: "",
+    enabled: false,
+    protocol: "",
+  };
 }
 
 export function normalizeModelMappingConfig(config: ModelMappingConfig): ModelMappingConfig {
@@ -184,6 +253,9 @@ export function normalizeModelMappingConfig(config: ModelMappingConfig): ModelMa
     providers: config.providers.map((provider) => ({
       ...provider,
       models: provider.models.map((model, index) => {
+        const supportedProtocols = resolveSupportedProtocols(model);
+        const targetProtocol = pickTargetProtocol(model.target_protocol);
+        const sourceProtocol = pickSourceProtocol(model, targetProtocol);
         return {
           ...model,
           id: model.id || createMappingEntryId(),
@@ -193,6 +265,9 @@ export function normalizeModelMappingConfig(config: ModelMappingConfig): ModelMa
             provider.name || provider.id || "provider",
             model.name,
           ),
+          supported_protocols: supportedProtocols,
+          source_protocol: sourceProtocol,
+          target_protocol: targetProtocol,
           enabled: Boolean(model.enabled),
         };
       }),
@@ -201,7 +276,14 @@ export function normalizeModelMappingConfig(config: ModelMappingConfig): ModelMa
 }
 
 function toMappingEntryFromResult(result: ModelResult): ModelMappingEntry {
-  return toMappingEntry(result.model, "claude");
+  const supportedProtocols = normalizeProtocolList([
+    ...(result.supported_protocols ?? []),
+    ...(result.protocol_results ?? []).filter((item) => item.available).map((item) => item.protocol),
+  ]);
+  return {
+    ...toMappingEntry(result.model, supportedProtocols[0] ?? "claude"),
+    supported_protocols: supportedProtocols,
+  };
 }
 
 export function inferMappingProtocol(result: ModelResult): LlmRequestKind | "openrouter" {

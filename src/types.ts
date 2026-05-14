@@ -105,6 +105,9 @@ export interface ModelMappingEntry {
   name: string;
   slot?: string;
   display_name?: string;
+  supported_protocols?: string[];
+  source_protocol?: LlmRequestKind | "openrouter" | string;
+  target_protocol?: LlmRequestKind | "openrouter" | string;
   to_1m: string;
   enabled?: boolean;
   protocol?: LlmRequestKind | "openrouter" | string;
@@ -131,6 +134,9 @@ export interface ModelMappingFlatEntry {
   slot: string;
   name: string;
   display_name: string;
+  supported_protocols: string[];
+  source_protocol: string;
+  target_protocol: string;
   provider_name: string;
   target_url: string;
   supports_1m: boolean;
@@ -173,30 +179,43 @@ export interface McpServerTestResult {
 
 export interface ModelscopeServerItem {
   id: string;
-  publisher: string;
   name: string;
-  chinese_name: string;
-  description: string;
+  chinese_name?: string | null;
+  path: string;
+  from_site_url?: string | null;
+  page_url?: string | null;
+  original_abstract?: string | null;
   tags: string[];
-  logo_url: string;
-  view_count: number;
-  categories: string[];
-  locales?: Record<string, { name?: string; description?: string }>;
+  category: string[];
+  from_site_icon?: string | null;
+  user_host_status?: string | null;
+  platform_collected?: boolean | null;
+  transport_types: string[];
 }
 
 export interface ModelscopeServerDetail {
   id: string;
   name: string;
-  chinese_name: string;
-  description: string;
-  source_url?: string;
-  readme?: string;
-  server_config: Array<{ mcpServers: Record<string, McpServerConfigInput> }>;
-  env_schema?: { properties?: Record<string, unknown>; required?: string[]; type?: string };
-  logo_url?: string;
-  categories?: string[];
-  is_hosted?: boolean;
-  view_count?: number;
+  chinese_name?: string | null;
+  path: string;
+  from_site_url?: string | null;
+  page_url?: string | null;
+  original_abstract?: string | null;
+  tags: string[];
+  category: string[];
+  from_site_icon?: string | null;
+  user_host_status?: string | null;
+  platform_collected?: boolean | null;
+  transport_types: string[];
+  readme?: string | null;
+  transport_configs: Record<string, McpServerConfigInput>;
+}
+
+export interface ModelscopeSearchResponse {
+  query: string;
+  count: number;
+  duration_ms: number;
+  servers: ModelscopeServerItem[];
 }
 
 export interface ModelMappingLogEntry {
@@ -205,6 +224,14 @@ export interface ModelMappingLogEntry {
   target_model: string;
   status: number;
   thinking: string;
+  source_protocol?: string;
+  target_protocol?: string;
+  request_url?: string;
+  request_method?: string;
+  request_body?: string;
+  response_body?: string;
+  converted_response_body?: string;
+  error_message?: string;
 }
 
 export interface SkillRecord {

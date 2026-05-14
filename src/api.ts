@@ -4,6 +4,8 @@ import type {
   LocalizedOnlineSkillDetail,
   McpServerConfigInput,
   McpServerTestResult,
+  ModelscopeSearchResponse,
+  ModelscopeServerDetail,
   SkillEnrichmentJobRequest,
   SkillEnrichmentJobSnapshot,
   ModelMappingConfig,
@@ -117,6 +119,28 @@ export async function testMcpServer(
   config: McpServerConfigInput,
 ): Promise<McpServerTestResult> {
   return invoke("test_mcp_server", { name, config });
+}
+
+export async function searchModelscopeMcpServers(
+  query: string,
+  limit = 20,
+): Promise<ModelscopeSearchResponse> {
+  return invoke("search_modelscope_mcp_servers", {
+    query,
+    limit,
+    profile: null,
+  });
+}
+
+export async function inspectModelscopeMcpServer(
+  path: string,
+  name: string,
+): Promise<ModelscopeServerDetail> {
+  return invoke("inspect_modelscope_mcp_server", {
+    path,
+    name,
+    profile: null,
+  });
 }
 
 export async function getModelMappingStatus(): Promise<ModelMappingStatus> {

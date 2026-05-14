@@ -19,6 +19,7 @@ import {
   Square,
   Trash2,
   Wifi,
+  X,
 } from "lucide-react";
 import {
   applyModelMappingToClaude,
@@ -47,6 +48,7 @@ import {
 } from "../lib/actionGroupStyles";
 import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import {
+  MODEL_MAPPING_TARGET_PROTOCOLS,
   THINKING_EFFORT_LABELS,
   countMappingModels,
   getActiveMappingModels,
@@ -57,6 +59,7 @@ import {
   providerToMappingProvider,
   toMappingEntry,
 } from "../lib/modelMapping";
+import { getModelProtocolBadgeClass, getModelProtocolLabel } from "../lib/protocolUtils";
 import { toast } from "../lib/toast";
 import { logger } from "../lib/devlog";
 import type {
@@ -141,6 +144,8 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
         source: getModelSlot(model),
         target: model.name,
         displayName: model.display_name?.trim() || `${provider.name || "provider"}-${model.name}`,
+        sourceProtocol: model.source_protocol || "claude",
+        targetProtocol: model.target_protocol || "claude",
         supports1m: Boolean(model.to_1m),
         thinking: provider.thinking_effort || "",
       })),
@@ -197,7 +202,17 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
   function updateModel(
     providerIndex: number,
     modelIndex: number,
-    patch: { name?: string; slot?: string; to_1m?: string; enabled?: boolean; protocol?: string },
+    patch: {
+      name?: string;
+      slot?: string;
+      display_name?: string;
+      supported_protocols?: string[];
+      source_protocol?: string;
+      target_protocol?: string;
+      to_1m?: string;
+      enabled?: boolean;
+      protocol?: string;
+    },
   ) {
     const provider = config.providers[providerIndex];
     updateProvider(providerIndex, {
@@ -226,10 +241,17 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 
   function setProviderProtocol(providerIndex: number, protocol: string) {
     const provider = config.providers[providerIndex];
+    const nextProtocol = protocol;
     updateProvider(providerIndex, {
-      models: provider.models.map((model) => ({ ...model, protocol })),
+      models: provider.models.map((model) => {
+        const supported = model.supported_protocols ?? [];
+        if (supported.length > 0 && !supported.includes(nextProtocol)) {
+          return model;
+        }
+        return { ...model, source_protocol: nextProtocol };
+      }),
     });
-    toast(`已将该 Provider 全部模型协议设为 ${protocol}`, "success");
+    toast(`已将该 Provider 下支持 ${protocol} 的模型源协议批量更新`, "success");
   }
 
   function setProviderEnabled(providerIndex: number, enabled: boolean) {
@@ -319,14 +341,14 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
     const key = modelTestKey(providerIndex, model.id);
     setBusy(`test-${key}`);
     logger.info(
-      `[模型映射] 单模型测试：provider=${provider.name}，model=${model.name}，protocol=${model.protocol ?? "claude"}`,
+      `[模型映射] 单模型测试：provider=${provider.name}，model=${model.name}，source=${model.source_protocol ?? model.protocol ?? "claude"}`,
     );
     try {
       const result = await testModelMappingProvider({
         target_url: provider.target_url,
         api_key: provider.api_key,
         model: model?.name ?? "",
-        protocol: model?.protocol,
+        protocol: model?.source_protocol ?? model?.protocol,
       });
       setTestResults((prev) => ({ ...prev, [key]: result }));
       toast(result.message, result.ok ? "success" : "error");
@@ -372,7 +394,7 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
             target_url: provider.target_url,
             api_key: provider.api_key,
             model: model.name,
-            protocol: model.protocol,
+            protocol: model.source_protocol ?? model.protocol,
           });
           collected[key] = result;
           if (result.ok) okCount += 1;
@@ -675,7 +697,17 @@ function ProviderMappingCard({
   onTestAllModels: () => void;
   onSetProtocol: (protocol: string) => void;
   onSetEnabled: (enabled: boolean) => void;
-  onUpdateModel: (modelIndex: number, patch: { name?: string; slot?: string; to_1m?: string; enabled?: boolean; protocol?: string }) => void;
+  onUpdateModel: (modelIndex: number, patch: {
+    name?: string;
+    slot?: string;
+    display_name?: string;
+    supported_protocols?: string[];
+    source_protocol?: string;
+    target_protocol?: string;
+    to_1m?: string;
+    enabled?: boolean;
+    protocol?: string;
+  }) => void;
   onDeleteModel: (modelIndex: number) => void;
   onTestModel: (modelIndex: number) => void;
   testingAll: boolean;
@@ -788,7 +820,7 @@ function ProviderMappingCard({
                 className={`${BUTTON_GHOST_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
                 <CircleDot className="h-3.5 w-3.5" />
-                全部设为 Claude
+                全部源协议设为 Claude
               </button>
               <button
                 onClick={onAddModel}
@@ -841,19 +873,40 @@ function ModelMappingRow({
   presetModels: readonly string[];
   testResult?: ModelMappingTestResult;
   testing: boolean;
-  onUpdateModel: (modelIndex: number, patch: { name?: string; slot?: string; to_1m?: string; enabled?: boolean; protocol?: string }) => void;
+  onUpdateModel: (modelIndex: number, patch: {
+    name?: string;
+    slot?: string;
+    display_name?: string;
+    supported_protocols?: string[];
+    source_protocol?: string;
+    target_protocol?: string;
+    to_1m?: string;
+    enabled?: boolean;
+    protocol?: string;
+  }) => void;
   onDeleteModel: (modelIndex: number) => void;
   onTestModel: (modelIndex: number) => void;
 }) {
+  const supportedProtocols = model.supported_protocols ?? [];
+  const sourceOptions =
+    supportedProtocols.length > 0
+      ? supportedProtocols
+      : ["claude", "openai-chat", "openai-responses", "gemini"];
+  const compactFieldClass = "h-9 rounded-md px-2.5 text-xs";
+  const compactInputClass = `${FIELD_INPUT_CLASS} ${compactFieldClass}`;
+  const compactMonoInputClass = `${FIELD_MONO_INPUT_CLASS} ${compactFieldClass}`;
+  const compactSelectClass = `${FIELD_SELECT_CLASS} ${compactFieldClass}`;
+  const compactToggleClass = "inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap px-1 text-xs";
+
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-2">
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px_84px_72px_72px_32px]">
-        <div>
+    <div className="rounded-md border border-gray-800 bg-gray-950/60 p-1.5">
+      <div className="overflow-x-auto">
+        <div className="flex min-w-[1080px] items-center gap-1.5">
           <input
             value={model.name}
             list={`mapping-preset-${providerIndex}-${modelIndex}`}
             onChange={(event) => onUpdateModel(modelIndex, { name: event.target.value })}
-            className={FIELD_INPUT_CLASS}
+            className={`${compactInputClass} min-w-[220px]`}
             placeholder="真实模型名"
           />
           {presetModels.length > 0 && (
@@ -863,56 +916,84 @@ function ModelMappingRow({
               ))}
             </datalist>
           )}
-        </div>
-        <input
+          <input
           value={model.slot ?? ""}
           onChange={(event) => onUpdateModel(modelIndex, { slot: event.target.value })}
-          className={FIELD_MONO_INPUT_CLASS}
+          className={`${compactMonoInputClass} min-w-[260px]`}
           placeholder="anthropic/claude-claude-..."
         />
-        <select
-          value={model.protocol || "claude"}
-          onChange={(event) => onUpdateModel(modelIndex, { protocol: event.target.value })}
-          className={FIELD_SELECT_CLASS}
-        >
-          <option value="openai-chat">OpenAI</option>
-          <option value="openai-responses">Responses</option>
-          <option value="openrouter">OpenRouter</option>
-          <option value="claude">Claude</option>
-          <option value="gemini">Gemini（不支持代理）</option>
-        </select>
-        <label className="inline-flex h-10 items-center justify-center gap-1.5 px-1 text-xs text-gray-300">
-          <input
-            type="checkbox"
-            checked={Boolean(model.enabled)}
-            onChange={(event) => onUpdateModel(modelIndex, { enabled: event.target.checked })}
-            className="h-3.5 w-3.5 accent-emerald-500"
-          />
-          启用
-        </label>
-        <label className="inline-flex h-10 items-center justify-center gap-1.5 px-1 text-xs text-gray-400">
-          <input
-            type="checkbox"
-            checked={Boolean(model.to_1m)}
-            onChange={(event) => onUpdateModel(modelIndex, { to_1m: event.target.checked ? "auto" : "" })}
-            className="h-3.5 w-3.5 accent-indigo-500"
-          />
-          1M
-        </label>
-        <button
-          onClick={() => onTestModel(modelIndex)}
-          disabled={testing}
-          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS} w-full`}
-        >
-          {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
-          测试
-        </button>
-        <button onClick={() => onDeleteModel(modelIndex)} className={`${BUTTON_ICON_DANGER_SM_CLASS} h-10 w-8`}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+          <div className="flex h-9 min-w-[150px] items-center gap-1 overflow-x-auto rounded-md border border-gray-800 bg-gray-950 px-2 py-1">
+            {supportedProtocols.length > 0 ? (
+              supportedProtocols.map((protocol) => (
+                <span
+                  key={protocol}
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${getModelProtocolBadgeClass(protocol)}`}
+                >
+                  {getModelProtocolLabel(protocol)}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-gray-600">未检测</span>
+            )}
+          </div>
+          <select
+            value={model.source_protocol || model.protocol || "claude"}
+            onChange={(event) => onUpdateModel(modelIndex, { source_protocol: event.target.value })}
+            className={`${compactSelectClass} min-w-[156px]`}
+          >
+            {sourceOptions.map((protocol) => (
+              <option key={protocol} value={protocol}>
+                源：{getModelProtocolLabel(protocol)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={model.target_protocol || "claude"}
+            onChange={(event) => onUpdateModel(modelIndex, { target_protocol: event.target.value })}
+            className={`${compactSelectClass} min-w-[156px]`}
+          >
+            {MODEL_MAPPING_TARGET_PROTOCOLS.map((protocol) => (
+              <option key={protocol} value={protocol}>
+                映射：{getModelProtocolLabel(protocol)}
+              </option>
+            ))}
+          </select>
+          <label className={`${compactToggleClass} min-w-[64px] text-gray-300`}>
+            <input
+              type="checkbox"
+              checked={Boolean(model.enabled)}
+              onChange={(event) => onUpdateModel(modelIndex, { enabled: event.target.checked })}
+              className="h-3.5 w-3.5 accent-emerald-500"
+            />
+            启用
+          </label>
+          <label className={`${compactToggleClass} min-w-[56px] text-gray-400`}>
+            <input
+              type="checkbox"
+              checked={Boolean(model.to_1m)}
+              onChange={(event) => onUpdateModel(modelIndex, { to_1m: event.target.checked ? "auto" : "" })}
+              className="h-3.5 w-3.5 accent-indigo-500"
+            />
+            1M
+          </label>
+          <button
+            onClick={() => onTestModel(modelIndex)}
+            disabled={testing}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS} h-9 min-w-[56px] shrink-0 px-2`}
+          >
+            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
+            测试
+          </button>
+          <button
+            onClick={() => onDeleteModel(modelIndex)}
+            className={`${BUTTON_ICON_DANGER_SM_CLASS} h-9 w-9 shrink-0 rounded-md`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       {testResult && (
-        <p className={`mt-2 truncate px-1 text-xs ${testResult.ok ? "text-emerald-400" : "text-red-300"}`}>
+        <p className={`mt-1 truncate px-1 text-[11px] ${testResult.ok ? "text-emerald-400" : "text-red-300"}`}>
           {testResult.message}
         </p>
       )}
@@ -925,7 +1006,16 @@ function MappedModelsPanel({
   configPath,
   claudeDir,
 }: {
-  rows: Array<{ provider: string; source: string; target: string; displayName: string; supports1m: boolean; thinking: string }>;
+  rows: Array<{
+    provider: string;
+    source: string;
+    target: string;
+    displayName: string;
+    sourceProtocol: string;
+    targetProtocol: string;
+    supports1m: boolean;
+    thinking: string;
+  }>;
   configPath?: string;
   claudeDir?: string | null;
 }) {
@@ -958,6 +1048,9 @@ function MappedModelsPanel({
                 </div>
                 <p className="mt-1 truncate text-xs text-gray-400">{row.displayName}</p>
                 <p className="mt-1 truncate text-xs text-gray-500">{row.target}</p>
+                <p className="mt-1 truncate text-[11px] text-gray-600">
+                  {getModelProtocolLabel(row.sourceProtocol)} → {getModelProtocolLabel(row.targetProtocol)}
+                </p>
                 <p className="mt-1 truncate text-[11px] text-gray-700">{row.provider}</p>
               </div>
             ))}
@@ -982,6 +1075,57 @@ function PathLine({ label, value }: { label: string; value?: string }) {
   );
 }
 
+function buildLogSummary(log: ModelMappingLogEntry) {
+  const firstNonEmptyLine = (text?: string) =>
+    text
+      ?.split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  const extractConvertedText = (text?: string) => {
+    if (!text?.trim()) return "";
+    try {
+      const value = JSON.parse(text) as {
+        content?: Array<{ text?: string }>;
+      };
+      const converted = value.content
+        ?.map((item) => item.text?.trim() ?? "")
+        .filter(Boolean)
+        .join(" ");
+      return converted ?? "";
+    } catch {
+      return "";
+    }
+  };
+
+  if (log.error_message?.trim()) {
+    return {
+      text: log.error_message.trim(),
+      tone: "error" as const,
+    };
+  }
+
+  const convertedPreview = extractConvertedText(log.converted_response_body) || firstNonEmptyLine(log.converted_response_body);
+  if (convertedPreview) {
+    return {
+      text: convertedPreview,
+      tone: "success" as const,
+    };
+  }
+
+  const rawPreview = firstNonEmptyLine(log.response_body);
+  if (rawPreview) {
+    return {
+      text: rawPreview,
+      tone: log.status >= 200 && log.status < 300 ? ("normal" as const) : ("error" as const),
+    };
+  }
+
+  return {
+    text: log.status >= 200 && log.status < 300 ? "请求成功，点击查看详情" : "请求失败，点击查看详情",
+    tone: log.status >= 200 && log.status < 300 ? ("normal" as const) : ("error" as const),
+  };
+}
+
 function LogsPanel({
   logs,
   running,
@@ -991,6 +1135,8 @@ function LogsPanel({
   running: boolean;
   onRefresh: () => void;
 }) {
+  const [selectedLog, setSelectedLog] = useState<ModelMappingLogEntry | null>(null);
+
   return (
     <section className="rounded-xl border border-gray-800 bg-gray-900">
       <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
@@ -1007,40 +1153,156 @@ function LogsPanel({
           <p className="text-xs text-gray-600">暂无请求记录。</p>
         ) : (
           <div className="space-y-2">
-            {logs.map((log, index) => (
-              <div
-                key={`${log.time}-${index}`}
-                className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-xs"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0 rounded border border-gray-700 bg-gray-900 px-1.5 py-0.5 font-mono text-[11px] text-gray-500">
-                    {log.time}
-                  </span>
-                  <p className="min-w-0 flex-1 truncate text-[13px] text-gray-300" title={`${log.model} -> ${log.target_model}`}>
-                    <span className="font-medium text-gray-200">{log.model}</span>
-                    <span className="px-1 text-gray-600">→</span>
-                    <span className="text-gray-500">{log.target_model}</span>
-                  </p>
-                  {log.thinking ? (
-                    <span className="shrink-0 rounded border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 font-mono text-[10px] text-indigo-300/80">
-                      {log.thinking}
+            {logs.map((log, index) => {
+              const summary = buildLogSummary(log);
+              return (
+                <button
+                  key={`${log.time}-${index}`}
+                  onClick={() => setSelectedLog(log)}
+                  className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-left text-xs transition-colors hover:border-gray-700 hover:bg-gray-900/90"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 rounded border border-gray-700 bg-gray-900 px-1.5 py-0.5 font-mono text-[11px] text-gray-500">
+                      {log.time}
                     </span>
-                  ) : null}
-                  <span
-                    className={`shrink-0 rounded border px-2 py-0.5 font-mono text-[11px] ${
-                      log.status >= 200 && log.status < 300
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-red-500/40 bg-red-500/10 text-red-300"
+                    <p className="min-w-0 flex-1 truncate text-[13px] text-gray-300" title={`${log.model} -> ${log.target_model}`}>
+                      <span className="font-medium text-gray-200">{log.model}</span>
+                      <span className="px-1 text-gray-600">→</span>
+                      <span className="text-gray-500">{log.target_model}</span>
+                    </p>
+                    {log.thinking ? (
+                      <span className="shrink-0 rounded border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 font-mono text-[10px] text-indigo-300/80">
+                        {log.thinking}
+                      </span>
+                    ) : null}
+                    <span
+                      className={`shrink-0 rounded border px-2 py-0.5 font-mono text-[11px] ${
+                        log.status >= 200 && log.status < 300
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                          : "border-red-500/40 bg-red-500/10 text-red-300"
+                      }`}
+                    >
+                      {log.status}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-600">
+                    {log.source_protocol ? <span>{getModelProtocolLabel(log.source_protocol)}</span> : null}
+                    {log.target_protocol ? (
+                      <>
+                        <span>→</span>
+                        <span>{getModelProtocolLabel(log.target_protocol)}</span>
+                      </>
+                    ) : null}
+                    {log.request_url ? <span className="truncate">{log.request_url}</span> : null}
+                  </div>
+                  <p
+                    className={`mt-1 truncate text-[11px] ${
+                      summary.tone === "error"
+                        ? "text-red-300"
+                        : summary.tone === "success"
+                          ? "text-emerald-300"
+                          : "text-gray-500"
                     }`}
+                    title={summary.text}
                   >
-                    {log.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+                    {summary.text}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
+      {selectedLog ? <LogDetailDialog log={selectedLog} onClose={() => setSelectedLog(null)} /> : null}
     </section>
+  );
+}
+
+function LogDetailDialog({
+  log,
+  onClose,
+}: {
+  log: ModelMappingLogEntry;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/60 px-4">
+      <div className="flex h-[78vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">{log.model}</p>
+            <p className="mt-1 truncate text-xs text-gray-500">
+              {log.target_model}
+              {log.request_url ? ` · ${log.request_url}` : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className={BUTTON_ICON_GHOST_SM_CLASS}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="grid gap-3 border-b border-gray-800 px-5 py-4 md:grid-cols-4">
+          <DetailStat label="时间" value={log.time} />
+          <DetailStat label="状态" value={String(log.status)} />
+          <DetailStat
+            label="协议"
+            value={`${log.source_protocol ? getModelProtocolLabel(log.source_protocol) : "-"} → ${
+              log.target_protocol ? getModelProtocolLabel(log.target_protocol) : "-"
+            }`}
+          />
+          <DetailStat label="Thinking" value={log.thinking || "-"} />
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-5 lg:grid-cols-3">
+          <LogDetailBlock title="转发请求" content={log.request_body} copyText={log.request_body} />
+          <LogDetailBlock title="上游原始响应" content={log.response_body} copyText={log.response_body} />
+          <LogDetailBlock
+            title="转换后响应"
+            content={log.converted_response_body || log.error_message}
+            copyText={log.converted_response_body || log.error_message}
+            tone={log.error_message ? "error" : "normal"}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
+      <p className="text-[11px] uppercase tracking-widest text-gray-600">{label}</p>
+      <p className="mt-1 truncate text-xs text-gray-200">{value}</p>
+    </div>
+  );
+}
+
+function LogDetailBlock({
+  title,
+  content,
+  copyText,
+  tone = "normal",
+}: {
+  title: string;
+  content?: string;
+  copyText?: string;
+  tone?: "normal" | "error";
+}) {
+  return (
+    <div className="flex min-h-0 flex-col rounded-xl border border-gray-800 bg-gray-950">
+      <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+        <p className="text-sm font-medium text-gray-200">{title}</p>
+        {copyText ? <CopyButton text={copyText} /> : null}
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        <pre
+          className={`whitespace-pre-wrap break-words font-mono text-xs leading-6 ${
+            tone === "error" ? "text-red-200" : "text-gray-300"
+          }`}
+        >
+          {content?.trim() || "—"}
+        </pre>
+      </div>
+    </div>
   );
 }

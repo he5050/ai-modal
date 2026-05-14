@@ -456,6 +456,7 @@ export function ModelsPage({
 
                   return (
                     <tr
+                      key={p.id}
                       className={`hover:bg-gray-800/30 transition-colors border-l-2 ${
                         hasAvailable ? "border-l-emerald-500/40" : hasTested ? "border-l-red-500/20" : "border-l-transparent"
                       } ${i < filtered.length - 1 ? "border-b border-gray-800/50" : ""}`}
@@ -579,6 +580,7 @@ export function ModelsPage({
       {modelSelectionOpen && (
         <ModelSelectionDialog
           models={fetchedModels}
+          initialSelectedModels={currentTestProvider?.lastResult?.results?.map((item) => item.model) ?? []}
           loading={modelSelectionLoading}
           fetchError={modelSelectionError}
           onConfirm={handleModelSelectionConfirm}

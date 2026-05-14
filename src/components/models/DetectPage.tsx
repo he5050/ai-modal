@@ -936,6 +936,7 @@ export function DetectPage({
       {modelSelectionOpen && (
         <ModelSelectionDialog
           models={fetchedModels}
+          initialSelectedModels={form.editingProvider?.lastResult?.results?.map((item) => item.model) ?? []}
           loading={modelSelectionLoading}
           fetchError={modelSelectionError}
           onConfirm={handleModelSelectionConfirm}
