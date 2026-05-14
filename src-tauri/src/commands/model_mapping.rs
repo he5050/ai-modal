@@ -9,6 +9,7 @@ use axum::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
@@ -16,6 +17,16 @@ use tokio::{net::TcpListener, sync::oneshot};
 
 const DEFAULT_PORT: u16 = 5678;
 const CLAUDE_CONFIG_ID: &str = "a0a0a0a0-b1b1-4c2c-9d3d-e4e4e4e4e4e4";
+const DEFAULT_CLAUDE_SLOTS: &[&str] = &[
+    "anthropic/claude-opus-current",
+    "anthropic/claude-sonnet-current",
+    "anthropic/claude-haiku-current",
+    "anthropic/claude-opus-4-1",
+    "anthropic/claude-opus-4",
+    "anthropic/claude-sonnet-4",
+    "anthropic/claude-sonnet-3-7",
+    "anthropic/claude-haiku-3-5",
+];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ModelMappingConfig {
@@ -319,12 +330,11 @@ fn make_model_display_name(provider_name: &str, model_name: &str) -> String {
     }
 }
 
-pub fn make_slot(provider_name: &str, order: usize) -> String {
-    format!(
-        "anthropic/claude-claude-{}-{}",
-        sanitize_model_name(provider_name),
-        order
-    )
+pub fn make_slot(order: usize) -> String {
+    DEFAULT_CLAUDE_SLOTS
+        .get(order.saturating_sub(1))
+        .map(|slot| (*slot).to_string())
+        .unwrap_or_else(|| format!("anthropic/claude-custom-{}", order))
 }
 
 fn legacy_slot(name: &str) -> String {
@@ -359,11 +369,8 @@ fn is_auto_generated_slot(slot: &str, name: &str) -> bool {
         || lower == format!("claude-claude-{}", safe_name)
 }
 
-fn normalize_slot(slot: &str, name: &str, provider_name: &str, order: usize) -> String {
+fn normalize_explicit_slot(slot: &str) -> String {
     let trimmed = slot.trim();
-    if trimmed.is_empty() || is_auto_generated_slot(trimmed, name) {
-        return make_slot(provider_name, order);
-    }
     let normalized = trimmed
         .strip_prefix("anthropic/")
         .or_else(|| trimmed.strip_prefix("Anthropic/"))
@@ -385,6 +392,14 @@ fn normalize_slot(slot: &str, name: &str, provider_name: &str, order: usize) -> 
     }
 }
 
+fn normalize_slot(slot: &str, name: &str, next_auto_slot: &mut dyn FnMut() -> String) -> String {
+    let trimmed = slot.trim();
+    if trimmed.is_empty() || is_auto_generated_slot(trimmed, name) {
+        return next_auto_slot();
+    }
+    normalize_explicit_slot(trimmed)
+}
+
 fn effective_slot(model: &ModelMappingEntry) -> String {
     model.slot.trim().to_string()
 }
@@ -399,6 +414,28 @@ fn effective_display_name(model: &ModelMappingEntry, provider_name: &str) -> Str
 }
 
 fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
+    let mut reserved_slots = HashSet::new();
+    for provider in &config.providers {
+        for model in &provider.models {
+            let trimmed = model.slot.trim();
+            if trimmed.is_empty() || is_auto_generated_slot(trimmed, model.name.trim()) {
+                continue;
+            }
+            reserved_slots.insert(normalize_explicit_slot(trimmed));
+        }
+    }
+
+    let mut next_auto_index = 1usize;
+    let mut allocate_auto_slot = || {
+        while reserved_slots.contains(&make_slot(next_auto_index)) {
+            next_auto_index += 1;
+        }
+        let slot = make_slot(next_auto_index);
+        reserved_slots.insert(slot.clone());
+        next_auto_index += 1;
+        slot
+    };
+
     ModelMappingConfig {
         providers: config
             .providers
@@ -414,17 +451,12 @@ fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
                 models: provider
                     .models
                     .into_iter()
-                    .enumerate()
-                    .map(|(index, model)| {
+                    .map(|model| {
                         let supported_protocols = normalize_supported_protocols(&model, &target_url);
                         let target_protocol = resolve_target_protocol(&model);
                         let source_protocol = resolve_source_protocol(&model, &target_url, &target_protocol);
-                        let normalized_slot = normalize_slot(
-                            &model.slot,
-                            model.name.trim(),
-                            &provider_label,
-                            index + 1,
-                        );
+                        let normalized_slot =
+                            normalize_slot(&model.slot, model.name.trim(), &mut allocate_auto_slot);
                         ModelMappingEntry {
                             slot: normalized_slot,
                             display_name: effective_display_name(&model, &provider_label),
@@ -2235,16 +2267,11 @@ mod tests {
     }
 
     #[test]
-    fn slot_naming_matches_provider_scoped_route() {
-        assert_eq!(
-            make_slot("DeepSeek", 1),
-            "anthropic/claude-claude-deepseek-1"
-        );
-        assert_eq!(make_slot("GLM 智谱", 2), "anthropic/claude-claude-glm-2");
-        assert_eq!(
-            make_slot("", 12),
-            "anthropic/claude-claude-provider-12"
-        );
+    fn slot_naming_matches_canonical_defaults_and_custom_fallback() {
+        assert_eq!(make_slot(1), "anthropic/claude-opus-current");
+        assert_eq!(make_slot(2), "anthropic/claude-sonnet-current");
+        assert_eq!(make_slot(8), "anthropic/claude-haiku-3-5");
+        assert_eq!(make_slot(12), "anthropic/claude-custom-12");
     }
 
     #[test]
@@ -2269,8 +2296,9 @@ mod tests {
         let flat = flatten_config(&config);
 
         assert_eq!(flat.len(), 10);
-        assert_eq!(flat[0].slot, "anthropic/claude-claude-test-1");
-        assert_eq!(flat[9].slot, "anthropic/claude-claude-test-10");
+        assert_eq!(flat[0].slot, "anthropic/claude-opus-current");
+        assert_eq!(flat[7].slot, "anthropic/claude-haiku-3-5");
+        assert_eq!(flat[9].slot, "anthropic/claude-custom-10");
     }
 
     #[test]
@@ -2295,7 +2323,7 @@ mod tests {
     }
 
     #[test]
-    fn normalize_config_upgrades_old_auto_slot_to_provider_scoped_default() {
+    fn normalize_config_upgrades_old_auto_slot_to_canonical_default() {
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![ModelMappingEntry {
                 name: "glm-5-turbo".to_string(),
@@ -2324,16 +2352,16 @@ mod tests {
 
         assert_eq!(
             normalized.providers[0].models[0].slot,
-            "anthropic/claude-claude-test-1"
+            "anthropic/claude-opus-current"
         );
         assert_eq!(
             normalized.providers[0].models[1].slot,
-            "anthropic/claude-claude-test-2"
+            "anthropic/claude-sonnet-current"
         );
     }
 
     #[test]
-    fn normalize_config_restarts_numbering_for_each_provider() {
+    fn normalize_config_assigns_canonical_slots_globally_across_providers() {
         let config = ModelMappingConfig {
             providers: vec![
                 ModelMappingProvider {
@@ -2390,15 +2418,15 @@ mod tests {
 
         assert_eq!(
             normalized.providers[0].models[0].slot,
-            "anthropic/claude-claude-deepseek-1"
+            "anthropic/claude-opus-current"
         );
         assert_eq!(
             normalized.providers[0].models[1].slot,
-            "anthropic/claude-claude-deepseek-2"
+            "anthropic/claude-sonnet-current"
         );
         assert_eq!(
             normalized.providers[1].models[0].slot,
-            "anthropic/claude-claude-glm-1"
+            "anthropic/claude-haiku-current"
         );
     }
 
@@ -2448,7 +2476,7 @@ mod tests {
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![ModelMappingEntry {
                 name: "hybrid-model".to_string(),
-                slot: "anthropic/claude-claude-test-1".to_string(),
+                slot: "anthropic/claude-opus-current".to_string(),
                 display_name: "Hybrid".to_string(),
                 supported_protocols: vec!["claude".to_string(), "gemini".to_string()],
                 source_protocol: "gemini".to_string(),
@@ -2459,7 +2487,7 @@ mod tests {
             }])],
         };
 
-        let resolved = resolve_model("anthropic/claude-claude-test-1", &config)
+        let resolved = resolve_model("anthropic/claude-opus-current", &config)
             .expect("should resolve configured slot");
 
         assert_eq!(resolved.protocol, MappingProtocol::Claude);

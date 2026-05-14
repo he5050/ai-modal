@@ -973,7 +973,7 @@ function ModelMappingRow({
           value={model.slot ?? ""}
           onChange={(event) => onUpdateModel(modelIndex, { slot: event.target.value })}
           className={`${compactMonoInputClass} min-w-[260px]`}
-          placeholder="anthropic/claude-claude-..."
+          placeholder="anthropic/claude-opus-current"
         />
           <div className="flex h-9 min-w-[150px] items-center gap-1 overflow-x-auto rounded-md border border-gray-800 bg-gray-950 px-2 py-1">
             {supportedProtocols.length > 0 ? (

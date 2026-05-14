@@ -40,7 +40,7 @@ describe("modelMapping", () => {
     expect(imported.models).toHaveLength(1);
     expect(imported.models[0]).toMatchObject({
       name: "available-model",
-      slot: "anthropic/claude-claude-openrouter-1",
+      slot: "anthropic/claude-opus-current",
       display_name: "OpenRouter-available-model",
       supported_protocols: ["openai-chat"],
       source_protocol: "openai-chat",
@@ -51,7 +51,7 @@ describe("modelMapping", () => {
     expect(typeof imported.models[0].id).toBe("string");
   });
 
-  it("fills missing slots with sequential routes and preserves manual overrides", () => {
+  it("fills missing slots with canonical defaults and preserves manual overrides", () => {
     const normalized = normalizeModelMappingConfig({
       providers: [
         {
@@ -90,19 +90,19 @@ describe("modelMapping", () => {
       ],
     });
 
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-custom-1");
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
     expect(normalized.providers[0].models[0].display_name).toBe("Custom-deepseek-v4-flash");
     expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
     expect(normalized.providers[0].models[0].target_protocol).toBe("claude");
     expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-4-5");
     expect(normalized.providers[0].models[1].display_name).toBe("Custom Plus");
-    expect(normalized.providers[0].models[2].slot).toBe("anthropic/claude-claude-custom-3");
+    expect(normalized.providers[0].models[2].slot).toBe("anthropic/claude-sonnet-current");
     expect(normalized.providers[0].models[2].display_name).toBe("Custom-glm-5-turbo");
     expect(normalized.providers[0].models[2].source_protocol).toBe("gemini");
     expect(normalized.providers[0].models[2].target_protocol).toBe("claude");
   });
 
-  it("upgrades old auto-generated slots to provider-scoped sequential routes", () => {
+  it("upgrades old auto-generated slots to canonical defaults", () => {
     const normalized = normalizeModelMappingConfig({
       providers: [
         {
@@ -133,8 +133,8 @@ describe("modelMapping", () => {
       ],
     });
 
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-custom-1");
-    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-claude-custom-2");
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
+    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-current");
     expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
     expect(normalized.providers[0].models[1].source_protocol).toBe("openai-responses");
   });
@@ -232,7 +232,7 @@ describe("modelMapping", () => {
     expect(normalized.providers[0].models[0].target_protocol).toBe("claude");
   });
 
-  it("restarts numbering for each provider", () => {
+  it("assigns canonical default slots globally across providers", () => {
     const normalized = normalizeModelMappingConfig({
       providers: [
         {
@@ -257,13 +257,13 @@ describe("modelMapping", () => {
       ],
     });
 
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-claude-deepseek-1");
-    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-claude-deepseek-2");
-    expect(normalized.providers[1].models[0].slot).toBe("anthropic/claude-claude-glm-1");
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
+    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-current");
+    expect(normalized.providers[1].models[0].slot).toBe("anthropic/claude-haiku-current");
   });
 
   it("returns the normalized slot value for display", () => {
-    expect(getModelSlot({ name: "x", slot: "anthropic/claude-claude-deepseek-7" })).toBe("anthropic/claude-claude-deepseek-7");
+    expect(getModelSlot({ name: "x", slot: "anthropic/claude-sonnet-current" })).toBe("anthropic/claude-sonnet-current");
   });
 
   it("imports all latest available models but keeps them disabled by default", () => {
@@ -287,9 +287,13 @@ describe("modelMapping", () => {
 
     const imported = providerToMappingProvider(provider);
     const active = getActiveMappingModels({ providers: [imported] });
+    const normalized = normalizeModelMappingConfig({ providers: [imported] });
 
     expect(imported.models).toHaveLength(14);
     expect(active).toHaveLength(0);
+    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
+    expect(normalized.providers[0].models[7].slot).toBe("anthropic/claude-haiku-3-5");
+    expect(normalized.providers[0].models[8].slot).toBe("anthropic/claude-custom-9");
   });
 
   it("imports only the selected available models when a subset is provided", () => {
