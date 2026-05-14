@@ -4,6 +4,7 @@ import { BUTTON_PRIMARY_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } fr
 import { FIELD_INPUT_CLASS } from "../../../lib/formStyles";
 import type { ModelTestProtocol } from "../../../lib/protocolUtils";
 import { MODEL_TEST_PROTOCOLS } from "../../../lib/protocolUtils";
+import { getSelectionCheckboxClassName } from "./SharedDialogs";
 
 /** 协议按钮的标签和颜色 */
 const PROTOCOL_CONFIG: Record<ModelTestProtocol, { label: string; color: string; bg: string; borderColor: string; selectedColor: string }> = {
@@ -271,10 +272,8 @@ export function ModelSelectionDialog({
                     }`}
                   >
                     <span
-                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
-                        isSelected
-                          ? "border-indigo-500 bg-indigo-600 text-white"
-                          : "border-gray-600 bg-gray-800 text-transparent group-hover:border-indigo-500/60"
+                      className={`${getSelectionCheckboxClassName(isSelected)} flex-shrink-0 ${
+                        !isSelected ? "group-hover:border-indigo-500/60" : ""
                       }`}
                     >
                       {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}

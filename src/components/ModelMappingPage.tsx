@@ -73,6 +73,7 @@ import type {
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
 import { ModelSelectionDialog } from "./models/components/ModelSelectionDialog";
+import { SelectionCheckbox } from "./models/components/SharedDialogs";
 
 interface Props {
   providers: Provider[];
@@ -1010,24 +1011,22 @@ function ModelMappingRow({
               </option>
             ))}
           </select>
-          <label className={`${compactToggleClass} min-w-[64px] text-gray-300`}>
-            <input
-              type="checkbox"
+          <div className={`${compactToggleClass} min-w-[64px] text-gray-300`}>
+            <SelectionCheckbox
               checked={Boolean(model.enabled)}
-              onChange={(event) => onUpdateModel(modelIndex, { enabled: event.target.checked })}
-              className="h-3.5 w-3.5 accent-emerald-500"
+              onToggle={() => onUpdateModel(modelIndex, { enabled: !Boolean(model.enabled) })}
             />
             启用
-          </label>
-          <label className={`${compactToggleClass} min-w-[56px] text-gray-400`}>
-            <input
-              type="checkbox"
+          </div>
+          <div className={`${compactToggleClass} min-w-[56px] text-gray-400`}>
+            <SelectionCheckbox
               checked={Boolean(model.to_1m)}
-              onChange={(event) => onUpdateModel(modelIndex, { to_1m: event.target.checked ? "auto" : "" })}
-              className="h-3.5 w-3.5 accent-indigo-500"
+              onToggle={() =>
+                onUpdateModel(modelIndex, { to_1m: model.to_1m ? "" : "auto" })
+              }
             />
             1M
-          </label>
+          </div>
           <button
             onClick={() => onTestModel(modelIndex)}
             disabled={testing}

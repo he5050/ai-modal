@@ -329,7 +329,11 @@ pub fn make_slot(provider_name: &str, order: usize) -> String {
 
 fn legacy_slot(name: &str) -> String {
     let safe = sanitize_model_name(name);
-    format!("claude-{}", safe)
+    if safe.starts_with("claude-") {
+        safe
+    } else {
+        format!("claude-{}", safe)
+    }
 }
 
 fn is_auto_generated_slot(slot: &str, name: &str) -> bool {
@@ -2580,6 +2584,28 @@ mod tests {
             .expect("manual slot should resolve");
 
         assert_eq!(resolved.target_model, "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn resolve_model_matches_legacy_slot_when_model_name_already_has_claude_prefix() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "claude-haiku-4-5-20251001".to_string(),
+                slot: String::new(),
+                display_name: String::new(),
+                supported_protocols: vec!["claude".to_string()],
+                source_protocol: "claude".to_string(),
+                target_protocol: "claude".to_string(),
+                to_1m: String::new(),
+                enabled: true,
+                protocol: "claude".to_string(),
+            }])],
+        };
+
+        let resolved = resolve_model("claude-haiku-4-5-20251001", &config)
+            .expect("claude-prefixed model name should resolve via legacy alias");
+
+        assert_eq!(resolved.target_model, "claude-haiku-4-5-20251001");
     }
 
     #[test]
