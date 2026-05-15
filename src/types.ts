@@ -181,41 +181,79 @@ export interface ModelscopeServerItem {
   id: string;
   name: string;
   chinese_name?: string | null;
-  path: string;
-  from_site_url?: string | null;
-  page_url?: string | null;
-  original_abstract?: string | null;
+  description?: string | null;
   tags: string[];
-  category: string[];
-  from_site_icon?: string | null;
-  user_host_status?: string | null;
-  platform_collected?: boolean | null;
-  transport_types: string[];
+  logo_url?: string | null;
+  categories?: string[];
+  locales?: Record<string, {
+    name?: string | null;
+    description?: string | null;
+    readme?: string | null;
+  }> | null;
 }
 
 export interface ModelscopeServerDetail {
   id: string;
   name: string;
   chinese_name?: string | null;
-  path: string;
-  from_site_url?: string | null;
-  page_url?: string | null;
-  original_abstract?: string | null;
+  description?: string | null;
   tags: string[];
-  category: string[];
-  from_site_icon?: string | null;
-  user_host_status?: string | null;
-  platform_collected?: boolean | null;
-  transport_types: string[];
+  logo_url?: string | null;
+  categories?: string[];
+  locales?: Record<string, {
+    name?: string | null;
+    description?: string | null;
+    readme?: string | null;
+  }> | null;
   readme?: string | null;
-  transport_configs: Record<string, McpServerConfigInput>;
+  source_url?: string | null;
+  operational_urls?: Array<{
+    url: string;
+    id?: string | null;
+    transport_type?: string | null;
+    expiration?: string | null;
+    auth_required?: boolean | null;
+    accessible?: boolean | null;
+  }>;
+  server_config?: Array<{
+    mcpServers?: Record<string, McpServerConfigInput>;
+  }>;
+  author?: string | null;
+  owner?: string | null;
+  is_hosted?: boolean | null;
+  is_verified?: boolean | null;
+  view_count?: number | null;
+  github_stars?: number | null;
+  publisher?: string | null;
+  env_schema?: Record<string, unknown> | null;
 }
 
 export interface ModelscopeSearchResponse {
-  query: string;
-  count: number;
-  duration_ms: number;
-  servers: ModelscopeServerItem[];
+  success: boolean;
+  request_id?: string;
+  data: {
+    mcp_server_list: ModelscopeServerItem[];
+    total_count: number;
+  };
+}
+
+export interface ModelscopeDetailResponse {
+  success: boolean;
+  request_id?: string;
+  data: ModelscopeServerDetail;
+}
+
+export interface ModelscopeRequestProfileInput {
+  cookie?: string | null;
+  csrf_token?: string | null;
+  user_agent?: string | null;
+  referer?: string | null;
+  origin?: string | null;
+  accept_language?: string | null;
+  x_modelscope_accept_language?: string | null;
+  trace_id?: string | null;
+  bx_version?: string | null;
+  extra_headers?: Record<string, string> | null;
 }
 
 export interface ModelMappingLogEntry {

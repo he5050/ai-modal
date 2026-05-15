@@ -6,9 +6,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::time::{sleep, timeout};
+use tokio::time::timeout;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfigInput {
@@ -57,15 +57,6 @@ pub struct ModelscopeMcpServerDetail {
     pub transport_configs: HashMap<String, McpServerConfigInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelscopeMcpSearchResponse {
-    pub query: String,
-    pub count: usize,
-    pub duration_ms: u64,
-    pub servers: Vec<ModelscopeMcpServerSummary>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelscopeRequestProfileInput {
@@ -83,7 +74,7 @@ pub struct ModelscopeRequestProfileInput {
 
 const MODELSCOPE_BASE_URL: &str = "https://www.modelscope.cn";
 const MODELSCOPE_MCP_PAGE_URL: &str = "https://www.modelscope.cn/mcp";
-const MODELSCOPE_MCP_LIST_URL: &str = "https://www.modelscope.cn/api/v1/dolphin/mcpServers";
+const MODELSCOPE_MCP_LIST_URL: &str = "https://modelscope.cn/openapi/v1/mcp/servers";
 const MODELSCOPE_MCP_EXTRACT_URL: &str = "https://www.modelscope.cn/api/v1/mcp/extract";
 const MODELSCOPE_USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Safari/605.1.15";
@@ -163,15 +154,6 @@ fn value_to_bool(value: Option<&Value>) -> Option<bool> {
             "false" | "no" | "n" | "0" => Some(false),
             _ => None,
         },
-        _ => None,
-    }
-}
-
-fn value_to_usize(value: Option<&Value>) -> Option<usize> {
-    let value = value?;
-    match value {
-        Value::Number(number) => number.as_u64().map(|item| item as usize),
-        Value::String(text) => text.trim().parse::<usize>().ok(),
         _ => None,
     }
 }
@@ -307,41 +289,6 @@ fn parse_json_object(content: &str) -> Result<Value, String> {
     serde_json::from_str::<Value>(content).map_err(|error| format!("解析 JSON 失败：{error}"))
 }
 
-fn collect_modelscope_items(value: &Value) -> Vec<Value> {
-    if let Value::Array(items) = value {
-        return items.clone();
-    }
-
-    if let Value::Object(map) = value {
-        for key in [
-            "Records",
-            "records",
-            "List",
-            "list",
-            "Items",
-            "items",
-            "McpServers",
-            "mcpServers",
-            "Servers",
-            "servers",
-            "Data",
-        ] {
-            if let Some(item) = map.get(key) {
-                let nested = collect_modelscope_items(item);
-                if !nested.is_empty() {
-                    return nested;
-                }
-            }
-        }
-
-        if map.contains_key("Name") || map.contains_key("name") || map.contains_key("Path") {
-            return vec![value.clone()];
-        }
-    }
-
-    Vec::new()
-}
-
 fn build_modelscope_page_url(path: &str, name: &str) -> String {
     format!(
         "{}/mcp/{}/{}",
@@ -351,9 +298,33 @@ fn build_modelscope_page_url(path: &str, name: &str) -> String {
     )
 }
 
+fn split_modelscope_server_id(server_id: &str) -> Option<(String, String)> {
+    let trimmed = server_id.trim().trim_matches('/');
+    let (path, name) = trimmed.rsplit_once('/')?;
+    if path.trim().is_empty() || name.trim().is_empty() {
+        return None;
+    }
+    Some((path.trim().to_string(), name.trim().to_string()))
+}
+
+fn encode_server_id(server_id: &str) -> String {
+    server_id
+        .trim()
+        .replace('%', "%25")
+        .replace('@', "%40")
+        .replace('/', "%2F")
+}
+
 fn build_modelscope_summary(raw: &Value) -> Option<ModelscopeMcpServerSummary> {
-    let path = get_value(raw, &["Path", "path"]).and_then(value_to_string)?;
-    let name = get_value(raw, &["Name", "name"]).and_then(value_to_string)?;
+    let explicit_id = get_value(raw, &["Id", "id"]).and_then(value_to_string);
+    let (path, name) = if let Some(server_id) = explicit_id.clone() {
+        split_modelscope_server_id(&server_id)?
+    } else {
+        (
+            get_value(raw, &["Path", "path"]).and_then(value_to_string)?,
+            get_value(raw, &["Name", "name"]).and_then(value_to_string)?,
+        )
+    };
     let page_url = get_value(raw, &["PageUrl", "pageUrl"])
         .and_then(value_to_string)
         .or_else(|| Some(build_modelscope_page_url(&path, &name)));
@@ -365,22 +336,36 @@ fn build_modelscope_summary(raw: &Value) -> Option<ModelscopeMcpServerSummary> {
             "transportTypes",
             "SupportedDeployTransportType",
             "supportedDeployTransportType",
+            "transport_type",
+            "transportType",
         ],
     ))
     .into_iter()
     .filter(|item| !item.trim().is_empty())
     .collect::<Vec<_>>();
 
+    let mut chinese_name = get_value(raw, &["ChineseName", "chineseName"]).and_then(value_to_string);
+    let mut display_name = get_value(raw, &["Name", "name"]).and_then(value_to_string);
+    if chinese_name.as_deref().unwrap_or("").trim().is_empty() {
+        chinese_name = get_value(raw, &["Publisher", "publisher"]).and_then(value_to_string);
+    }
+    if display_name.as_deref().unwrap_or("").trim().is_empty() {
+        display_name = Some(name.clone());
+    }
+
     Some(ModelscopeMcpServerSummary {
-        id: format!("{path}/{name}"),
-        name,
-        chinese_name: get_value(raw, &["ChineseName", "chineseName"]).and_then(value_to_string),
+        id: explicit_id.unwrap_or_else(|| format!("{path}/{name}")),
+        name: display_name.unwrap_or_else(|| name.clone()),
+        chinese_name,
         path,
-        from_site_url: get_value(raw, &["FromSiteUrl", "fromSiteUrl"]).and_then(value_to_string),
+        from_site_url: get_value(raw, &["FromSiteUrl", "fromSiteUrl", "SourceUrl", "source_url"])
+            .and_then(value_to_string),
         page_url,
         original_abstract: get_value(
             raw,
             &[
+                "Description",
+                "description",
                 "AbstractCN",
                 "abstractCN",
                 "OriginalAbstract",
@@ -391,8 +376,8 @@ fn build_modelscope_summary(raw: &Value) -> Option<ModelscopeMcpServerSummary> {
         )
         .and_then(value_to_string),
         tags: value_to_string_array(get_value(raw, &["Tags", "tags"])),
-        category: value_to_string_array(get_value(raw, &["Category", "category"])),
-        from_site_icon: get_value(raw, &["FromSiteIcon", "fromSiteIcon"])
+        category: value_to_string_array(get_value(raw, &["Category", "category", "Categories", "categories"])),
+        from_site_icon: get_value(raw, &["FromSiteIcon", "fromSiteIcon", "LogoUrl", "logo_url"])
             .and_then(|value| match value {
                 Value::Array(items) => items
                     .first()
@@ -415,6 +400,51 @@ fn build_modelscope_summary(raw: &Value) -> Option<ModelscopeMcpServerSummary> {
 fn build_modelscope_detail(raw: Value) -> Option<ModelscopeMcpServerDetail> {
     let mut summary = build_modelscope_summary(&raw)?;
     let mut transport_configs = HashMap::new();
+
+    if let Some(server_configs) = get_value(&raw, &["server_config", "ServerConfig"])
+        .and_then(Value::as_array)
+    {
+        for item in server_configs {
+            if let Some(mcp_servers) = get_value(item, &["mcpServers", "McpServers"])
+                .and_then(Value::as_object)
+            {
+                for config in mcp_servers.values() {
+                    if let Some(parsed) = value_to_mcp_server_config(config, "stdio") {
+                        transport_configs.insert(
+                            parsed
+                                .server_type
+                                .clone()
+                                .unwrap_or_else(|| "stdio".to_string()),
+                            parsed,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(operational_urls) = get_value(&raw, &["operational_urls", "OperationalUrls"])
+        .and_then(Value::as_array)
+    {
+        for item in operational_urls {
+            if let Some(url) = get_value(item, &["url", "Url"]).and_then(value_to_string) {
+                let transport_type = get_value(item, &["transport_type", "transportType"])
+                    .and_then(value_to_string)
+                    .unwrap_or_else(|| "sse".to_string());
+                transport_configs.insert(
+                    transport_type.clone(),
+                    McpServerConfigInput {
+                        server_type: Some(transport_type),
+                        command: None,
+                        args: None,
+                        env: None,
+                        cwd: None,
+                        url: Some(url),
+                    },
+                );
+            }
+        }
+    }
 
     if let Some(config) = get_value(&raw, &["ServerConfig", "serverConfig"])
         .and_then(|value| value_to_mcp_server_config(value, "stdio"))
@@ -806,14 +836,6 @@ async fn modelscope_request_json(
     Ok(parsed)
 }
 
-fn extract_modelscope_count(value: &Value) -> usize {
-    value_to_usize(get_value(value, &["TotalCount", "totalCount", "Count", "count"]))
-        .or_else(|| {
-            get_value(value, &["McpServer", "mcpServer"]).map(extract_modelscope_count)
-        })
-        .unwrap_or_else(|| collect_modelscope_items(value).len())
-}
-
 async fn solve_modelscope_waf_cookie(html: &str) -> Option<String> {
     let script = r#"
 import { JSDOM, VirtualConsole } from "jsdom";
@@ -879,6 +901,218 @@ fn parse_sse_payload(body: &str) -> Option<Value> {
         }
     }
     None
+}
+
+#[derive(Clone, Copy)]
+enum McpStdioRequestMode {
+    NewlineJson,
+    ContentLength,
+}
+
+fn build_mcp_initialize_payload() -> Value {
+    json!({
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "ai-modal",
+          "version": "0.6.0"
+        }
+      }
+    })
+}
+
+async fn read_mcp_stdio_response(stdout: tokio::process::ChildStdout) -> Result<Value, String> {
+    let mut reader = BufReader::new(stdout);
+    let mut first_line = String::new();
+    let bytes = timeout(Duration::from_secs(5), reader.read_line(&mut first_line))
+        .await
+        .map_err(|_| "读取 MCP 响应超时".to_string())?
+        .map_err(|error| format!("读取 MCP 响应失败: {error}"))?;
+
+    if bytes == 0 {
+        return Err("MCP 进程未返回任何响应".to_string());
+    }
+
+    let trimmed = first_line.trim();
+    if trimmed.starts_with('{') {
+        return serde_json::from_str(trimmed)
+            .map_err(|error| format!("解析 MCP JSON 响应失败: {error}"));
+    }
+
+    if trimmed.to_ascii_lowercase().starts_with("content-length:") {
+        let length = trimmed
+            .split(':')
+            .nth(1)
+            .map(str::trim)
+            .ok_or_else(|| "MCP Content-Length 头缺失长度".to_string())?
+            .parse::<usize>()
+            .map_err(|error| format!("解析 MCP Content-Length 失败: {error}"))?;
+
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = timeout(Duration::from_secs(5), reader.read_line(&mut line))
+                .await
+                .map_err(|_| "读取 MCP 响应头超时".to_string())?
+                .map_err(|error| format!("读取 MCP 响应头失败: {error}"))?;
+            if read == 0 {
+                return Err("MCP 响应头意外结束".to_string());
+            }
+            if line.trim().is_empty() {
+                break;
+            }
+        }
+
+        let mut body = vec![0_u8; length];
+        timeout(Duration::from_secs(5), reader.read_exact(&mut body))
+            .await
+            .map_err(|_| "读取 MCP 响应体超时".to_string())?
+            .map_err(|error| format!("读取 MCP 响应体失败: {error}"))?;
+
+        return serde_json::from_slice::<Value>(&body)
+            .map_err(|error| format!("解析 MCP Content-Length 响应失败: {error}"));
+    }
+
+    Err(format!("未识别的 MCP stdio 响应头: {}", clip_detail(trimmed).unwrap_or_default()))
+}
+
+async fn run_stdio_initialize_handshake(
+    config: &McpServerConfigInput,
+    mode: McpStdioRequestMode,
+) -> McpServerTestResult {
+    let command = config.command.clone().unwrap_or_default();
+    let started_at = Instant::now();
+    let mut cmd = Command::new(command);
+    cmd.args(config.args.clone().unwrap_or_default());
+    cmd.kill_on_drop(true);
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::null());
+    if let Some(cwd) = config.cwd.clone() {
+        if !cwd.trim().is_empty() {
+            cmd.current_dir(cwd);
+        }
+    }
+    if let Some(env) = config.env.clone() {
+        cmd.envs(env);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(v) => v,
+        Err(error) => {
+            return McpServerTestResult {
+                ok: false,
+                status: "spawn-failed".to_string(),
+                message: format!("进程启动失败: {error}"),
+                detail: None,
+                latency_ms: Some(started_at.elapsed().as_millis() as u64),
+            };
+        }
+    };
+
+    let payload = build_mcp_initialize_payload();
+    let body = match serde_json::to_string(&payload) {
+        Ok(text) => text,
+        Err(error) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return McpServerTestResult {
+                ok: false,
+                status: "error".to_string(),
+                message: format!("序列化 initialize 请求失败: {error}"),
+                detail: None,
+                latency_ms: Some(started_at.elapsed().as_millis() as u64),
+            };
+        }
+    };
+
+    let request = match mode {
+        McpStdioRequestMode::NewlineJson => format!("{body}\n"),
+        McpStdioRequestMode::ContentLength => {
+            format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
+        }
+    };
+
+    let Some(mut stdin) = child.stdin.take() else {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+        return McpServerTestResult {
+            ok: false,
+            status: "error".to_string(),
+            message: "MCP 进程未暴露 stdin".to_string(),
+            detail: None,
+            latency_ms: Some(started_at.elapsed().as_millis() as u64),
+        };
+    };
+
+    if let Err(error) = stdin.write_all(request.as_bytes()).await {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+        return McpServerTestResult {
+            ok: false,
+            status: "write-failed".to_string(),
+            message: format!("发送 initialize 请求失败: {error}"),
+            detail: None,
+            latency_ms: Some(started_at.elapsed().as_millis() as u64),
+        };
+    }
+    let _ = stdin.flush().await;
+    drop(stdin);
+
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+        return McpServerTestResult {
+            ok: false,
+            status: "error".to_string(),
+            message: "MCP 进程未暴露 stdout".to_string(),
+            detail: None,
+            latency_ms: Some(started_at.elapsed().as_millis() as u64),
+        };
+    };
+
+    let result = read_mcp_stdio_response(stdout).await;
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+
+    match result {
+        Ok(value) => {
+            let server_name = value
+                .pointer("/result/serverInfo/name")
+                .and_then(Value::as_str)
+                .unwrap_or("MCP Server");
+            let server_version = value
+                .pointer("/result/serverInfo/version")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let detail = if server_version.is_empty() {
+                Some(server_name.to_string())
+            } else {
+                Some(format!("{server_name} {server_version}"))
+            };
+            McpServerTestResult {
+                ok: true,
+                status: "stdio-initialize-ok".to_string(),
+                message: "初始化握手成功".to_string(),
+                detail,
+                latency_ms: Some(started_at.elapsed().as_millis() as u64),
+            }
+        }
+        Err(message) => McpServerTestResult {
+            ok: false,
+            status: "stdio-initialize-failed".to_string(),
+            message,
+            detail: Some(match mode {
+                McpStdioRequestMode::NewlineJson => "newline-json initialize".to_string(),
+                McpStdioRequestMode::ContentLength => "content-length initialize".to_string(),
+            }),
+            latency_ms: Some(started_at.elapsed().as_millis() as u64),
+        },
+    }
 }
 
 async fn test_http_server(url: &str) -> McpServerTestResult {
@@ -1015,64 +1249,25 @@ async fn test_stdio_server(config: &McpServerConfigInput) -> McpServerTestResult
         };
     }
 
-    let started_at = Instant::now();
-    let mut cmd = Command::new(command);
-    cmd.args(config.args.clone().unwrap_or_default());
-    cmd.kill_on_drop(true);
-    cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::null());
-    cmd.stderr(Stdio::null());
-    if let Some(cwd) = config.cwd.clone() {
-        if !cwd.trim().is_empty() {
-            cmd.current_dir(cwd);
-        }
-    }
-    if let Some(env) = config.env.clone() {
-        cmd.envs(env);
+    let primary = run_stdio_initialize_handshake(config, McpStdioRequestMode::NewlineJson).await;
+    if primary.ok {
+        return primary;
     }
 
-    let child = cmd.spawn();
-    let mut child = match child {
-        Ok(v) => v,
-        Err(error) => {
-            return McpServerTestResult {
-                ok: false,
-                status: "spawn-failed".to_string(),
-                message: format!("进程启动失败: {error}"),
-                detail: None,
-                latency_ms: Some(started_at.elapsed().as_millis() as u64),
-            };
-        }
-    };
+    let fallback = run_stdio_initialize_handshake(config, McpStdioRequestMode::ContentLength).await;
+    if fallback.ok {
+        return fallback;
+    }
 
-    sleep(Duration::from_millis(500)).await;
-    let check = child.try_wait();
-    match check {
-        Ok(Some(status)) => McpServerTestResult {
-            ok: false,
-            status: format!("exit({})", status.code().unwrap_or(-1)),
-            message: "进程过早退出，服务可能不可用".to_string(),
-            detail: None,
-            latency_ms: Some(started_at.elapsed().as_millis() as u64),
-        },
-        Ok(None) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
-            McpServerTestResult {
-                ok: true,
-                status: "spawn-ok".to_string(),
-                message: "进程可启动".to_string(),
-                detail: Some("通过短时启动检测".to_string()),
-                latency_ms: Some(started_at.elapsed().as_millis() as u64),
-            }
-        }
-        Err(error) => McpServerTestResult {
-            ok: false,
-            status: "error".to_string(),
-            message: format!("检测进程状态失败: {error}"),
-            detail: None,
-            latency_ms: Some(started_at.elapsed().as_millis() as u64),
-        },
+    McpServerTestResult {
+        ok: false,
+        status: "stdio-initialize-failed".to_string(),
+        message: "初始化握手失败".to_string(),
+        detail: Some(format!(
+            "newline: {}; content-length: {}",
+            primary.message, fallback.message
+        )),
+        latency_ms: fallback.latency_ms.or(primary.latency_ms),
     }
 }
 
@@ -1108,88 +1303,67 @@ pub async fn search_modelscope_mcp_servers(
     query: String,
     limit: Option<u32>,
     profile: Option<ModelscopeRequestProfileInput>,
-) -> Result<ModelscopeMcpSearchResponse, String> {
+) -> Result<Value, String> {
     let trimmed_query = query.trim();
     let page_size = limit.unwrap_or(24).clamp(1, 100);
-    let search_text = if trimmed_query.is_empty() {
-        "mcp"
-    } else {
-        trimmed_query
-    };
-    let started_at = Instant::now();
+    let search_text = trimmed_query;
 
     let parsed = modelscope_request_json(
         reqwest::Method::PUT,
         MODELSCOPE_MCP_LIST_URL,
         None,
         Some(json!({
-            "PageSize": page_size,
-            "PageNumber": 1,
-            "Query": search_text,
-            "Criterion": [],
+            "search": search_text,
+            "total_count": page_size,
         })),
         profile.as_ref(),
     )
     .await?;
-
-    let data = response_data(parsed);
-    let container = get_value(&data, &["McpServer", "mcpServer"]).unwrap_or(&data);
-    let mut servers = collect_modelscope_items(container)
-        .into_iter()
-        .filter_map(|item| build_modelscope_summary(&item))
-        .collect::<Vec<_>>();
-
-    let mut seen = std::collections::HashSet::new();
-    servers.retain(|item| seen.insert(item.id.clone()));
-
-    Ok(ModelscopeMcpSearchResponse {
-        query: search_text.to_string(),
-        count: extract_modelscope_count(container).max(servers.len()),
-        duration_ms: started_at.elapsed().as_millis() as u64,
-        servers,
-    })
+    Ok(parsed)
 }
 
 #[tauri::command]
 pub async fn inspect_modelscope_mcp_server(
-    path: String,
-    name: String,
+    server_id: String,
     profile: Option<ModelscopeRequestProfileInput>,
-) -> Result<ModelscopeMcpServerDetail, String> {
-    let trimmed_path = path.trim().trim_matches('/');
-    let trimmed_name = name.trim().trim_matches('/');
-    if trimmed_path.is_empty() || trimmed_name.is_empty() {
-        return Err("缺少 MCP 服务的 path 或 name".to_string());
+) -> Result<Value, String> {
+    let trimmed_id = server_id.trim();
+    if trimmed_id.is_empty() {
+        return Err("缺少 MCP 服务的 serverId".to_string());
     }
 
-    let parsed = modelscope_request_json(
-        reqwest::Method::PUT,
+    let detail_url = format!(
+        "{}/{}",
         MODELSCOPE_MCP_LIST_URL,
+        encode_server_id(trimmed_id)
+    );
+
+    let parsed_with_operational = modelscope_request_json(
+        reqwest::Method::GET,
+        detail_url.as_str(),
+        Some(&[("get_operational_url", "true".to_string())]),
         None,
-        Some(json!({
-            "PageSize": 30,
-            "PageNumber": 1,
-            "Query": trimmed_name,
-            "Criterion": [],
-        })),
         profile.as_ref(),
     )
-    .await?;
-    let data = response_data(parsed);
-    let container = get_value(&data, &["McpServer", "mcpServer"]).unwrap_or(&data);
-    let mut fallback: Option<ModelscopeMcpServerDetail> = None;
-    for item in collect_modelscope_items(container) {
-        if let Some(detail) = build_modelscope_detail(item.clone()) {
-            if detail.summary.path == trimmed_path && detail.summary.name == trimmed_name {
-                return Ok(detail);
-            }
-            if fallback.is_none() {
-                fallback = Some(detail);
-            }
-        }
-    }
+    .await;
 
-    fallback.ok_or_else(|| "无法解析 ModelScope MCP 详情".to_string())
+    let parsed = match parsed_with_operational {
+        Ok(value) => value,
+        Err(error)
+            if error.contains("HTTP 401") || error.contains("InvalidAuthentication") =>
+        {
+            modelscope_request_json(
+                reqwest::Method::GET,
+                detail_url.as_str(),
+                None,
+                None,
+                profile.as_ref(),
+            )
+            .await?
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(parsed)
 }
 
 #[tauri::command]
@@ -1235,4 +1409,78 @@ pub async fn extract_modelscope_mcp_server_with_profile(
     }
 
     Err(last_error.unwrap_or_else(|| "提取 ModelScope MCP 失败".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn python_stdio_config(script: &str) -> McpServerConfigInput {
+        McpServerConfigInput {
+            server_type: Some("stdio".to_string()),
+            command: Some("python3".to_string()),
+            args: Some(vec!["-c".to_string(), script.to_string()]),
+            env: None,
+            cwd: None,
+            url: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn stdio_initialize_handshake_supports_newline_json() {
+        let script = r#"
+import json, sys
+line = sys.stdin.readline()
+req = json.loads(line)
+resp = {
+  "jsonrpc": "2.0",
+  "id": req["id"],
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "serverInfo": { "name": "newline-mcp", "version": "1.0.0" },
+    "capabilities": {}
+  }
+}
+sys.stdout.write(json.dumps(resp) + "\n")
+sys.stdout.flush()
+"#;
+
+        let result = test_stdio_server(&python_stdio_config(script)).await;
+
+        assert!(result.ok, "expected newline stdio initialize to pass: {:?}", result.detail);
+        assert_eq!(result.message, "初始化握手成功");
+        assert_eq!(result.status, "stdio-initialize-ok");
+    }
+
+    #[tokio::test]
+    async fn stdio_initialize_handshake_falls_back_to_content_length() {
+        let script = r#"
+import json, sys
+header = sys.stdin.readline()
+if not header.lower().startswith("content-length:"):
+    sys.exit(1)
+length = int(header.split(":")[1].strip())
+sys.stdin.readline()
+body = sys.stdin.read(length)
+req = json.loads(body)
+resp = {
+  "jsonrpc": "2.0",
+  "id": req["id"],
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "serverInfo": { "name": "content-length-mcp", "version": "1.0.0" },
+    "capabilities": {}
+  }
+}
+payload = json.dumps(resp)
+sys.stdout.write(f"Content-Length: {len(payload)}\r\n\r\n{payload}")
+sys.stdout.flush()
+"#;
+
+        let result = test_stdio_server(&python_stdio_config(script)).await;
+
+        assert!(result.ok, "expected content-length fallback to pass: {:?}", result.detail);
+        assert_eq!(result.message, "初始化握手成功");
+        assert_eq!(result.status, "stdio-initialize-ok");
+    }
 }

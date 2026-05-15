@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { exists, mkdir, readDir, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -36,10 +36,18 @@ import {
 } from "../../lib/buttonStyles";
 import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../../lib/formStyles";
 import { loadPersistedJson, savePersistedJson } from "../../lib/persistence";
+import { renderMarkdownToHtml } from "../../lib/promptMarkdown";
 import { toast } from "../../lib/toast";
 import { logger } from "../../lib/devlog";
 import { HintTooltip } from "../HintTooltip";
-import type { ModelscopeServerItem, ModelscopeServerDetail } from "../../types";
+import type {
+  McpServerConfigInput,
+  ModelscopeDetailResponse,
+  ModelscopeRequestProfileInput,
+  ModelscopeSearchResponse,
+  ModelscopeServerItem,
+  ModelscopeServerDetail,
+} from "../../types";
 
 type McpServerConfig = {
   type?: "stdio" | "http" | string;
@@ -90,10 +98,17 @@ type McpServiceTestState = {
   checkedAt?: number;
 };
 
+type OnlineImportState = {
+  detailId: string;
+  serverNames: string[];
+};
+
 const MCP_SYNC_TARGETS_KEY = "ai-modal-mcp-sync-targets";
 const MCP_SYNC_TARGETS_DB_KEY = "mcp_sync_targets";
 const MCP_BATCH_TEST_CONCURRENCY = 4;
 const MCP_BACKUP_KEEP_COUNT = 3;
+const MODELSCOPE_API_KEY = "ai-modal-modelscope-api-key";
+const MODELSCOPE_API_DB_KEY = "modelscope_api_key";
 
 function normalizeHomePath(path: string) {
   return path.replace(/\/$/, "");
@@ -103,16 +118,32 @@ function buildSourcePath(homePath: string) {
   return `${homePath}/.agents/mcp.config.json`;
 }
 
-function parseModelscopeServerId(id: string) {
-  const parts = id.split("/");
-  const name = parts.pop() ?? "";
-  const path = parts.join("/");
-  return { path, name };
+function getModelscopeBaseName(server: Pick<ModelscopeServerItem, "id" | "name">) {
+  const rawName = server.name.trim();
+  if (rawName && !/^mcp$/i.test(rawName)) return rawName;
+  const pathLeaf = server.id
+    .split("/")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .at(-1);
+  return pathLeaf || rawName || "modelscope-mcp";
+}
+
+function getModelscopeSearchItems(response: ModelscopeSearchResponse | null) {
+  return response?.data?.mcp_server_list ?? [];
+}
+
+function getModelscopeSearchTotal(response: ModelscopeSearchResponse | null) {
+  return response?.data?.total_count ?? 0;
+}
+
+function getModelscopeDetailData(response: ModelscopeDetailResponse | null) {
+  return response?.data ?? null;
 }
 
 function buildImportedServerEntries(detail: ModelscopeServerDetail): Array<[string, McpServerConfig]> {
-  const entries = Object.entries(detail.transport_configs ?? {});
-  const baseName = detail.name.trim() || detail.id.split("/").pop() || "modelscope-mcp";
+  const entries = Object.entries(extractTransportConfigs(detail));
+  const baseName = getModelscopeBaseName(detail);
   if (entries.length <= 1) {
     return entries.map(([, config]) => [baseName, config as McpServerConfig]);
   }
@@ -122,14 +153,31 @@ function buildImportedServerEntries(detail: ModelscopeServerDetail): Array<[stri
   ]);
 }
 
-function getModelscopeDisplayName(server: Pick<ModelscopeServerItem, "chinese_name" | "name" | "path">) {
+function hasImportedServerPrefix(baseName: string, servers: Record<string, McpServerConfig>) {
+  const trimmedBase = baseName.trim() || "modelscope-mcp";
+  return Object.keys(servers).some(
+    (name) => name === trimmedBase || name.startsWith(`${trimmedBase}-`),
+  );
+}
+
+function toModelscopeDetailFallback(server: ModelscopeServerItem): ModelscopeServerDetail {
+  return {
+    ...server,
+    readme: null,
+    source_url: null,
+    operational_urls: [],
+    server_config: [],
+  };
+}
+
+function getModelscopeDisplayName(server: Pick<ModelscopeServerItem, "chinese_name" | "name" | "id">) {
   const chinese = server.chinese_name?.trim();
   if (chinese) return chinese;
 
   const rawName = server.name.trim();
   if (rawName && !/^mcp$/i.test(rawName)) return rawName;
 
-  const pathLeaf = server.path
+  const pathLeaf = server.id
     .split("/")
     .map((item) => item.trim())
     .filter(Boolean)
@@ -202,6 +250,54 @@ function toAbsolutePath(path: string, homePath: string) {
 function createEmptyConfig(): McpConfig {
   return { mcpServers: {} };
 }
+
+function buildModelscopeProfile(apiKey: string): ModelscopeRequestProfileInput | null {
+  const trimmed = apiKey.trim();
+  if (!trimmed) return null;
+  return {
+    extra_headers: {
+      Authorization: `Bearer ${trimmed}`,
+    },
+  };
+}
+
+function maskAuthorizationHeader(value: string | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+  const prefix = "Bearer ";
+  if (!trimmed.startsWith(prefix)) return "***";
+  const token = trimmed.slice(prefix.length);
+  if (token.length <= 10) return `${prefix}***`;
+  return `${prefix}${token.slice(0, 6)}...${token.slice(-4)}`;
+}
+
+function getModelscopeDetailMarkdown(detail: ModelscopeServerDetail | null) {
+  if (!detail) return "暂无介绍内容。";
+  const readme = detail.readme?.trim();
+  if (readme) return readme;
+  const description = detail.description?.trim();
+  if (description) return description;
+  return "暂无介绍内容。";
+}
+
+function extractTransportConfigs(detail: ModelscopeServerDetail): Record<string, McpServerConfigInput> {
+  const configs: Record<string, McpServerConfigInput> = {};
+  for (const item of detail.server_config ?? []) {
+    for (const [name, config] of Object.entries(item.mcpServers ?? {})) {
+      configs[name] = config;
+    }
+  }
+  for (const item of detail.operational_urls ?? []) {
+    if (!item.url) continue;
+    const transport = item.transport_type || "sse";
+    configs[transport] = {
+      type: transport,
+      url: item.url,
+    };
+  }
+  return configs;
+}
+
 
 function parseMcpConfig(value: unknown): McpConfig {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -382,6 +478,18 @@ function countServerInfo(server: McpServerConfig) {
   };
 }
 
+function getServerValidationLabel(
+  server: McpServerConfig,
+  testState?: McpServiceTestState,
+) {
+  if (!testState?.checkedAt) return null;
+  const serverType = (server.type ?? "stdio").toLowerCase();
+  if (serverType === "http") {
+    return testState.ok ? "http · 握手成功" : "http · 握手失败";
+  }
+  return testState.ok ? "stdio · 握手成功" : "stdio · 握手失败";
+}
+
 function nonEmptyRecord(value: unknown): Record<string, string> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const entries = Object.entries(value).filter(([, item]) => typeof item === "string");
@@ -530,6 +638,7 @@ export function McpPage({
   const [customLabel, setCustomLabel] = useState("");
   const [customPath, setCustomPath] = useState("");
   const [customMode, setCustomMode] = useState<SyncMode>("json-replace");
+  const [modelscopeProfile, setModelscopeProfile] = useState<ModelscopeRequestProfileInput | null>(null);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingServerName, setEditingServerName] = useState<string | null>(null);
@@ -537,6 +646,18 @@ export function McpPage({
   const [draftServerJson, setDraftServerJson] = useState(
     JSON.stringify(defaultServerDraft(), null, 2),
   );
+  const msDetailPanelRef = useRef<HTMLDivElement | null>(null);
+  const [msSearchQuery, setMsSearchQuery] = useState("");
+  const [msResults, setMsResults] = useState<ModelscopeServerItem[]>([]);
+  const [msLoading, setMsLoading] = useState(false);
+  const [msError, setMsError] = useState<string | null>(null);
+  const [msTotal, setMsTotal] = useState(0);
+  const [msDetail, setMsDetail] = useState<ModelscopeServerDetail | null>(null);
+  const [msDetailLoading, setMsDetailLoading] = useState(false);
+  const [msDetailError, setMsDetailError] = useState<string | null>(null);
+  const [msDetailModalOpen, setMsDetailModalOpen] = useState(false);
+  const [msImporting, setMsImporting] = useState(false);
+  const [lastImported, setLastImported] = useState<OnlineImportState | null>(null);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -570,6 +691,11 @@ export function McpPage({
           MCP_SYNC_TARGETS_KEY,
           [],
         );
+        const modelscopeApiKey = await loadPersistedJson<string>(
+          MODELSCOPE_API_DB_KEY,
+          MODELSCOPE_API_KEY,
+          "",
+        );
         const nextTargets = normalizeSyncTargets(home, rawTargets);
         if (!active) return;
 
@@ -577,6 +703,7 @@ export function McpPage({
         setSourcePath(nextSourcePath);
         setConfig(nextConfig);
         setTargets(nextTargets);
+        setModelscopeProfile(buildModelscopeProfile(modelscopeApiKey ?? ""));
         setDirty(false);
         logger.info(
           `[MCP] 配置加载完成：source=${nextSourcePath} servers=${Object.keys(nextConfig.mcpServers).length}`,
@@ -930,33 +1057,34 @@ export function McpPage({
     toast("已新增自定义同步目标", "success");
   }
 
-  // ─── Online install (ModelScope OpenAPI) ─────────────────────────
-  const [msSearchQuery, setMsSearchQuery] = useState("");
-  const [msResults, setMsResults] = useState<ModelscopeServerItem[]>([]);
-  const [msLoading, setMsLoading] = useState(false);
-  const [msError, setMsError] = useState<string | null>(null);
-  const [msTotal, setMsTotal] = useState(0);
-  const [msPage, setMsPage] = useState(1);
-  const [msSelectedId, setMsSelectedId] = useState("");
-  const [msDetail, setMsDetail] = useState<ModelscopeServerDetail | null>(null);
-  const [msDetailLoading, setMsDetailLoading] = useState(false);
-  const [msImporting, setMsImporting] = useState(false);
-
   useEffect(() => {
     const timer = window.setTimeout(async () => {
       setMsLoading(true);
       setMsError(null);
       try {
-        const res = await searchModelscopeMcpServers(msSearchQuery.trim(), 20);
-        setMsResults(res.servers ?? []);
-        setMsTotal(res.count ?? 0);
-        setMsSelectedId((prev) =>
-          (res.servers ?? []).some((s: ModelscopeServerItem) => s.id === prev)
-            ? prev
-            : (res.servers?.[0]?.id ?? ""),
+        logger.info(
+          `[MCP] ModelScope 请求: ${JSON.stringify({
+            method: "PUT",
+            url: "https://modelscope.cn/openapi/v1/mcp/servers",
+            headers: {
+              Authorization: maskAuthorizationHeader(
+                modelscopeProfile?.extra_headers?.Authorization,
+              ) || undefined,
+            },
+            body: {
+              search: msSearchQuery.trim(),
+              total_count: 100,
+            },
+          })}`,
         );
+        const res = await searchModelscopeMcpServers(msSearchQuery.trim(), 100, modelscopeProfile);
+        const items = getModelscopeSearchItems(res);
+        setMsResults(items);
+        setMsTotal(getModelscopeSearchTotal(res));
+        logger.success(`[MCP] ModelScope 原始响应: ${JSON.stringify(res)}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        logger.error(`[MCP] ModelScope 响应失败: ${message}`);
         setMsResults([]);
         setMsTotal(0);
         setMsError(message);
@@ -965,26 +1093,75 @@ export function McpPage({
       }
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [msSearchQuery, msPage]);
+  }, [modelscopeProfile, msSearchQuery]);
 
-  useEffect(() => {
-    if (!msSelectedId) { setMsDetail(null); return; }
-    let cancelled = false;
-    async function load() {
+  async function fetchModelscopeDetail(
+    serverId: string,
+    options?: { silent?: boolean },
+  ) {
+    const fallback = msResults.find((item) => item.id === serverId);
+    if (!options?.silent) {
+      if (fallback) {
+        setMsDetail(toModelscopeDetailFallback(fallback));
+      }
       setMsDetailLoading(true);
-      try {
-        const { path, name } = parseModelscopeServerId(msSelectedId);
-        const detail = await inspectModelscopeMcpServer(path, name);
-        if (!cancelled) setMsDetail(detail ?? null);
-      } catch {
-        if (!cancelled) setMsDetail(null);
-      } finally {
-        if (!cancelled) setMsDetailLoading(false);
+      setMsDetailError(null);
+    }
+    try {
+      logger.info(
+        `[MCP] ModelScope 详情请求: ${JSON.stringify({
+          method: "GET",
+          url: `https://modelscope.cn/openapi/v1/mcp/servers/${encodeURIComponent(serverId)}?get_operational_url=true`,
+          headers: {
+            Authorization: maskAuthorizationHeader(
+              modelscopeProfile?.extra_headers?.Authorization,
+            ) || undefined,
+          },
+          serverId,
+        })}`,
+      );
+      const detailResponse = await inspectModelscopeMcpServer(serverId, modelscopeProfile);
+      logger.success(`[MCP] ModelScope 详情原始响应: ${JSON.stringify(detailResponse)}`);
+      const detail = getModelscopeDetailData(detailResponse);
+      if (!detail) {
+        throw new Error("详情响应缺少 data");
+      }
+      if (!options?.silent) {
+        setMsDetail(detail);
+      }
+      return detail;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`[MCP] ModelScope 详情响应失败: ${message}`);
+      if (!options?.silent) {
+        if (fallback) {
+          setMsDetail(toModelscopeDetailFallback(fallback));
+        } else {
+          setMsDetail(null);
+        }
+        setMsDetailError(message || "详情加载失败");
+      }
+      throw error;
+    } finally {
+      if (!options?.silent) {
+        setMsDetailLoading(false);
       }
     }
-    void load();
-    return () => { cancelled = true; };
-  }, [msSelectedId]);
+  }
+
+  function handleOpenOnlineDetail(serverId: string) {
+    setMsDetailModalOpen(true);
+    const fallback = msResults.find((item) => item.id === serverId);
+    if (fallback) {
+      setMsDetail(toModelscopeDetailFallback(fallback));
+      setMsDetailError(null);
+    } else {
+      setMsDetail(null);
+    }
+    void fetchModelscopeDetail(serverId, { silent: false }).catch(() => {
+      // UI state is already updated inside fetchModelscopeDetail; keep click path non-throwing
+    });
+  }
 
   async function handleImportOnline(serverDetail: ModelscopeServerDetail) {
     const importEntries = buildImportedServerEntries(serverDetail);
@@ -1005,10 +1182,17 @@ export function McpPage({
       const nextConfig = { mcpServers: nextServers };
       await persistSourceConfig(nextConfig, { backup: true });
       setConfig(nextConfig);
+      setLastImported({
+        detailId: serverDetail.id,
+        serverNames: importEntries.map(([name]) => name),
+      });
       if (overwriteCount > 0) {
-        toast(`已导入 ${importEntries.length} 个配置，覆盖 ${overwriteCount} 个同名 MCP`, "success");
+        toast(
+          `已导入 ${importEntries.length} 个配置，覆盖 ${overwriteCount} 个同名 MCP，请继续验证源服务或同步到目标`,
+          "success",
+        );
       } else {
-        toast(`已导入 ${importEntries.length} 个 MCP 配置`, "success");
+        toast(`已导入 ${importEntries.length} 个 MCP 配置，请继续验证源服务或同步到目标`, "success");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1016,6 +1200,39 @@ export function McpPage({
     } finally {
       setMsImporting(false);
     }
+  }
+
+  async function handleImportOnlineFromCard(server: ModelscopeServerItem) {
+    try {
+      const detail = await fetchModelscopeDetail(server.id, { silent: true });
+      await handleImportOnline(detail);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast(`导入 MCP 失败：${message}`, "error");
+    }
+  }
+
+  async function handleValidateImportedServers() {
+    if (!lastImported || lastImported.serverNames.length === 0) {
+      toast("当前没有刚导入的 MCP 服务", "info");
+      return;
+    }
+    let success = 0;
+    let fail = 0;
+    for (const name of lastImported.serverNames) {
+      const server = config.mcpServers[name];
+      if (!server) {
+        fail += 1;
+        continue;
+      }
+      const ok = await runServerTest(name, server, { silent: true });
+      if (ok) success += 1;
+      else fail += 1;
+    }
+    toast(
+      `刚导入的 MCP 验证完成：通过 ${success}，失败 ${fail}`,
+      fail === 0 ? "success" : "warning",
+    );
   }
 
   if (loading) {
@@ -1083,7 +1300,7 @@ export function McpPage({
               [
                 ["list", "服务列表"],
                 ["sync", "同步目标"],
-                ["online", "在线安装"],
+                ["online", "在线导入"],
               ] as const
             ).map(([tab, label]) => (
               <button
@@ -1178,6 +1395,11 @@ export function McpPage({
                             {typeof testState.latency_ms === "number" ? ` · ${testState.latency_ms}ms` : ""}
                           </span>
                         )}
+                        {testState?.checkedAt && getServerValidationLabel(server, testState) && (
+                          <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] text-gray-300">
+                            {getServerValidationLabel(server, testState)}
+                          </span>
+                        )}
                         {!testState?.checkedAt && !testState?.running && (
                           <span className="rounded-full border border-gray-800 bg-gray-900 px-2 py-0.5 text-[10px] text-gray-600">
                             未测试
@@ -1241,7 +1463,7 @@ export function McpPage({
                   className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   {checkingTargets ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
-                  检查
+                  检查文件
                 </button>
                 <button
                   onClick={() => void syncEnabledTargets()}
@@ -1451,7 +1673,7 @@ export function McpPage({
           <section className="rounded-xl border border-gray-800 bg-gray-900/80 px-5 py-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-medium text-gray-100">在线安装</h3>
+                <h3 className="text-sm font-medium text-gray-100">在线导入</h3>
                 <HintTooltip content="从 ModelScope 社区搜索 MCP 服务，查看 transport 配置详情，并直接导入到当前源配置。" />
               </div>
             </div>
@@ -1462,7 +1684,7 @@ export function McpPage({
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   <input
                     value={msSearchQuery}
-                    onChange={(event) => { setMsSearchQuery(event.target.value); setMsPage(1); }}
+                    onChange={(event) => setMsSearchQuery(event.target.value)}
                     placeholder="搜索 MCP 服务..."
                     className={`${FIELD_MONO_INPUT_CLASS} pl-9`}
                   />
@@ -1478,7 +1700,7 @@ export function McpPage({
               )}
             </div>
 
-            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="mt-4">
               <div className="grid grid-cols-2 gap-2.5">
                 {msResults.length === 0 && !msLoading && (
                   <div className="col-span-2 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-8 text-sm text-gray-500">
@@ -1486,21 +1708,20 @@ export function McpPage({
                   </div>
                 )}
                 {msResults.map((server) => {
-                  const active = server.id === msSelectedId;
-                  const installed = Object.prototype.hasOwnProperty.call(config.mcpServers, server.id.split("/").pop() ?? server.id);
-                  const categories = server.category ?? [];
-                  const transportTypes = server.transport_types ?? [];
+                  const installed = hasImportedServerPrefix(
+                    getModelscopeBaseName(server),
+                    config.mcpServers,
+                  );
+                  const summaryText = server.description || "";
+                  const categories = server.categories ?? [];
                   return (
                     <div
                       key={server.id}
-                      onClick={() => setMsSelectedId(server.id)}
-                      className={`cursor-pointer rounded-xl border px-3 py-3 transition-colors ${
-                        active ? "border-indigo-500/50 bg-indigo-500/8" : "border-gray-800 bg-black/10 hover:border-gray-700"
-                      }`}
+                      className="rounded-xl border border-gray-800 bg-black/10 px-3 py-3 transition-colors hover:border-gray-700"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className={`truncate text-sm font-medium ${active ? "text-white" : "text-gray-100"}`}>
+                          <p className="truncate text-sm font-medium text-gray-100">
                             {getModelscopeDisplayName(server)}
                           </p>
                           <p className="mt-1 truncate text-[11px] text-gray-500">
@@ -1513,9 +1734,9 @@ export function McpPage({
                           </span>
                         )}
                       </div>
-                      {server.original_abstract && (
+                      {summaryText && (
                         <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-400">
-                          {server.original_abstract}
+                          {summaryText}
                         </p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1524,28 +1745,21 @@ export function McpPage({
                             {cat}
                           </span>
                         ))}
-                        {transportTypes.slice(0, 2).map((transport) => (
-                          <span key={transport} className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-200">
-                            {transport}
-                          </span>
-                        ))}
                       </div>
                       <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-gray-800 pt-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (msDetail && msDetail.id === server.id) {
-                              void handleImportOnline(msDetail);
-                            }
+                            void handleImportOnlineFromCard(server);
                           }}
                           disabled={msImporting}
                           className={`${installed ? BUTTON_SECONDARY_CLASS : BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                         >
                           {msImporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                          {installed ? "更新" : "安装"}
+                          {installed ? "重新导入" : "导入"}
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setMsSelectedId(server.id); }}
+                          onClick={(e) => { e.stopPropagation(); handleOpenOnlineDetail(server.id); }}
                           className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                         >
                           详情
@@ -1555,88 +1769,130 @@ export function McpPage({
                   );
                 })}
               </div>
+            </div>
 
-              <div className="rounded-xl border border-gray-800 bg-black/15 p-4">
-                {!msSelectedId ? (
-                  <div className="text-sm text-gray-500">选择左侧服务查看详情。</div>
-                ) : msDetailLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-300">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    正在加载详情...
-                  </div>
-                ) : msDetail ? (
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">
-                        {getModelscopeDisplayName(msDetail)}
+            {msDetailModalOpen && (
+              <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/70 px-4">
+                <div
+                  ref={msDetailPanelRef}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={msDetail ? getModelscopeDisplayName(msDetail) : "MCP 详情"}
+                  className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-950 shadow-2xl"
+                >
+                  <div className="flex items-start justify-between gap-4 border-b border-gray-800 px-6 py-5">
+                    <div className="min-w-0">
+                      <h4 className="truncate text-lg font-semibold text-white">
+                        {msDetail ? getModelscopeDisplayName(msDetail) : "MCP 详情"}
                       </h4>
-                      <p className="mt-1 text-[11px] text-gray-500">{msDetail.id}</p>
+                      {msDetail?.id && (
+                        <p className="mt-1 truncate text-xs text-gray-500">{msDetail.id}</p>
+                      )}
                     </div>
-                    {msDetail.original_abstract && (
-                      <p className="text-xs leading-5 text-gray-300">{msDetail.original_abstract}</p>
-                    )}
-                    {msDetail.page_url && (
-                      <p className="break-all text-[11px] text-gray-500">
-                        页面：{msDetail.page_url}
-                      </p>
-                    )}
-                    {msDetail.from_site_url && (
-                      <p className="break-all text-[11px] text-gray-500">
-                        来源：{msDetail.from_site_url}
-                      </p>
-                    )}
-                    {Object.keys(msDetail.transport_configs ?? {}).length > 0 && (
-                      <div>
-                        <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">配置预览</div>
-                        <pre className="max-h-[280px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/80 px-3 py-2 font-mono text-[11px] leading-5 text-gray-300">
-                          {JSON.stringify(msDetail.transport_configs, null, 2)}
-                        </pre>
+                    <button
+                      onClick={() => setMsDetailModalOpen(false)}
+                      className={BUTTON_ICON_GHOST_SM_CLASS}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                    {msDetailLoading && (
+                      <div className="mb-4 flex items-center gap-2 text-sm text-gray-300">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        正在更新详情...
                       </div>
                     )}
-                    {msDetail.readme && (
-                      <div>
-                        <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">Readme</div>
-                        <div className="max-h-[160px] overflow-auto rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs leading-5 text-gray-300">
-                          {msDetail.readme.slice(0, 2000)}
+                    {msDetailError && (
+                      <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-100">
+                        详情接口未返回完整配置，当前展示搜索摘要。
+                        {msDetailError ? ` 原因：${msDetailError}` : ""}
+                      </div>
+                    )}
+                    {msDetail ? (
+                      <div className="space-y-5">
+                        <div className="flex flex-wrap gap-1.5">
+                          {(msDetail.categories ?? []).map((cat) => (
+                            <span key={cat} className="rounded-full border border-gray-700 bg-gray-900 px-2 py-0.5 text-[10px] text-gray-300">
+                              {cat}
+                            </span>
+                          ))}
+                          {(msDetail.operational_urls ?? []).map((item) => (
+                            <span key={`${item.transport_type ?? "sse"}-${item.url}`} className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200">
+                              {item.transport_type ?? "sse"}
+                            </span>
+                          ))}
                         </div>
+
+                        {msDetail.source_url && (
+                          <p className="break-all text-xs text-gray-500">来源：{msDetail.source_url}</p>
+                        )}
+
+                        <div
+                          className="markdown-preview rounded-xl border border-gray-800 bg-black/15 px-4 py-4"
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdownToHtml(getModelscopeDetailMarkdown(msDetail)),
+                          }}
+                        />
+
+                        {Object.keys(extractTransportConfigs(msDetail)).length > 0 && (
+                          <div>
+                            <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-gray-500">配置预览</div>
+                            <pre className="max-h-[280px] overflow-auto rounded-xl border border-gray-800 bg-gray-900/80 px-3 py-2 font-mono text-[11px] leading-5 text-gray-300">
+                              {JSON.stringify(extractTransportConfigs(msDetail), null, 2)}
+                            </pre>
+                          </div>
+                        )}
                       </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">暂无详情数据。</div>
                     )}
-                    <div className="flex flex-wrap gap-2">
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-2 border-t border-gray-800 px-6 py-4">
+                    {msDetail && (
                       <button
                         onClick={() => void handleImportOnline(msDetail)}
-                        disabled={msImporting || Object.keys(msDetail.transport_configs ?? {}).length === 0}
+                        disabled={msImporting || Object.keys(extractTransportConfigs(msDetail)).length === 0}
                         className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                       >
                         {msImporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                        导入当前配置
+                        导入到源配置
                       </button>
-                    </div>
+                    )}
+                    {msDetail && (
+                      <button
+                        onClick={() => void fetchModelscopeDetail(msDetail.id, { silent: false })}
+                        disabled={msDetailLoading}
+                        className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                      >
+                        {msDetailLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
+                        刷新详情
+                      </button>
+                    )}
+                    {lastImported?.detailId === msDetail?.id && (
+                      <>
+                        <button
+                          onClick={() => void handleValidateImportedServers()}
+                          disabled={testingCount > 0}
+                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          验证刚导入的服务
+                        </button>
+                        <button
+                          onClick={() => void syncEnabledTargets()}
+                          disabled={busy != null}
+                          className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          同步到已启用目标
+                        </button>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-sm text-gray-500">暂无详情数据。</div>
-                )}
-              </div>
-            </div>
-
-            {msTotal > 20 && (
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <button
-                  onClick={() => setMsPage((p) => Math.max(1, p - 1))}
-                  disabled={msPage <= 1 || msLoading}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  上一页
-                </button>
-                <span className="text-xs text-gray-500">
-                  第 {msPage} 页 · 共 {Math.ceil(msTotal / 20)} 页
-                </span>
-                <button
-                  onClick={() => setMsPage((p) => p + 1)}
-                  disabled={msPage >= Math.ceil(msTotal / 20) || msLoading}
-                  className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-                >
-                  下一页
-                </button>
+                </div>
               </div>
             )}
           </section>
