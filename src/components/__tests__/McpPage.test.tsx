@@ -80,7 +80,7 @@ vi.mock("../../lib/devlog", () => ({
   logger: mockLogger,
 }));
 
-describe("McpPage online install", () => {
+describe("McpPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -159,139 +159,22 @@ describe("McpPage online install", () => {
   afterEach(() => {
   });
 
-  it("loads online search results from the backend command", async () => {
-    const user = userEvent.setup();
+  it("hides the online import entry", async () => {
     render(<McpPage />);
 
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
+    expect(await screen.findByRole("button", { name: "服务列表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "同步目标" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "在线导入" })).not.toBeInTheDocument();
+  });
 
-    expect((await screen.findAllByText("演示服务", {}, { timeout: 8000 })).length).toBeGreaterThan(0);
-    expect(screen.getByText("productivity")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(mockSearchModelscopeMcpServers).toHaveBeenCalledWith("", 100, null);
-    }, { timeout: 8000 });
-  }, 10000);
-
-  it("loads detail after selecting an online MCP result", async () => {
-    const user = userEvent.setup();
+  it("does not trigger ModelScope requests when online import is hidden", async () => {
     render(<McpPage />);
 
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-    await user.click(await screen.findByText("详情", {}, { timeout: 8000 }));
-
     await waitFor(() => {
-      expect(mockInspectModelscopeMcpServer).toHaveBeenCalledWith("team/demo", null);
-    }, { timeout: 8000 });
-
-    expect(await screen.findByRole("dialog", { name: "演示服务" }, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/这是 readme/)).toBeInTheDocument();
-    expect(screen.getByText(/https:\/\/example\.com\/source/)).toBeInTheDocument();
-    expect(screen.getByText(/"stdio"/)).toBeInTheDocument();
-    expect(screen.getByText(/"sse"/)).toBeInTheDocument();
-  }, 10000);
-
-  it("imports all transport configs with transport-suffixed names and exposes next actions", async () => {
-    const user = userEvent.setup();
-    render(<McpPage />);
-
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-    await user.click(await screen.findByText("详情", {}, { timeout: 8000 }));
-    await screen.findByText("配置预览", {}, { timeout: 8000 });
-
-    const importButtons = screen.getAllByRole("button", { name: /导入/ });
-    await user.click(importButtons[importButtons.length - 1]);
-
-    await waitFor(() => {
-      expect(mockWriteTextFile).toHaveBeenCalled();
-    }, { timeout: 8000 });
-
-    const sourceWrite = mockWriteTextFile.mock.calls.find(
-      ([path]) => path === "/Users/test/.agents/mcp.config.json",
-    );
-    expect(sourceWrite).toBeTruthy();
-
-    const writtenContent = String(sourceWrite?.[1] ?? "");
-    const parsed = JSON.parse(writtenContent) as {
-      mcpServers: Record<string, unknown>;
-    };
-
-    expect(parsed.mcpServers["demo-stdio"]).toEqual({
-      type: "stdio",
-      command: "npx",
-      args: ["-y", "demo-mcp"],
+      expect(mockSearchModelscopeMcpServers).not.toHaveBeenCalled();
+      expect(mockInspectModelscopeMcpServer).not.toHaveBeenCalled();
     });
-    expect(parsed.mcpServers["demo-sse"]).toEqual({
-      type: "sse",
-      url: "https://example.com/sse",
-    });
-
-    expect(mockToast).toHaveBeenCalledWith(
-      "已导入 2 个 MCP 配置，请继续验证源服务或同步到目标",
-      "success",
-    );
-    expect(screen.getByRole("button", { name: "验证刚导入的服务" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "同步到已启用目标" })).toBeInTheDocument();
-  }, 10000);
-
-  it("fetches detail on demand when importing directly from a card", async () => {
-    const user = userEvent.setup();
-    render(<McpPage />);
-
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-    await screen.findByText("演示服务", {}, { timeout: 8000 });
-
-    const cardImportButtons = (await screen.findAllByRole("button", {}, { timeout: 8000 }))
-      .filter((button) => {
-        const label = button.textContent?.trim();
-        return label === "导入" || label === "重新导入";
-      });
-    await user.click(cardImportButtons[0]);
-
-    await waitFor(() => {
-      expect(mockInspectModelscopeMcpServer).toHaveBeenCalledWith("team/demo", null);
-    }, { timeout: 8000 });
-
-    await waitFor(() => {
-      expect(mockWriteTextFile).toHaveBeenCalled();
-    }, { timeout: 8000 });
-  }, 10000);
-
-  it("falls back to summary content when detail loading fails", async () => {
-    mockInspectModelscopeMcpServer.mockRejectedValue(new Error("详情接口失败"));
-
-    const user = userEvent.setup();
-    render(<McpPage />);
-
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-    await user.click(await screen.findByText("详情", {}, { timeout: 8000 }));
-
-    expect(await screen.findByRole("dialog", { name: "演示服务" }, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/详情接口未返回完整配置/)).toBeInTheDocument();
-    expect(screen.getByText(/详情接口失败/)).toBeInTheDocument();
-    expect((await screen.findAllByText(/演示服务简介/)).length).toBeGreaterThan(0);
-  }, 10000);
-
-  it("passes the saved ModelScope API key as an Authorization header profile", async () => {
-    mockLoadPersistedJson.mockImplementation(async (_dbKey: string, legacyKey: string) => {
-      if (legacyKey === "ai-modal-mcp-sync-targets") return [];
-      if (legacyKey === "ai-modal-modelscope-api-key") return "ms-test-key";
-      return "";
-    });
-
-    const user = userEvent.setup();
-    render(<McpPage />);
-
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-
-    await waitFor(() => {
-      expect(mockSearchModelscopeMcpServers).toHaveBeenCalledWith("", 100, {
-        extra_headers: {
-          Authorization: "Bearer ms-test-key",
-        },
-      });
-    }, { timeout: 8000 });
-  }, 10000);
+  });
 
   it("distinguishes stdio spawn checks from http initialize handshakes in the service list", async () => {
     mockExists.mockImplementation(async (path: string) => path === "/Users/test/.agents/mcp.config.json");
@@ -337,50 +220,5 @@ describe("McpPage online install", () => {
 
     expect(await screen.findByText("stdio · 握手成功", {}, { timeout: 8000 })).toBeInTheDocument();
     expect(await screen.findByText("http · 握手成功", {}, { timeout: 8000 })).toBeInTheDocument();
-  }, 10000);
-
-  it("shows the default returned online result list without pagination controls", async () => {
-    mockSearchModelscopeMcpServers.mockResolvedValueOnce({
-      success: true,
-      request_id: "req-many",
-      data: {
-        total_count: 25,
-        mcp_server_list: Array.from({ length: 25 }, (_, index) => ({
-          id: `team/demo-${index + 1}`,
-          name: `demo-${index + 1}`,
-          chinese_name: `演示服务${index + 1}`,
-          description: `摘要${index + 1}`,
-          tags: [],
-          logo_url: null,
-          categories: ["productivity"],
-        })),
-      },
-    });
-
-    const user = userEvent.setup();
-    render(<McpPage />);
-
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-
-    expect(await screen.findByText("演示服务1", {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(await screen.findByText("演示服务21", {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "下一页" })).not.toBeInTheDocument();
-  }, 10000);
-
-  it("loads detail only when the user manually opens the dialog", async () => {
-    const user = userEvent.setup();
-    render(<McpPage />);
-
-    await user.click(await screen.findByRole("button", { name: "在线导入" }));
-
-    await waitFor(() => {
-      expect(mockInspectModelscopeMcpServer).not.toHaveBeenCalled();
-    }, { timeout: 8000 });
-
-    await user.click(await screen.findByText("详情", {}, { timeout: 8000 }));
-
-    await waitFor(() => {
-      expect(mockInspectModelscopeMcpServer).toHaveBeenCalledWith("team/demo", null);
-    }, { timeout: 8000 });
   }, 10000);
 });

@@ -109,6 +109,7 @@ const MCP_BATCH_TEST_CONCURRENCY = 4;
 const MCP_BACKUP_KEEP_COUNT = 3;
 const MODELSCOPE_API_KEY = "ai-modal-modelscope-api-key";
 const MODELSCOPE_API_DB_KEY = "modelscope_api_key";
+const MCP_ONLINE_IMPORT_ENABLED = false;
 
 function normalizeHomePath(path: string) {
   return path.replace(/\/$/, "");
@@ -1058,6 +1059,13 @@ export function McpPage({
   }
 
   useEffect(() => {
+    if (!MCP_ONLINE_IMPORT_ENABLED) {
+      setMsResults([]);
+      setMsTotal(0);
+      setMsError(null);
+      setMsLoading(false);
+      return;
+    }
     const timer = window.setTimeout(async () => {
       setMsLoading(true);
       setMsError(null);
@@ -1300,7 +1308,7 @@ export function McpPage({
               [
                 ["list", "服务列表"],
                 ["sync", "同步目标"],
-                ["online", "在线导入"],
+                ...(MCP_ONLINE_IMPORT_ENABLED ? ([["online", "在线导入"]] as const) : []),
               ] as const
             ).map(([tab, label]) => (
               <button
@@ -1669,7 +1677,7 @@ export function McpPage({
           </section>
         )}
 
-        {selectedTab === "online" && (
+        {MCP_ONLINE_IMPORT_ENABLED && selectedTab === "online" && (
           <section className="rounded-xl border border-gray-800 bg-gray-900/80 px-5 py-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
