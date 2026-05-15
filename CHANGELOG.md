@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.7.0](https://github.com/he5050/ai-modal/compare/v0.6.0...v0.7.0) (2026-05-15)
+
+
+### Bug Fixes
+
+* 避免重复添加 claude 前缀并优化复选框组件 ([c5489ac](https://github.com/he5050/ai-modal/commit/c5489acbeedf0ead879562ab902e3ad7a1d6440b))
+
+
+### Features
+
+* 导入模型时支持按需选择模型列表 ([5935126](https://github.com/he5050/ai-modal/commit/5935126097e6dfb8efe281d5291f9602478869cf))
+* 将请求配置提取为独立弹窗并优化列表样式 ([bf3406f](https://github.com/he5050/ai-modal/commit/bf3406fa090fc1cef8d7eadc70fed61dc164c154))
+* 支持 Gemini 协议并增强映射日志 ([f3088ea](https://github.com/he5050/ai-modal/commit/f3088ea2fbeb84207a0cf4a2f7e2f5264476df46))
+* 支持自定义模型槽位与显示名称 ([1079faa](https://github.com/he5050/ai-modal/commit/1079faa20136a8572c0c40a4fa103be8b74c7866))
+* 新增 ModelScope MCP 服务器搜索与详情获取功能 ([a8bcd97](https://github.com/he5050/ai-modal/commit/a8bcd970029cca5baf71f89c6b0094b6bf208d2a))
+* 添加 MCP 服务器配置与同步管理页面 ([ddfbfcf](https://github.com/he5050/ai-modal/commit/ddfbfcf9a0bf8635aa881fbf0be93686881d5484))
+* 适配 ModelScope 新版 MCP API 及 stdio 初始化握手 ([7a68994](https://github.com/he5050/ai-modal/commit/7a689942e9032e7bfb8740c900dcea51a90be3b2))
+* 重构ModelScope在线安装并增强MCP同步功能 ([23c10dd](https://github.com/he5050/ai-modal/commit/23c10dd8b12fd3a0a899c8b017aae14dc1e6be76))
+* 隐藏在线导入功能 ([de50128](https://github.com/he5050/ai-modal/commit/de501283dbd48624c11611a47c16f6d73df4d274))
+
 # [0.6.0](https://github.com/he5050/ai-modal/compare/v0.5.0...v0.6.0) (2026-05-10)
 
 
