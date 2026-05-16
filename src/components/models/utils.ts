@@ -1,4 +1,6 @@
 import type { ModelResult, Provider } from "@/types";
+import { getFriendlyErrorMessage } from "@/lib/errorMessages";
+import { maskString } from "@/lib/validation";
 import type { ImportSummary } from "./types";
 
 // ─── Formatting ──────────────────────────────────────────────────
@@ -14,16 +16,14 @@ export function formatTime(ts: number) {
 }
 
 export function maskKey(key: string) {
-  if (!key) return "—";
-  if (key.length <= 4) return "*".repeat(key.length);
-  return key.slice(0, 2) + "******" + key.slice(-2);
+  return maskString(key, 2);
 }
 
 export function maskPreviewText(value: string) {
   if (!value) return "—";
   if (value.length <= 4)
     return `${value.slice(0, 1)}******${value.slice(-1)}`;
-  return `${value.slice(0, 2)}******${value.slice(-2)}`;
+  return maskString(value, 2);
 }
 
 // ─── CSV helpers ─────────────────────────────────────────────────
@@ -256,24 +256,9 @@ export function mergeSingleResult(existing: ModelResult[], next: ModelResult) {
 }
 
 export function friendlyError(e: unknown): string {
+  // 委托给统一的错误消息模块，同时补充 API 检测场景特有的提示
   const msg = String(e);
-  if (
-    msg.includes("401") ||
-    msg.includes("Unauthorized") ||
-    msg.includes("invalid_api_key")
-  )
-    return "API Key 无效或已过期，请检查 Key 是否正确";
-  if (msg.includes("404") || msg.includes("not found"))
-    return "接口路径不存在，请检查 Base URL 是否正确（支持根地址、/v1、/v1/models）";
-  if (
-    msg.includes("ECONNREFUSED") ||
-    msg.includes("Failed to fetch") ||
-    msg.includes("connect")
-  )
-    return "无法连接到服务器，请检查 Base URL 是否可访问";
-  if (msg.includes("timeout") || msg.includes("Timeout"))
-    return "请求超时，服务器响应过慢，请稍后重试";
   if (msg.includes("CORS") || msg.includes("cors"))
     return "跨域请求被拒绝，该接口可能不支持浏览器直接调用";
-  return msg;
+  return getFriendlyErrorMessage(e);
 }

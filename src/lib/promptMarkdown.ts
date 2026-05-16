@@ -21,6 +21,10 @@ function renderMarkdownInline(value: string) {
   return rendered;
 }
 
+/**
+ * 将 Markdown 文本渲染为 HTML。
+ * ⚠️ 返回值是原始 HTML，调用方 **必须** 使用 DOMPurify.sanitize() 消毒后再注入 DOM。
+ */
 export function renderMarkdownToHtml(markdownText: string) {
   const lines = markdownText.replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];

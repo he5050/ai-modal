@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { logger } from "@/lib/devlog";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -53,6 +53,17 @@ export function PromptsPage({
     const matchesQuery = keyword === "" || haystack.includes(keyword);
     return matchesTag && matchesQuery;
   });
+
+  // 只对当前筛选可见的提示词预渲染 Markdown HTML，避免全量计算
+  const previewHtmlMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of filtered) {
+      if (item.content.trim()) {
+        map.set(item.id, DOMPurify.sanitize(renderMarkdownToHtml(item.content)));
+      }
+    }
+    return map;
+  }, [filtered]);
 
 
   async function handleExportJson() {
@@ -241,7 +252,7 @@ export function PromptsPage({
                                   className="max-h-[360px] overflow-y-auto px-4 py-4 text-sm"
                                   data-testid={`prompt-preview-${item.id}`}
                                   dangerouslySetInnerHTML={{
-                                    __html: DOMPurify.sanitize(renderMarkdownToHtml(item.content)),
+                                    __html: previewHtmlMap.get(item.id) ?? "",
                                   }}
                                 />
                               </div>

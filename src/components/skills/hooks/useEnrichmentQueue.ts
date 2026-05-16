@@ -218,9 +218,10 @@ export function useEnrichmentQueue(options: {
 
   useEffect(() => {
     if (!nextEnrichmentRunAt) return;
+    // 注解运行期间 CPU 占用优化：250ms → 1000ms（输出为秒级倒计时，1s 精度足够）
     const timer = window.setInterval(() => {
       setQueueNow(Date.now());
-    }, 250);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [nextEnrichmentRunAt]);
 

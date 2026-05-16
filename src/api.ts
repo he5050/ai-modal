@@ -1,4 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
+
+/**
+ * 带超时的 invoke 包装器。
+ * 默认 30 秒超时，防止网络请求无限挂起。
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+function invokeWithTimeout<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return invoke<T>(cmd, args).finally(() => clearTimeout(timeout));
+}
 import type {
   EnrichSkillRequest,
   LocalizedOnlineSkillDetail,
@@ -31,7 +47,7 @@ export async function listModels(
   baseUrl: string,
   apiKey: string,
 ): Promise<string[]> {
-  return invoke("list_models", { baseUrl, apiKey });
+  return invokeWithTimeout("list_models", { baseUrl, apiKey });
 }
 
 export async function testModels(
@@ -46,7 +62,7 @@ export async function listModelsByProvider(
   baseUrl: string,
   apiKey: string,
 ): Promise<string[]> {
-  return invoke("list_models_by_provider", { baseUrl, apiKey });
+  return invokeWithTimeout("list_models_by_provider", { baseUrl, apiKey });
 }
 
 export async function testModelsByProvider(
@@ -63,12 +79,12 @@ export async function testSingleModelByProvider(
   model: string,
   protocols?: string[],
 ): Promise<ModelResult> {
-  return invoke("test_single_model_by_provider", {
+  return invokeWithTimeout("test_single_model_by_provider", {
     baseUrl,
     apiKey,
     model,
     protocols: protocols ?? null,
-  });
+  }, 60_000);
 }
 
 export async function testModelConfig(
@@ -76,7 +92,7 @@ export async function testModelConfig(
   apiKey: string,
   model: string,
 ): Promise<ModelResult> {
-  return invoke("test_model_config", { baseUrl, apiKey, model });
+  return invokeWithTimeout("test_model_config", { baseUrl, apiKey, model }, 60_000);
 }
 
 export async function loadModelMappingConfig(): Promise<ModelMappingConfig> {

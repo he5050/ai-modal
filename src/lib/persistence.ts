@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { logger } from "@/lib/devlog";
 
 const DB_PATH = "sqlite:state.db";
 

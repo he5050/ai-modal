@@ -194,16 +194,7 @@ export function useOnlineSearch(options: UseOnlineSearchOptions) {
 
   async function handleCopyInstallCommand(skill: OnlineSkill) {
     const command = getInstallCommand(skill);
-    try {
-      await navigator.clipboard.writeText(command);
-    } catch {
-      const textArea = document.createElement("textarea");
-      textArea.value = command;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textArea);
-    }
+    await navigator.clipboard.writeText(command);
     setCopiedSkillIds((prev) => {
       const next = new Set(prev);
       next.add(skill.skillId);

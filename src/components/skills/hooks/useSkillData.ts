@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/devlog";
-import { homeDir } from "@tauri-apps/api/path";
+import { getHomePath } from "@/lib/homePath";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import {
   inspectSkillTargets,
@@ -79,7 +79,7 @@ export function useSkillData() {
           storedInstalledSkillSnapshots,
           storedLocalizedOnlineSkillDetails,
         ] = await Promise.all([
-          homeDir().catch(() => ""),
+          getHomePath(),
           loadPersistedJson<unknown[]>(
             SKILL_TARGETS_DB_KEY,
             SKILL_TARGETS_KEY,
@@ -159,61 +159,39 @@ export function useSkillData() {
     };
   }, []);
 
-  // ─── Persistence ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!targetsReady) return;
-    void savePersistedJson(
-      SKILL_TARGETS_DB_KEY,
-      targets,
-      SKILL_TARGETS_KEY,
-    ).catch((error) => {
-      logger.error("Failed to persist skill targets", error);
-    });
-  }, [targets, targetsReady]);
+  // ─── Persistence (debounced batch) ────────────────────────────────
+  // 用 ref 始终持有最新值，避免 5 个独立 effect 级联触发 3-5 次 DB 写入
+  const stateRef = useRef({
+    targets,
+    skillSources,
+    skillEnrichments,
+    installedSkillSnapshots,
+    localizedOnlineSkillDetails,
+  });
+  stateRef.current = {
+    targets,
+    skillSources,
+    skillEnrichments,
+    installedSkillSnapshots,
+    localizedOnlineSkillDetails,
+  };
 
   useEffect(() => {
     if (!targetsReady) return;
-    void savePersistedJson(
-      SKILL_SOURCES_DB_KEY,
-      skillSources,
-      SKILL_SOURCES_KEY,
-    ).catch((error) => {
-      logger.error("Failed to persist skill sources", error);
-    });
-  }, [skillSources, targetsReady]);
-
-  useEffect(() => {
-    if (!targetsReady) return;
-    void savePersistedJson(
-      SKILL_ENRICHMENTS_DB_KEY,
-      skillEnrichments,
-      SKILL_ENRICHMENTS_KEY,
-    ).catch((error) => {
-      logger.error("Failed to persist skill enrichments", error);
-    });
-  }, [skillEnrichments, targetsReady]);
-
-  useEffect(() => {
-    if (!targetsReady) return;
-    void savePersistedJson(
-      INSTALLED_SKILL_SNAPSHOTS_DB_KEY,
-      installedSkillSnapshots,
-      INSTALLED_SKILL_SNAPSHOTS_KEY,
-    ).catch((error) => {
-      logger.error("Failed to persist installed skill snapshots", error);
-    });
-  }, [installedSkillSnapshots, targetsReady]);
-
-  useEffect(() => {
-    if (!targetsReady) return;
-    void savePersistedJson(
-      LOCALIZED_ONLINE_SKILL_DETAILS_DB_KEY,
-      localizedOnlineSkillDetails,
-      LOCALIZED_ONLINE_SKILL_DETAILS_KEY,
-    ).catch((error) => {
-      logger.error("Failed to persist localized online skill details", error);
-    });
-  }, [localizedOnlineSkillDetails, targetsReady]);
+    const timer = setTimeout(() => {
+      const s = stateRef.current;
+      void Promise.all([
+        savePersistedJson(SKILL_TARGETS_DB_KEY, s.targets, SKILL_TARGETS_KEY),
+        savePersistedJson(SKILL_SOURCES_DB_KEY, s.skillSources, SKILL_SOURCES_KEY),
+        savePersistedJson(SKILL_ENRICHMENTS_DB_KEY, s.skillEnrichments, SKILL_ENRICHMENTS_KEY),
+        savePersistedJson(INSTALLED_SKILL_SNAPSHOTS_DB_KEY, s.installedSkillSnapshots, INSTALLED_SKILL_SNAPSHOTS_KEY),
+        savePersistedJson(LOCALIZED_ONLINE_SKILL_DETAILS_DB_KEY, s.localizedOnlineSkillDetails, LOCALIZED_ONLINE_SKILL_DETAILS_KEY),
+      ]).catch((error) => {
+        logger.error("Failed to persist skill data", error);
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [targets, skillSources, skillEnrichments, installedSkillSnapshots, localizedOnlineSkillDetails, targetsReady]);
 
   // ─── Catalog & targets ─────────────────────────────────────────
   const refreshCatalog = useCallback(

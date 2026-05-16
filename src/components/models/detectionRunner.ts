@@ -95,6 +95,8 @@ export async function runModelDetection(
     if (options.signal?.aborted) return;
 
     const { model, index } = item;
+    // 不变量断言：index 必须在 finalResults 范围内
+    if (index < 0 || index >= finalResults.length) return;
     try {
       const result = await testSingleModelByProvider(
         baseUrl,

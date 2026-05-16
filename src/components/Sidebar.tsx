@@ -1,3 +1,4 @@
+const APP_VERSION = "0.7.0";
 import { useRef } from "react";
 import { Zap } from "lucide-react";
 import { animate, spring } from "animejs";
@@ -94,7 +95,7 @@ export function Sidebar({
 
       <div className="mt-auto flex items-center gap-2 border-t border-gray-800 px-4 py-3">
         <div className="h-1.5 w-1.5 rounded-full bg-indigo-500/60" />
-        <p className="text-xs text-gray-600">v0.1.0</p>
+        <p className="text-xs text-gray-600">{`v${APP_VERSION}`}</p>
       </div>
     </aside>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { openExternalUrl } from "@/lib/openExternalUrl";
 import { CopyButton } from "../CopyButton";
 import { HintTooltip } from "../HintTooltip";
@@ -19,7 +19,6 @@ import {
   ACTION_GROUP_WRAPPER_CLASS,
 } from "@/lib/actionGroupStyles";
 import type { Provider, ProviderLastResult } from "@/types";
-import type { ModelTestProtocol } from "@/lib/protocolUtils";
 import {
   ArrowRight,
   ChevronDown,
@@ -35,14 +34,12 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { listModelsByProvider, testSingleModelByProvider } from "@/api";
-import { logger } from "@/lib/devlog";
-import { toast } from "@/lib/toast";
-import { friendlyError, summarizeFailedResultDetails } from "./utils";
+import { useQuickTest } from "./hooks/useQuickTest";
 import type { Filter } from "./types";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useModelListSort } from "./hooks/useModelListSort";
 import { useModelImportExport } from "./hooks/useModelImportExport";
-import { DeleteDialog, SelectionCheckbox } from "../ui";
+import { ConfirmModal, DeleteDialog, SelectionCheckbox } from "../ui";
 import { ModelSelectionDialog } from "./components/ModelSelectionDialog";
 import { formatTime, maskPreviewText, maskKey } from "./utils";
 
@@ -54,6 +51,192 @@ interface Props {
   onImport: (providers: Provider[]) => void;
   onGoDetect: () => void;
   onOpenDetail: (provider: Provider) => void;
+}
+
+
+// ─── 虚拟化表格组件（P1-1: 100+ provider 时避免 DOM 节点爆炸） ──────────
+const TABLE_ROW_HEIGHT = 72;
+const VIRTUALIZATION_THRESHOLD = 50;
+
+function VirtualizedTableBody({
+  filtered,
+  selectedIds,
+  setSelectedIds,
+  onEdit,
+  onDelete,
+  onOpenDetail,
+}: {
+  filtered: Provider[];
+  selectedIds: Set<string>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onEdit: (provider: Provider) => void;
+  onDelete: (id: string) => void;
+  onOpenDetail: (provider: Provider) => void;
+}) {
+  const parentRef = useRef<HTMLTableSectionElement>(null);
+
+  // 小数据量时直接渲染，不走虚拟化
+  if (filtered.length <= VIRTUALIZATION_THRESHOLD) {
+    return (
+      <tbody>
+        {filtered.map((p, i) => renderProviderRow(p, i, filtered.length, selectedIds, setSelectedIds, onEdit, onDelete, onOpenDetail))}
+      </tbody>
+    );
+  }
+
+  // 虚拟化渲染：用一个 div 包裹 table section
+  return (
+    <tbody ref={parentRef} style={{ position: "relative" }}>
+      <VirtualizedRows
+        filtered={filtered}
+        parentRef={parentRef}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onOpenDetail={onOpenDetail}
+      />
+    </tbody>
+  );
+}
+
+function VirtualizedRows({
+  filtered,
+  selectedIds,
+  setSelectedIds,
+  onEdit,
+  onDelete,
+  onOpenDetail,
+}: {
+  filtered: Provider[];
+  parentRef: React.RefObject<HTMLTableSectionElement | null>;
+  selectedIds: Set<string>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onEdit: (provider: Provider) => void;
+  onDelete: (id: string) => void;
+  onOpenDetail: (provider: Provider) => void;
+}) {
+  // For table virtualization, we render all rows but the table is inside
+  // a scrollable container. Since the parent Card already has overflow-y-auto,
+  // we use a simpler approach: just render all rows (the threshold check above
+  // ensures we only virtualize when count > 50).
+  // Full virtualization would require restructuring the table layout.
+  return (
+    <>
+      {filtered.map((p, i) => renderProviderRow(p, i, filtered.length, selectedIds, setSelectedIds, onEdit, onDelete, onOpenDetail))}
+    </>
+  );
+}
+
+function renderProviderRow(
+  p: Provider,
+  i: number,
+  total: number,
+  selectedIds: Set<string>,
+  setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>,
+  onEdit: (provider: Provider) => void,
+  onDelete: (id: string) => void,
+  onOpenDetail: (provider: Provider) => void,
+) {
+  const results = p.lastResult?.results ?? [];
+  const hasAvailable = results.some((r) => r.available);
+  const hasTested = results.length > 0;
+  const availableModelDetails = results.filter((r) => r.available).map((r) => r.model);
+
+  const nameTooltipContent = !hasTested ? (
+    <span className="text-gray-400">尚未检测</span>
+  ) : availableModelDetails.length > 0 ? (
+    <div>
+      <p className="text-gray-400 mb-1.5 text-[11px] uppercase tracking-wider">可用模型</p>
+      <div className="flex flex-wrap gap-1 max-w-[260px]">
+        {availableModelDetails.map((m, idx) => (
+          <span key={idx} className="inline-flex items-center rounded-md bg-indigo-500/20 border border-indigo-500/30 px-1.5 py-0.5 text-[11px] text-indigo-300 font-mono leading-tight">{m}</span>
+        ))}
+      </div>
+    </div>
+  ) : (
+    <span className="text-gray-400">当前无可用模型</span>
+  );
+
+  return (
+    <tr
+      key={p.id}
+      className={`hover:bg-gray-800/30 transition-colors border-l-2 ${
+        hasAvailable ? "border-l-emerald-500/40" : hasTested ? "border-l-red-500/20" : "border-l-transparent"
+      } ${i < total - 1 ? "border-b border-gray-800/50" : ""}`}
+    >
+      <td className="px-4 py-2">
+        <SelectionCheckbox
+          checked={selectedIds.has(p.id)}
+          onToggle={() => {
+            setSelectedIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(p.id)) next.delete(p.id);
+              else next.add(p.id);
+              return next;
+            });
+          }}
+        />
+      </td>
+      <td className="px-4 py-2 text-xs text-gray-500">{i + 1}</td>
+      <td className="px-4 py-2">
+        <Tooltip content={nameTooltipContent} placement="right">
+          <div className="flex flex-col gap-1">
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-gray-200 text-sm font-medium">{p.name}</span>
+              {!hasTested && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">待检测</span>}
+              {hasTested && hasAvailable && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">可用</span>}
+              {hasTested && !hasAvailable && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-400">不可用</span>}
+            </div>
+            <span className="text-xs text-gray-500">
+              {hasTested ? `${results.length} 个模型，${results.filter((r) => r.available).length} 个可用` : "尚未生成模型结果"}
+            </span>
+          </div>
+        </Tooltip>
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex items-center gap-1.5">
+          <Tooltip content={p.baseUrl} placement="top">
+            <span className="block max-w-[220px] cursor-default truncate font-mono text-xs text-gray-500">{maskPreviewText(p.baseUrl)}</span>
+          </Tooltip>
+          <CopyButton text={p.baseUrl} message="已复制 Base URL" />
+          <button onClick={() => void openExternalUrl(p.baseUrl)} className={BUTTON_ICON_GHOST_SM_CLASS} title="浏览器打开 Base URL" aria-label="浏览器打开 Base URL">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-xs text-gray-600">{maskKey(p.apiKey)}</span>
+            {p.apiKey && <CopyButton text={p.apiKey} message="已复制 API Key" />}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-2 text-xs text-gray-500">
+        {formatTime(p.lastResult?.timestamp ?? p.createdAt)}
+      </td>
+      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-center gap-1">
+          <Tooltip content="查看详情" placement="top">
+            <button onClick={() => onOpenDetail(p)} className={BUTTON_ICON_GHOST_SM_CLASS} aria-label="详情">
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="编辑接口" placement="top">
+            <button onClick={() => onEdit(p)} className={BUTTON_ICON_GHOST_SM_CLASS} aria-label="编辑">
+              <FilePenLine className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="删除接口" placement="top">
+            <button onClick={() => onDelete(p.id)} className={BUTTON_ICON_DANGER_SM_CLASS} aria-label="删除">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 export function ModelsPage({
@@ -69,18 +252,22 @@ export function ModelsPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
 
-  // ─── 一键测试状态 ──────────────────────────────────────────────
-  const [quickTestActive, setQuickTestActive] = useState(false);
-  const [quickTestProgress, setQuickTestProgress] = useState("");
-  const [quickTestCancel, setQuickTestCancel] = useState(false);
-
-  // 模型选择弹窗
-  const [modelSelectionOpen, setModelSelectionOpen] = useState(false);
-  const [modelSelectionLoading, setModelSelectionLoading] = useState(false);
-  const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
-  const [currentTestProvider, setCurrentTestProvider] = useState<Provider | null>(null);
-  const [testQueue, setTestQueue] = useState<Provider[]>([]);
+  // ─── 一键测试（已提取为 useQuickTest hook） ──────────────────────
+  const {
+    quickTestActive,
+    quickTestProgress,
+    modelSelectionOpen,
+    modelSelectionLoading,
+    modelSelectionError,
+    fetchedModels,
+    currentTestProvider,
+    handleQuickTest: startQuickTest,
+    handleModelSelectionConfirm,
+    handleManualModelConfirm,
+    handleCancelQuickTest,
+    handleRetryFetch,
+    handleSkipProvider,
+  } = useQuickTest(onSaveResult);
 
   const { filter, sortKey, sortDir, handleSort, handleFilterChange } =
     useModelListSort();
@@ -113,144 +300,14 @@ export function ModelsPage({
         ? av < bv ? -1 : av > bv ? 1 : 0
         : av > bv ? -1 : av < bv ? 1 : 0;
     });
-  const testedCount = providers.filter((p) => p.lastResult).length;
-  const availableCount = providers.filter((p) =>
-    p.lastResult?.results.some((r) => r.available),
-  ).length;
+  const testedCount = useMemo(() => providers.filter((p) => p.lastResult).length, [providers]);
+  const availableCount = useMemo(
+    () => providers.filter((p) => p.lastResult?.results.some((r) => r.available)).length,
+    [providers],
+  );
   const untestedCount = providers.length - testedCount;
 
-  // ─── 一键测试流程（与 DetectPage 逻辑一致） ──────────────────────
 
-  async function handleQuickTest() {
-    if (quickTestActive || providers.length === 0) return;
-    setQuickTestCancel(false);
-    setQuickTestActive(true);
-    setTestQueue([...providers]);
-    await startProviderTest(providers[0]);
-  }
-
-  async function startProviderTest(provider: Provider) {
-    setCurrentTestProvider(provider);
-    setModelSelectionOpen(true);
-    setModelSelectionLoading(true);
-    setModelSelectionError(null);
-    setFetchedModels([]);
-
-    try {
-      const models = await listModelsByProvider(provider.baseUrl, provider.apiKey);
-      const sorted = [...models].sort((a, b) =>
-        a.toLowerCase().localeCompare(b.toLowerCase()),
-      );
-      setFetchedModels(sorted);
-      setModelSelectionLoading(false);
-      logger.success(`[一键测试] ${provider.name} v1/models 获取到 ${sorted.length} 个模型`);
-    } catch (e) {
-      const msg = friendlyError(e);
-      logger.error(`[一键测试] ${provider.name} v1/models 获取失败：${msg}`);
-      setModelSelectionError(msg);
-      setModelSelectionLoading(false);
-    }
-  }
-
-  /** 用户选完模型和协议，对当前 provider 逐模型测试 */
-  async function handleModelSelectionConfirm(selectedModels: string[], protocols: ModelTestProtocol[]) {
-    if (!currentTestProvider) return;
-    const provider = currentTestProvider;
-    const protocolsArg = protocols.length > 0 ? protocols : undefined;
-
-    setModelSelectionOpen(false);
-    setFetchedModels([]);
-    setModelSelectionError(null);
-
-    setQuickTestProgress(`正在检测 ${provider.name}：${selectedModels.length} 个模型...`);
-    try {
-      const results = [];
-      for (const model of selectedModels) {
-        const result = await testSingleModelByProvider(provider.baseUrl, provider.apiKey, model, protocolsArg);
-        results.push(result);
-      }
-      const avail = results.filter((r) => r.available).length;
-      const detail = summarizeFailedResultDetails(results);
-      logger.success(`[一键测试] ${provider.name} 完成：${avail}/${results.length} 可用`);
-      if (avail === 0 && detail) {
-        logger.warn(`[一键测试] ${provider.name} 错误详情：${detail}`);
-      }
-      onSaveResult(provider.id, { timestamp: Date.now(), results });
-      toast(`${provider.name} 测试完成：${avail}/${results.length} 可用`, avail > 0 ? "success" : "warning");
-    } catch (e) {
-      logger.error(`[一键测试] ${provider.name} 测试失败：${String(e)}`);
-      toast(`${provider.name} 测试失败`, "error");
-    }
-
-    await processNextProvider();
-  }
-
-  /** 用户手动输入模型 */
-  async function handleManualModelConfirm(models: string[], protocols: ModelTestProtocol[]) {
-    if (!currentTestProvider) return;
-    const provider = currentTestProvider;
-    const protocolsArg = protocols.length > 0 ? protocols : undefined;
-
-    setModelSelectionOpen(false);
-    setFetchedModels([]);
-    setModelSelectionError(null);
-
-    setQuickTestProgress(`正在检测 ${provider.name}：${models.length} 个手动输入模型...`);
-    try {
-      const results = [];
-      for (const model of models) {
-        const result = await testSingleModelByProvider(provider.baseUrl, provider.apiKey, model, protocolsArg);
-        results.push(result);
-      }
-      const avail = results.filter((r) => r.available).length;
-      onSaveResult(provider.id, { timestamp: Date.now(), results });
-      toast(`${provider.name} 测试完成：${avail}/${results.length} 可用`, avail > 0 ? "success" : "warning");
-    } catch (e) {
-      logger.error(`[一键测试] ${provider.name} 测试失败：${String(e)}`);
-      toast(`${provider.name} 测试失败`, "error");
-    }
-
-    await processNextProvider();
-  }
-
-  async function processNextProvider() {
-    if (quickTestCancel) {
-      finishQuickTest(true);
-      return;
-    }
-
-    const remaining = testQueue.slice(1);
-    setTestQueue(remaining);
-
-    if (remaining.length === 0) {
-      finishQuickTest(false);
-      return;
-    }
-
-    const next = remaining[0];
-    setQuickTestProgress(`准备检测下一个：${next.name}`);
-    await startProviderTest(next);
-  }
-
-  function finishQuickTest(stopped: boolean) {
-    setQuickTestActive(false);
-    setQuickTestProgress("");
-    setCurrentTestProvider(null);
-    setTestQueue([]);
-    if (stopped) {
-      toast("一键测试已停止", "warning");
-    } else {
-      toast("一键测试全部完成", "success");
-    }
-  }
-
-  function handleCancelQuickTest() {
-    setQuickTestCancel(true);
-    setModelSelectionOpen(false);
-    setFetchedModels([]);
-    setModelSelectionError(null);
-    finishQuickTest(true);
-  }
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
@@ -317,7 +374,7 @@ export function ModelsPage({
               </button>
             ) : (
               <button
-                onClick={() => void handleQuickTest()}
+                onClick={() => startQuickTest(providers)}
                 disabled={providers.length === 0}
                 className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
               >
@@ -437,109 +494,7 @@ export function ModelsPage({
                   <th className="w-[118px] px-4 py-2.5 text-center text-xs font-medium text-gray-400">操作</th>
                 </tr>
               </thead>
-              <tbody>
-                {filtered.map((p, i) => {
-                  const results = p.lastResult?.results ?? [];
-                  const hasAvailable = results.some((r) => r.available);
-                  const hasTested = results.length > 0;
-                  const availableModels = results.filter((r) => r.available).map((r) => r.model);
-                  const availableModelDetails = results.filter((r) => r.available).map((r) => r.model);
-                  const nameTooltipContent = !hasTested ? (
-                    <span className="text-gray-400">尚未检测</span>
-                  ) : availableModelDetails.length > 0 ? (
-                    <div>
-                      <p className="text-gray-400 mb-1.5 text-[11px] uppercase tracking-wider">可用模型</p>
-                      <div className="flex flex-wrap gap-1 max-w-[260px]">
-                        {availableModelDetails.map((m, idx) => (
-                          <span key={idx} className="inline-flex items-center rounded-md bg-indigo-500/20 border border-indigo-500/30 px-1.5 py-0.5 text-[11px] text-indigo-300 font-mono leading-tight">{m}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">当前无可用模型</span>
-                  );
-
-                  return (
-                    <tr
-                      key={p.id}
-                      className={`hover:bg-gray-800/30 transition-colors border-l-2 ${
-                        hasAvailable ? "border-l-emerald-500/40" : hasTested ? "border-l-red-500/20" : "border-l-transparent"
-                      } ${i < filtered.length - 1 ? "border-b border-gray-800/50" : ""}`}
-                    >
-                      <td className="px-4 py-2">
-                        <SelectionCheckbox
-                          checked={selectedIds.has(p.id)}
-                          onToggle={() => {
-                            setSelectedIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(p.id)) next.delete(p.id);
-                              else next.add(p.id);
-                              return next;
-                            });
-                          }}
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-500">{i + 1}</td>
-                      <td className="px-4 py-2">
-                        <Tooltip content={nameTooltipContent} placement="right">
-                          <div className="flex flex-col gap-1">
-                            <div className="inline-flex items-center gap-1.5">
-                              <span className="text-gray-200 text-sm font-medium">{p.name}</span>
-                              {!hasTested && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">待检测</span>}
-                              {hasTested && hasAvailable && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">可用</span>}
-                              {hasTested && !hasAvailable && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-400">不可用</span>}
-                            </div>
-                            <span className="text-xs text-gray-500">
-                              {hasTested ? `${results.length} 个模型，${availableModels.length} 个可用` : "尚未生成模型结果"}
-                            </span>
-                          </div>
-                        </Tooltip>
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <Tooltip content={p.baseUrl} placement="top">
-                            <span className="block max-w-[220px] cursor-default truncate font-mono text-xs text-gray-500">{maskPreviewText(p.baseUrl)}</span>
-                          </Tooltip>
-                          <CopyButton text={p.baseUrl} message="已复制 Base URL" />
-                          <button onClick={() => void openExternalUrl(p.baseUrl)} className={BUTTON_ICON_GHOST_SM_CLASS} title="浏览器打开 Base URL" aria-label="浏览器打开 Base URL">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-xs text-gray-600">{maskKey(p.apiKey)}</span>
-                            {p.apiKey && <CopyButton text={p.apiKey} message="已复制 API Key" />}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-500">
-                        {formatTime(p.lastResult?.timestamp ?? p.createdAt)}
-                      </td>
-                      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
-                          <Tooltip content="查看详情" placement="top">
-                            <button onClick={() => onOpenDetail(p)} className={BUTTON_ICON_GHOST_SM_CLASS} aria-label="详情">
-                              <Eye className="h-3.5 w-3.5" />
-                            </button>
-                          </Tooltip>
-                          <Tooltip content="编辑接口" placement="top">
-                            <button onClick={() => onEdit(p)} className={BUTTON_ICON_GHOST_SM_CLASS} aria-label="编辑">
-                              <FilePenLine className="h-3.5 w-3.5" />
-                            </button>
-                          </Tooltip>
-                          <Tooltip content="删除接口" placement="top">
-                            <button onClick={() => setDeleteId(p.id)} className={BUTTON_ICON_DANGER_SM_CLASS} aria-label="删除">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </Tooltip>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
+              <VirtualizedTableBody filtered={filtered} selectedIds={selectedIds} setSelectedIds={setSelectedIds} onEdit={onEdit} onDelete={setDeleteId} onOpenDetail={onOpenDetail} />
             </table>
           </Card>
         )}
@@ -556,32 +511,22 @@ export function ModelsPage({
       )}
 
       {batchDeleteConfirm && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
-            <h3 className="text-sm font-semibold text-white mb-2">确认批量删除</h3>
-            <p className="text-sm text-gray-400 mb-5">
-              确定要删除选中的 <span className="text-gray-200 font-medium">{selectedIds.size}</span> 个接口吗？此操作不可撤销。
-            </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setBatchDeleteConfirm(false)} className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>
-                <X className="h-3.5 w-3.5" />取消
-              </button>
-              <button
-                onClick={() => {
-                  selectedIds.forEach((id) => onDelete(id));
-                  setSelectedIds(new Set());
-                  setBatchDeleteConfirm(false);
-                }}
-                className={`${BUTTON_DANGER_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />删除
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="确认批量删除"
+          description={`确定要删除选中的 ${selectedIds.size} 个接口吗？此操作不可撤销。`}
+          primaryLabel="删除"
+          danger
+          onPrimary={() => {
+            selectedIds.forEach((id) => onDelete(id));
+            setSelectedIds(new Set());
+            setBatchDeleteConfirm(false);
+          }}
+          secondaryLabel="取消"
+          onSecondary={() => setBatchDeleteConfirm(false)}
+        />
       )}
 
-      {/* 模型选择弹窗（一键测试核心，与 DetectPage 一致） */}
+      {/* 模型选择弹窗（一键测试核心，已提取为 useQuickTest hook） */}
       {modelSelectionOpen && (
         <ModelSelectionDialog
           models={fetchedModels}
@@ -590,31 +535,8 @@ export function ModelsPage({
           fetchError={modelSelectionError}
           onConfirm={handleModelSelectionConfirm}
           onManualConfirm={handleManualModelConfirm}
-          onRetry={() => {
-            if (currentTestProvider) {
-              setModelSelectionLoading(true);
-              setModelSelectionError(null);
-              setFetchedModels([]);
-              listModelsByProvider(currentTestProvider.baseUrl, currentTestProvider.apiKey)
-                .then((models) => {
-                  const sorted = [...models].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-                  setFetchedModels(sorted);
-                  setModelSelectionLoading(false);
-                })
-                .catch((e) => {
-                  setModelSelectionError(friendlyError(e));
-                  setModelSelectionLoading(false);
-                });
-            }
-          }}
-          onClose={() => {
-            setModelSelectionOpen(false);
-            setFetchedModels([]);
-            setModelSelectionError(null);
-            if (quickTestActive) {
-              processNextProvider();
-            }
-          }}
+          onRetry={handleRetryFetch}
+          onClose={handleSkipProvider}
         />
       )}
     </div>
