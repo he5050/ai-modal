@@ -137,7 +137,7 @@ export function McpPage({
     let active = true;
     async function bootstrap() {
       try {
-        const home = normalizeHomePath(await homeDir());
+        const home = normalizeHomePath(await getHomePath());
         const nextSourcePath = buildSourcePath(home);
         const sourceExists = await exists(nextSourcePath);
         const nextConfig = sourceExists

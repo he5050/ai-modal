@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { logger } from "@/lib/devlog";
-import { dirname, homeDir } from "@tauri-apps/api/path";
+import { dirname } from "@tauri-apps/api/path";
+import { getHomePath } from "@/lib/homePath";
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -95,7 +96,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
     let active = true;
     async function loadHomePath() {
       try {
-        const resolved = await homeDir();
+        const resolved = await getHomePath();
         if (active) setHomePath(resolved.replace(/\/$/, ""));
       } catch (error) {
         logger.error("Failed to resolve home directory", error);
