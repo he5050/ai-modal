@@ -101,7 +101,7 @@ export function DetectPage({
     );
   }, [editTarget?.id]);
 
-  const isLoading = detection.phase === "fetching" || detection.phase === "testing";
+  const isTesting = detection.isTesting;
   const isDone = detection.phase === "done";
   const currentFormSignature = buildTestSignature(form.baseUrl, form.apiKey);
   const hasCurrentResults = detection.lastTestSignature === currentFormSignature;
@@ -265,11 +265,12 @@ export function DetectPage({
 
         <DetectForm
           form={form}
-          isLoading={isLoading}
+          isLoading={isTesting}
           isDone={isDone}
           onOpenModels={onOpenModels}
           onReset={handleReset}
           onQuickTest={handleQuickTest}
+          onCancelDetection={detection.cancelDetection}
           onSave={handleSave}
           onSaveAsNew={handleSaveAsNew}
         />

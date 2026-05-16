@@ -24,6 +24,7 @@ import { useEnrichmentQueue } from "./hooks/useEnrichmentQueue";
 import { useSkillCommand } from "./hooks/useSkillCommand";
 import { useOnlineSearch } from "./hooks/useOnlineSearch";
 import { SkillCard } from "./components/SkillCard";
+import { VirtualSkillGrid } from "./components/VirtualSkillGrid";
 import { EnrichmentProgress } from "./components/EnrichmentProgress";
 import { SyncTargetsSection } from "./components/SyncTargetsSection";
 import { CommandLog } from "./components/CommandLog";
@@ -265,22 +266,12 @@ export function SkillsPage({
               />
             </div>
 
-            <div className="mt-4 grid max-h-[540px] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-4">
-              {filteredSkills.map((skill: SkillRecord) => (
-                <SkillCard
-                  key={skill.dir}
-                  skill={skill}
-                  skillEnrichments={skillData.skillEnrichments}
-                  commandRunning={command.commandRunning}
-                  onRemove={online.confirmRemoveSkill}
-                />
-              ))}
-              {filteredSkills.length === 0 && (
-                <div className="col-span-full rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-5 text-sm text-gray-500">
-                  没有匹配的本地技能。
-                </div>
-              )}
-            </div>
+            <VirtualSkillGrid
+              skills={filteredSkills}
+              skillEnrichments={skillData.skillEnrichments}
+              commandRunning={command.commandRunning}
+              onRemove={online.confirmRemoveSkill}
+            />
           </section>
         )}
 

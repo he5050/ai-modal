@@ -33,6 +33,7 @@ interface DetectFormProps {
   onOpenModels: () => void;
   onReset: () => void;
   onQuickTest: () => void;
+  onCancelDetection?: () => void;
   onSave: () => void;
   onSaveAsNew: () => void;
 }
@@ -44,6 +45,7 @@ export function DetectForm({
   onOpenModels,
   onReset,
   onQuickTest,
+  onCancelDetection,
   onSave,
   onSaveAsNew,
 }: DetectFormProps) {
@@ -241,6 +243,16 @@ export function DetectForm({
             <Zap className="h-3.5 w-3.5" />
             {isLoading ? "检测中..." : "一键测试"}
           </button>
+          {isLoading && onCancelDetection && (
+            <button
+              onClick={onCancelDetection}
+              className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+              title="取消当前检测"
+            >
+              <X className="h-3.5 w-3.5" />
+              取消检测
+            </button>
+          )}
           {(isDone || form.editingId) && (
             <Tooltip
               content={

@@ -520,7 +520,7 @@ export function PromptDetailPage({
                       <div
                         data-testid="prompt-markdown-preview"
                         className="min-h-[520px] rounded-2xl border border-gray-800 bg-black/25 px-5 py-5"
-                        dangerouslySetInnerHTML={{ __html: renderedMarkdown }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderedMarkdown) }}
                       />
                     )}
                   </div>

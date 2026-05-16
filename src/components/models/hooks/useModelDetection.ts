@@ -1,8 +1,9 @@
-import { useState, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { testSingleModelByProvider } from "@/api";
 import type { ModelResult } from "@/types";
 import { logger } from "@/lib/devlog";
 import { toast } from "@/lib/toast";
+import { getFriendlyErrorMessage } from "@/lib/errorMessages";
 import { getConcurrency } from "../../SettingsPage";
 import type { LiveResult, ModelTestProtocol, Phase } from "@/types";
 import { MODEL_TEST_PROTOCOLS } from "../constants";
@@ -39,6 +40,13 @@ export function useModelDetection() {
     ModelTestProtocol[]
   >([...MODEL_TEST_PROTOCOLS]);
   const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isTesting = phase === "fetching" || phase === "testing";
+
+  const cancelDetection = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+  }, []);
 
   const runModelDetection = useCallback(
     async (
@@ -49,6 +57,9 @@ export function useModelDetection() {
       protocols?: string[],
     ) => {
       if (!baseUrl.trim()) return;
+      abortControllerRef.current = new AbortController();
+      const { signal } = abortControllerRef.current;
+
       setError(null);
       setLiveResults([]);
       setPhase(targetModels ? "testing" : "fetching");
@@ -64,6 +75,7 @@ export function useModelDetection() {
         targetModels,
         concurrency,
         protocols,
+        signal,
         onStart: ({ models, initialResults, fromListApi }) => {
           if (fromListApi) {
             logger.success(`获取模型列表成功，共 ${models.length} 个：${models.join(", ")}`);
@@ -88,10 +100,26 @@ export function useModelDetection() {
         },
       });
       if (!detectionResult.ok) {
-        const msg = friendlyError(detectionResult.error);
+        const msg = getFriendlyErrorMessage(detectionResult.error);
         logger.error(`获取模型列表失败：${msg}`);
         setError(msg);
         setPhase("idle");
+        abortControllerRef.current = null;
+        return;
+      }
+
+      if (signal.aborted) {
+        const sortedResults = detectionResult.sortedResults;
+        const availableCount = sortedResults.filter((r) => r.available).length;
+        const processedCount = sortedResults.filter((r) => r.error !== "检测已取消").length;
+        logger.warn(`检测已取消，已处理 ${processedCount}/${sortedResults.length} 个模型`);
+        setResults(sortedResults);
+        setResultTimestamp(Date.now());
+        setLiveResults([]);
+        setPhase("done");
+        setProgress("");
+        toast(`检测已取消：${availableCount}/${processedCount} 可用`, "warning");
+        abortControllerRef.current = null;
         return;
       }
 
@@ -104,6 +132,7 @@ export function useModelDetection() {
       setLiveResults([]);
       setPhase("done");
       setProgress("");
+      abortControllerRef.current = null;
       toast(
         detectionResult.availableCount > 0
           ? `检测完成：${detectionResult.availableCount}/${detectionResult.sortedResults.length} 可用`
@@ -272,6 +301,7 @@ export function useModelDetection() {
 
   return {
     phase,
+    isTesting,
     results,
     setResults,
     liveResults,
@@ -294,6 +324,7 @@ export function useModelDetection() {
     selectedProtocols,
     retestScopeDialogOpen,
     setRetestScopeDialogOpen,
+    cancelDetection,
     runModelDetection,
     handleTestSingleModel,
     handleOpenProtocolDialog,

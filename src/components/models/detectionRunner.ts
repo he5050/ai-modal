@@ -23,6 +23,8 @@ export interface DetectionRunnerOptions {
   concurrency: number;
   /** 要测试的协议，为空则不指定（走默认逻辑） */
   protocols?: string[];
+  /** 取消信号，用于中断检测 */
+  signal?: AbortSignal;
   onStart?: (payload: DetectionRunnerStartPayload) => void;
   onProgress?: (payload: DetectionRunnerProgressPayload) => void;
 }
@@ -90,9 +92,10 @@ export async function runModelDetection(
     const item = queue.shift();
     if (!item) return;
 
+    if (options.signal?.aborted) return;
+
     const { model, index } = item;
     try {
-      // 传入 protocols 参数，为空则走默认逻辑
       const result = await testSingleModelByProvider(
         baseUrl,
         apiKey,
@@ -105,6 +108,27 @@ export async function runModelDetection(
         status: "done",
       };
     } catch (error) {
+      if (options.signal?.aborted) {
+        finalResults[index] = {
+          model,
+          available: false,
+          latency_ms: null,
+          error: "检测已取消",
+          response_text: null,
+          supported_protocols: [],
+          protocol_results: [],
+          status: "done",
+        };
+        done += 1;
+        options.onProgress?.({
+          done,
+          total,
+          model,
+          result: finalResults[index],
+          liveResults: [...finalResults],
+        });
+        return;
+      }
       finalResults[index] = {
         model,
         available: false,

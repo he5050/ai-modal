@@ -19,6 +19,7 @@ import {
 } from "@/lib/promptStore";
 import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
 import { copyWithToast, toast } from "@/lib/toast";
+import DOMPurify from "dompurify";
 import type { PromptRecord } from "@/types";
 import { Tooltip } from "./Tooltip";
 import { summarizePromptContent, formatPromptTime } from "./prompts/utils";
@@ -240,7 +241,7 @@ export function PromptsPage({
                                   className="max-h-[360px] overflow-y-auto px-4 py-4 text-sm"
                                   data-testid={`prompt-preview-${item.id}`}
                                   dangerouslySetInnerHTML={{
-                                    __html: renderMarkdownToHtml(item.content),
+                                    __html: DOMPurify.sanitize(renderMarkdownToHtml(item.content)),
                                   }}
                                 />
                               </div>
