@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { listModelsByProvider, testSingleModelByProvider } from "@/api";
 import { logger } from "@/lib/devlog";
 import { toast } from "@/lib/toast";
@@ -6,19 +6,41 @@ import { friendlyError, summarizeFailedResultDetails } from "../utils";
 import type { Provider, ProviderLastResult } from "@/types";
 import type { ModelTestProtocol } from "@/lib/protocolUtils";
 
+/**
+ * 一键测试 hook — 模型列表详情页用。
+ *
+ * 流程与模型检测页一致：
+ * 1. 遍历每个 provider，先调 /v1/models 获取模型列表
+ * 2. 弹 ModelSelectionDialog，默认勾选该 provider 已保存的模型
+ * 3. 用户选协议后确认 → 逐个测试
+ * 4. 自动进入下一个 provider
+ */
 export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResult) => void) {
   const [quickTestActive, setQuickTestActive] = useState(false);
   const [quickTestProgress, setQuickTestProgress] = useState("");
-  const [quickTestCancel, setQuickTestCancel] = useState(false);
+  const cancelRef = useRef(false);
 
+  // ModelSelectionDialog 状态
   const [modelSelectionOpen, setModelSelectionOpen] = useState(false);
   const [modelSelectionLoading, setModelSelectionLoading] = useState(false);
   const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [currentTestProvider, setCurrentTestProvider] = useState<Provider | null>(null);
-  const [testQueue, setTestQueue] = useState<Provider[]>([]);
+  const queueRef = useRef<Provider[]>([]);
 
-  const startProviderTest = useCallback(async (provider: Provider) => {
+  // ─── 启动一键测试 ───────────────────────────────────────────────
+  const handleQuickTest = useCallback((providers: Provider[]) => {
+    if (quickTestActive || providers.length === 0) return;
+    cancelRef.current = false;
+    setQuickTestActive(true);
+    queueRef.current = [...providers];
+    void startProviderTest(providers[0]);
+  }, [quickTestActive]);
+
+  // ─── 获取单个 provider 的模型列表 ──────────────────────────────
+  async function startProviderTest(provider: Provider) {
+    if (cancelRef.current) { finishQuickTest(true); return; }
+
     setCurrentTestProvider(provider);
     setModelSelectionOpen(true);
     setModelSelectionLoading(true);
@@ -39,27 +61,9 @@ export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResu
       setModelSelectionError(msg);
       setModelSelectionLoading(false);
     }
-  }, []);
+  }
 
-  const processNextProvider = useCallback(async () => {
-    if (quickTestCancel) {
-      finishQuickTest(true);
-      return;
-    }
-
-    setTestQueue((prev) => {
-      const remaining = prev.slice(1);
-      if (remaining.length === 0) {
-        finishQuickTest(false);
-        return [];
-      }
-      const next = remaining[0];
-      setQuickTestProgress(`准备检测下一个：${next.name}`);
-      void startProviderTest(next);
-      return remaining;
-    });
-  }, [quickTestCancel, startProviderTest]);
-
+  // ─── 用户选完模型和协议，开始测试 ──────────────────────────────
   const handleModelSelectionConfirm = useCallback(async (
     selectedModels: string[],
     protocols: ModelTestProtocol[],
@@ -76,6 +80,8 @@ export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResu
     try {
       const results = [];
       for (const model of selectedModels) {
+        if (cancelRef.current) break;
+        setQuickTestProgress(`正在检测 ${provider.name}：${model}（${results.length + 1}/${selectedModels.length}）`);
         const result = await testSingleModelByProvider(provider.baseUrl, provider.apiKey, model, protocolsArg);
         results.push(result);
       }
@@ -93,8 +99,9 @@ export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResu
     }
 
     await processNextProvider();
-  }, [currentTestProvider, onSaveResult, processNextProvider]);
+  }, [currentTestProvider, onSaveResult]);
 
+  // ─── 手动输入模型确认 ───────────────────────────────────────────
   const handleManualModelConfirm = useCallback(async (
     models: string[],
     protocols: ModelTestProtocol[],
@@ -111,6 +118,7 @@ export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResu
     try {
       const results = [];
       for (const model of models) {
+        if (cancelRef.current) break;
         const result = await testSingleModelByProvider(provider.baseUrl, provider.apiKey, model, protocolsArg);
         results.push(result);
       }
@@ -123,36 +131,26 @@ export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResu
     }
 
     await processNextProvider();
-  }, [currentTestProvider, onSaveResult, processNextProvider]);
+  }, [currentTestProvider, onSaveResult]);
 
-  function handleQuickTest(providers: Provider[]) {
-    if (quickTestActive || providers.length === 0) return;
-    setQuickTestCancel(false);
-    setQuickTestActive(true);
-    setTestQueue([...providers]);
-    void startProviderTest(providers[0]);
-  }
+  // ─── 处理队列中下一个 provider ──────────────────────────────────
+  async function processNextProvider() {
+    if (cancelRef.current) { finishQuickTest(true); return; }
 
-  function finishQuickTest(stopped: boolean) {
-    setQuickTestActive(false);
-    setQuickTestProgress("");
-    setCurrentTestProvider(null);
-    setTestQueue([]);
-    if (stopped) {
-      toast("一键测试已停止", "warning");
-    } else {
-      toast("一键测试全部完成", "success");
+    queueRef.current = queueRef.current.slice(1);
+    const remaining = queueRef.current;
+
+    if (remaining.length === 0) {
+      finishQuickTest(false);
+      return;
     }
+
+    const next = remaining[0];
+    setQuickTestProgress(`准备检测下一个：${next.name}`);
+    await startProviderTest(next);
   }
 
-  function handleCancelQuickTest() {
-    setQuickTestCancel(true);
-    setModelSelectionOpen(false);
-    setFetchedModels([]);
-    setModelSelectionError(null);
-    finishQuickTest(true);
-  }
-
+  // ─── 重试获取模型列表 ───────────────────────────────────────────
   function handleRetryFetch() {
     if (!currentTestProvider) return;
     setModelSelectionLoading(true);
@@ -172,12 +170,34 @@ export function useQuickTest(onSaveResult: (id: string, result: ProviderLastResu
       });
   }
 
+  // ─── 跳过当前 provider / 关闭弹窗 ──────────────────────────────
   function handleSkipProvider() {
     setModelSelectionOpen(false);
     setFetchedModels([]);
     setModelSelectionError(null);
     if (quickTestActive) {
       processNextProvider();
+    }
+  }
+
+  // ─── 取消整个一键测试 ───────────────────────────────────────────
+  function handleCancelQuickTest() {
+    cancelRef.current = true;
+    setModelSelectionOpen(false);
+    setFetchedModels([]);
+    setModelSelectionError(null);
+    finishQuickTest(true);
+  }
+
+  function finishQuickTest(stopped: boolean) {
+    setQuickTestActive(false);
+    setQuickTestProgress("");
+    setCurrentTestProvider(null);
+    queueRef.current = [];
+    if (stopped) {
+      toast("一键测试已停止", "warning");
+    } else {
+      toast("一键测试全部完成", "success");
     }
   }
 

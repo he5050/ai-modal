@@ -36,11 +36,10 @@ import {
 } from "lucide-react";
 import { useQuickTest } from "./hooks/useQuickTest";
 import type { Filter } from "./types";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { useModelListSort } from "./hooks/useModelListSort";
 import { useModelImportExport } from "./hooks/useModelImportExport";
-import { ConfirmModal, DeleteDialog, SelectionCheckbox } from "../ui";
 import { ModelSelectionDialog } from "./components/ModelSelectionDialog";
+import { ConfirmModal, DeleteDialog, SelectionCheckbox } from "../ui";
 import { formatTime, maskPreviewText, maskKey } from "./utils";
 
 interface Props {
@@ -55,7 +54,6 @@ interface Props {
 
 
 // ─── 虚拟化表格组件（P1-1: 100+ provider 时避免 DOM 节点爆炸） ──────────
-const TABLE_ROW_HEIGHT = 72;
 const VIRTUALIZATION_THRESHOLD = 50;
 
 function VirtualizedTableBody({
@@ -252,7 +250,7 @@ export function ModelsPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
 
-  // ─── 一键测试（已提取为 useQuickTest hook） ──────────────────────
+  // ─── 一键测试（与模型检测页一致的弹窗流程） ──────────────────────
   const {
     quickTestActive,
     quickTestProgress,
@@ -526,7 +524,7 @@ export function ModelsPage({
         />
       )}
 
-      {/* 模型选择弹窗（一键测试核心，已提取为 useQuickTest hook） */}
+      {/* 模型选择弹窗（一键测试核心，与 DetectPage 一致） */}
       {modelSelectionOpen && (
         <ModelSelectionDialog
           models={fetchedModels}

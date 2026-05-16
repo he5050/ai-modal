@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { Provider, ProviderLastResult } from "@/types";
 import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
 import { parseProviders } from "@/lib/parsers";
-import { encryptField, decryptField } from "@/lib/secureStorage";
+import { decryptProviders } from "@/lib/decryptMigration";
 
 const PROVIDERS_KEY = "ai-modal-providers";
 const PROVIDERS_DB_KEY = "providers";
@@ -13,44 +13,29 @@ export function useProviders() {
 
   useEffect(() => {
     let active = true;
-    void loadPersistedJson<unknown[]>(PROVIDERS_DB_KEY, PROVIDERS_KEY, []).then(
-      async (raw) => {
+    void (async () => {
+      try {
+        const raw = await loadPersistedJson<unknown[]>(PROVIDERS_DB_KEY, PROVIDERS_KEY, []);
         if (!active) return;
-        // 自动迁移：解密已加密的 API Key
-        const providers = parseProviders(raw);
-        const needsMigration = providers.some((p) => p.apiKey && p.apiKey.startsWith("enc:v1:"));
-        if (needsMigration) {
-          const decrypted = await Promise.all(
-            providers.map(async (p) => ({
-              ...p,
-              apiKey: await decryptField(p.apiKey),
-            })),
-          );
-          if (active) setProviders(decrypted);
-        } else {
-          if (active) setProviders(providers);
-        }
+        // 先解密（如有加密数据），再加载进 state
+        const decrypted = await decryptProviders(raw);
+        setProviders(parseProviders(decrypted));
+      } catch {
+        // ignore
+      } finally {
         if (active) setStorageReady(true);
-      },
-    ).catch(() => {
-      if (active) setStorageReady(true);
-    });
+      }
+    })();
     return () => { active = false; };
   }, []);
 
-  // 防抖持久化：避免每次 setState 都立即写 DB，API Key 加密后存储
+  // 防抖持久化：避免每次 setState 都立即写 DB
   useEffect(() => {
     if (!storageReady) return;
     const timer = setTimeout(() => {
-      void (async () => {
-        const encrypted = await Promise.all(
-          providers.map(async (p) => ({
-            ...p,
-            apiKey: await encryptField(p.apiKey),
-          })),
-        );
-        await savePersistedJson(PROVIDERS_DB_KEY, encrypted, PROVIDERS_KEY);
-      })().catch(() => {});
+      void savePersistedJson(PROVIDERS_DB_KEY, providers, PROVIDERS_KEY).catch(
+        () => {},
+      );
     }, 300);
     return () => clearTimeout(timer);
   }, [providers, storageReady]);

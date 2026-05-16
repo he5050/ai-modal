@@ -45,6 +45,8 @@ import { getConcurrency } from "./SettingsPage";
 import { formatTime, maskKey, maskPreviewText } from "./models/utils";
 import type { RowStatus, LiveResult } from "./models/types";
 import { runModelDetection as runDetection } from "./models/detectionRunner";
+import { ModelSelectionDialog } from "./models/components/ModelSelectionDialog";
+import { useModelSelectionDialog } from "./models/hooks/useModelSelectionDialog";
 
 interface Props {
   provider: Provider | null;
@@ -80,6 +82,7 @@ export function ProviderDetailPage({
   const [retestScopeDialogOpen, setRetestScopeDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
+  const [dialogInitialModels, setDialogInitialModels] = useState<string[]>([]);
 
   useEffect(() => {
     if (pageRef.current) {
@@ -100,7 +103,23 @@ export function ProviderDetailPage({
     setQuickTestTarget(null);
     setDetailDialogResult(null);
     setDeleteConfirmOpen(false);
+    setDialogInitialModels([]);
   }, [provider?.id]);
+
+  const modelSelection = useModelSelectionDialog({
+    getBaseUrl: () => provider?.baseUrl ?? "",
+    getApiKey: () => provider?.apiKey ?? "",
+    getProviderName: () => provider?.name ?? "provider",
+    getInitialSelectedModels: () => dialogInitialModels,
+    onConfirm: (selectedModels, protocols) => {
+      if (!provider) return;
+      void runModelDetection(selectedModels, protocols.length > 0 ? protocols : undefined);
+    },
+    onManualConfirm: (models, protocols) => {
+      if (!provider) return;
+      void runModelDetection(models, protocols.length > 0 ? protocols : undefined);
+    },
+  });
 
   if (!provider) {
     return (
@@ -148,7 +167,7 @@ export function ProviderDetailPage({
     (result) => result.status === "done" && !result.available,
   ).length;
 
-  async function runModelDetection(targetModels?: string[]) {
+  async function runModelDetection(targetModels?: string[], protocols?: ModelTestProtocol[]) {
     setError(null);
     setLiveResults([]);
     setTesting(true);
@@ -163,6 +182,7 @@ export function ProviderDetailPage({
       baseUrl: currentProvider.baseUrl,
       apiKey: currentProvider.apiKey,
       targetModels,
+      protocols,
       concurrency,
       onStart: ({ models, initialResults, fromListApi }) => {
         if (fromListApi) {
@@ -232,7 +252,8 @@ export function ProviderDetailPage({
       setRetestScopeDialogOpen(true);
       return;
     }
-    void runModelDetection();
+    setDialogInitialModels([]);
+    modelSelection.openDialog();
   }
 
   function handleOpenProtocolDialog(result: LiveResult) {
@@ -666,23 +687,28 @@ export function ProviderDetailPage({
           }
           onAll={() => {
             setRetestScopeDialogOpen(false);
-            void runModelDetection();
+            setDialogInitialModels(
+              currentProvider.lastResult.results.map((r) => r.model),
+            );
+            modelSelection.openDialog();
           }}
           onAvailableOnly={() => {
-            const results = currentProvider?.lastResult?.results;
-            const models = results
-              ? results.filter((item) => item.available).map((item) => item.model)
-              : [];
             setRetestScopeDialogOpen(false);
-            void runModelDetection(models);
+            setDialogInitialModels(
+              currentProvider.lastResult.results
+                .filter((r) => r.available)
+                .map((r) => r.model),
+            );
+            modelSelection.openDialog();
           }}
           onUnavailableOnly={() => {
-            const results = currentProvider?.lastResult?.results;
-            const models = results
-              ? results.filter((item) => !item.available).map((item) => item.model)
-              : [];
             setRetestScopeDialogOpen(false);
-            void runModelDetection(models);
+            setDialogInitialModels(
+              currentProvider.lastResult.results
+                .filter((r) => !r.available)
+                .map((r) => r.model),
+            );
+            modelSelection.openDialog();
           }}
           onCancel={() => setRetestScopeDialogOpen(false)}
         />
@@ -702,6 +728,18 @@ export function ProviderDetailPage({
           model={detailDialogResult.model}
           results={detailDialogResult.protocol_results ?? []}
           onClose={() => setDetailDialogResult(null)}
+        />
+      )}
+      {modelSelection.dialogState.open && (
+        <ModelSelectionDialog
+          models={modelSelection.dialogState.fetchedModels}
+          initialSelectedModels={modelSelection.initialSelectedModels}
+          loading={modelSelection.dialogState.loading}
+          fetchError={modelSelection.dialogState.error}
+          onConfirm={modelSelection.handleConfirm}
+          onManualConfirm={modelSelection.handleManualConfirm}
+          onRetry={modelSelection.handleRetry}
+          onClose={modelSelection.closeDialog}
         />
       )}
     </div>
