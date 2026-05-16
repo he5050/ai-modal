@@ -5,8 +5,8 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_MD_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
-import { FIELD_MONO_INPUT_CLASS } from "../../../lib/formStyles";
+} from "@/lib/buttonStyles";
+import { FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 import { HintTooltip } from "../../HintTooltip";
 
 interface ConfigFileTab {

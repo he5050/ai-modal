@@ -1,4 +1,4 @@
-import type { SkillEnrichmentRecord } from "../../../types";
+import type { SkillEnrichmentRecord } from "@/types";
 
 interface EnrichmentProgressProps {
   enrichmentQueueMessage: string;

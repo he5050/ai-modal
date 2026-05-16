@@ -1,11 +1,11 @@
 import { FolderOpen, Trash2 } from "lucide-react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "../../../lib/buttonStyles";
-import { getSkillEnrichment, getSkillTags, getSkillDescription } from "../../../lib/skillEnrichment";
+import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "@/lib/buttonStyles";
+import { getSkillEnrichment, getSkillTags, getSkillDescription } from "@/lib/skillEnrichment";
 import { Tooltip } from "../../Tooltip";
 import { SkillCardTooltip } from "./SkillCardTooltip";
-import { formatUpdatedAt } from "../constants";
-import type { SkillEnrichmentRecord, SkillRecord } from "../../../types";
+import { formatUpdatedAt } from "@/constants";
+import type { SkillEnrichmentRecord, SkillRecord } from "@/types";
 
 interface SkillCardProps {
   skill: SkillRecord;

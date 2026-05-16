@@ -1,4 +1,4 @@
-import type { ModelResult, ProtocolTestResult } from "../types";
+import type { ModelResult, ProtocolTestResult } from "@/types";
 
 export type ModelTestProtocol = "openApi" | "openai-responses" | "claude" | "gemini";
 

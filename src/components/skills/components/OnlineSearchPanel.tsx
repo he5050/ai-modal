@@ -1,7 +1,7 @@
 import { Search, Loader2 } from "lucide-react";
-import { FIELD_MONO_INPUT_CLASS } from "../../../lib/formStyles";
+import { FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 import { OnlineSkillCard } from "./OnlineSkillCard";
-import type { LocalizedOnlineSkillDetail, OnlineSkill } from "../../../types";
+import type { LocalizedOnlineSkillDetail, OnlineSkill } from "@/types";
 
 interface OnlineSearchPanelProps {
   searchQuery: string;

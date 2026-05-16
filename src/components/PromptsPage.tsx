@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { logger } from "@/lib/devlog";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { Copy, Download, Eye, Plus, Search, Trash2, Upload } from "lucide-react";
@@ -8,17 +9,17 @@ import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import {
   buildPromptCategories,
   mergeImportedPrompts,
   parsePromptImportJson,
   serializePromptRecords,
   summarizePromptImport,
-} from "../lib/promptStore";
-import { renderMarkdownToHtml } from "../lib/promptMarkdown";
-import { toast } from "../lib/toast";
-import type { PromptRecord } from "../types";
+} from "@/lib/promptStore";
+import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
+import { toast } from "@/lib/toast";
+import type { PromptRecord } from "@/types";
 import { Tooltip } from "./Tooltip";
 import { summarizePromptContent, formatPromptTime } from "./prompts/utils";
 import { DeletePromptDialog } from "./prompts/DeletePromptDialog";

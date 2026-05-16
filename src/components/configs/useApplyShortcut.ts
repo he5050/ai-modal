@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { formatConfigContent } from "../../lib/configFormatter";
+import { logger } from "@/lib/devlog";
+import { formatConfigContent } from "@/lib/configFormatter";
 import {
   buildClaudeWritebackUrl,
   buildGeminiWritebackUrl,
   buildOpenAiCompatibleWritebackUrl,
   buildWritebackUrl,
   inferWritebackKindFromModel,
-} from "../../lib/providerBaseUrl";
-import { toast } from "../../lib/toast";
+} from "@/lib/providerBaseUrl";
+import { toast } from "@/lib/toast";
 import { CLAUDE_ENV_MODEL_FIELDS } from "./constants";
 import type { ClaudeEnvModelField, FileDraftState, SnowRequestMethod } from "./constants";
 import {
@@ -16,7 +17,7 @@ import {
   pickDefaultSnowBasicModel,
   upsertEnvAssignments,
 } from "./utils";
-import type { ConfigGroupFileView, ConfigGroupView } from "../../types";
+import type { ConfigGroupFileView, ConfigGroupView } from "@/types";
 
 interface AvailableModel {
   id: string;

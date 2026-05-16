@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { logger } from "@/lib/devlog";
 import { dirname } from "@tauri-apps/api/path";
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { toast } from "../../lib/toast";
+import { toast } from "@/lib/toast";
 import { normalizeText, toAbsolutePath } from "./utils";
 import type { Tool } from "./useRuleFile";
 

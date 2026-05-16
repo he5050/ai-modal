@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { testModelConfig } from "../../api";
-import { loadPersistedJson, savePersistedJson } from "../../lib/persistence";
-import { toast } from "../../lib/toast";
+import { logger } from "@/lib/devlog";
+import { testModelConfig } from "@/api";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { toast } from "@/lib/toast";
 import { MODEL_CONFIGS_DB_KEY, MODEL_CONFIGS_KEY } from "./constants";
 import type { ModelConfigRecord } from "./constants";
 import { createEmptyModelConfig } from "./utils";

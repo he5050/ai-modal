@@ -14,26 +14,26 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { inspectModelscopeMcpServer, searchModelscopeMcpServers, testMcpServer } from "../../api";
+import { inspectModelscopeMcpServer, searchModelscopeMcpServers, testMcpServer } from "@/api";
 import {
   ACTION_GROUP_BUTTON_ACTIVE_CLASS,
   ACTION_GROUP_BUTTON_BASE_CLASS,
   ACTION_GROUP_BUTTON_INACTIVE_CLASS,
   ACTION_GROUP_WRAPPER_CLASS,
-} from "../../lib/actionGroupStyles";
+} from "@/lib/actionGroupStyles";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
-import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../../lib/formStyles";
-import { loadPersistedJson, savePersistedJson } from "../../lib/persistence";
-import { renderMarkdownToHtml } from "../../lib/promptMarkdown";
-import { toast } from "../../lib/toast";
-import { logger } from "../../lib/devlog";
+} from "@/lib/buttonStyles";
+import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "@/lib/formStyles";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
+import { toast } from "@/lib/toast";
+import { logger } from "@/lib/devlog";
 import { HintTooltip } from "../HintTooltip";
-import type { ModelscopeRequestProfileInput, ModelscopeServerDetail } from "../../types";
+import type { ModelscopeRequestProfileInput, ModelscopeServerDetail } from "@/types";
 import {
   McpConfig,
   McpServerConfig,
@@ -416,7 +416,7 @@ export function McpPage({
     setMsDetailModalOpen(true);
     const fallback = msResults.find((item) => item.id === serverId);
     if (fallback) { setMsDetail(toModelscopeDetailFallback(fallback)); setMsDetailError(null); } else { setMsDetail(null); }
-    void fetchModelscopeDetail(serverId, { silent: false }).catch(() => {});
+    void fetchModelscopeDetail(serverId, { silent: false }).catch((e) => logger.warn("Detail fetch failed", e));
   }
 
   async function handleImportOnline(serverDetail: ModelscopeServerDetail) {

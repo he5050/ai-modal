@@ -4,8 +4,8 @@ import {
   BUTTON_ICON_GHOST_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
-import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "../../../lib/formStyles";
+} from "@/lib/buttonStyles";
+import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 
 interface McpServerEditorProps {
   open: boolean;

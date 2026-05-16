@@ -1,9 +1,9 @@
 import { useRef } from "react";
 import { Zap } from "lucide-react";
 import { animate, spring } from "animejs";
-import type { AppPage } from "../types";
+import type { AppPage } from "@/types";
 import { Tooltip } from "./Tooltip";
-import { APP_NAV_ITEMS } from "../lib/appNavigation";
+import { APP_NAV_ITEMS } from "@/lib/appNavigation";
 
 interface Props {
   page: AppPage;

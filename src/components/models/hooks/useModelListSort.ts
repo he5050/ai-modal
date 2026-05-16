@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
-import { savePersistedJson } from "../../../lib/persistence";
-import { SORT_KEY_DB_KEY, SORT_DIR_DB_KEY } from "../constants";
-import type { Filter, SortKey, SortDir } from "../types";
+import { savePersistedJson } from "@/lib/persistence";
+import { SORT_KEY_DB_KEY, SORT_DIR_DB_KEY } from "@/constants";
+import type { Filter, SortKey, SortDir } from "@/types";
 
 export function useModelListSort() {
   const [filter, setFilter] = useState<Filter>("all");

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
-import type { Provider } from "../../../types";
-import { listModels } from "../../../api";
-import { logger } from "../../../lib/devlog";
+import type { Provider } from "@/types";
+import { listModels } from "@/api";
+import { logger } from "@/lib/devlog";
 import { friendlyError } from "../utils";
 
 interface UseModelSelectionDialogOptions {

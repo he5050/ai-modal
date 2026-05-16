@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
-import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
-import type { LogEntry } from "../lib/devlog"
+import { BUTTON_GHOST_CLASS } from "@/lib/buttonStyles"
+import type { LogEntry } from "@/lib/devlog"
 
 const LEVEL_STYLE: Record<LogEntry["level"], string> = {
   debug:   "text-gray-500",

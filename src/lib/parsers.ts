@@ -1,4 +1,4 @@
-import type { ConfigPath, PromptRecord, Provider, RulePath } from "../types";
+import type { ConfigPath, PromptRecord, Provider, RulePath } from "@/types";
 import { parsePromptCategories } from "./promptStore";
 
 export function parseProviders(raw: unknown): Provider[] {

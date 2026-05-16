@@ -20,8 +20,8 @@ import type {
   ModelscopeSearchResponse,
   ModelscopeServerDetail,
   ModelscopeServerItem,
-} from "../../types";
-import { logger } from "../../lib/devlog";
+} from "@/types";
+import { logger } from "@/lib/devlog";
 
 export const MCP_SYNC_TARGETS_KEY = "ai-modal-mcp-sync-targets";
 export const MCP_SYNC_TARGETS_DB_KEY = "mcp_sync_targets";

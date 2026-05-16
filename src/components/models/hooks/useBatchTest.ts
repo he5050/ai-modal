@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback } from "react";
-import type { Provider } from "../../../types";
-import { listModelsByProvider, testModelsByProvider } from "../../../api";
-import { logger } from "../../../lib/devlog";
-import { toast } from "../../../lib/toast";
+import type { Provider } from "@/types";
+import { listModelsByProvider, testModelsByProvider } from "@/api";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import { summarizeFailedResultDetails } from "../utils";
 
 export function useBatchTest(

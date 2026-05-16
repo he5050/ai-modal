@@ -1,4 +1,4 @@
-import type { ModelResult, Provider } from "../../types";
+import type { ModelResult, Provider } from "@/types";
 import type { ImportSummary } from "./types";
 
 // ─── Formatting ──────────────────────────────────────────────────

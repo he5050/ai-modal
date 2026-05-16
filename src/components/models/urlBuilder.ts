@@ -1,7 +1,7 @@
-import type { Provider } from "../../types";
+import type { Provider } from "@/types";
 import type { QuickTestProtocol } from "./types";
 import { QUICK_TEST_PROMPT } from "./constants";
-import { normalizeBaseUrl, stripTrailingSuffixes } from "../../lib/providerBaseUrl";
+import { normalizeBaseUrl, stripTrailingSuffixes } from "@/lib/providerBaseUrl";
 
 // ─── OpenAI URL builders ─────────────────────────────────────────
 

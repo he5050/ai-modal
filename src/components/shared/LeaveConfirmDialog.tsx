@@ -4,7 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_SM_CLASS,
-} from "../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 
 export function LeaveConfirmDialog({
   onConfirm,

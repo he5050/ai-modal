@@ -14,7 +14,7 @@ import type {
   SkillsCatalogSnapshot,
   SkillsCommandResult,
   SystemLlmSnapshot,
-} from "../../types";
+} from "@/types";
 
 const {
   mockHomeDir,

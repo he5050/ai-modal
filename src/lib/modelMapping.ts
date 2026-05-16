@@ -5,7 +5,7 @@ import type {
   ModelMappingProvider,
   ModelResult,
   Provider,
-} from "../types";
+} from "@/types";
 import { normalizeSupportedProtocolTag } from "./protocolUtils";
 
 function createMappingEntryId() {

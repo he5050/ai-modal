@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import type { Provider, ProviderLastResult } from "../types";
-import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { parseProviders } from "../lib/parsers";
+import type { Provider, ProviderLastResult } from "@/types";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { parseProviders } from "@/lib/parsers";
 
 const PROVIDERS_KEY = "ai-modal-providers";
 const PROVIDERS_DB_KEY = "providers";

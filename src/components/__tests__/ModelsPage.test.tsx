@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelsPage } from "../ModelsPage";
-import type { Provider } from "../../types";
+import type { Provider } from "@/types";
 
 const {
   mockSaveDialog,

@@ -1,8 +1,8 @@
 import { RefreshCcw, WandSparkles, X } from "lucide-react";
-import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "../../../lib/buttonStyles";
+import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "@/lib/buttonStyles";
 import { EnrichmentProgress } from "./EnrichmentProgress";
-import type { SkillAnnotationMode, SkillEnrichmentRecord } from "../../../types";
-import type { LlmProfile } from "../hooks/useLlmProfile";
+import type { SkillAnnotationMode, SkillEnrichmentRecord } from "@/types";
+import type { LlmProfile } from "@/hooks/useLlmProfile";
 
 interface EnrichmentModalProps {
   onClose: () => void;

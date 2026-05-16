@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { HintTooltip } from "../../HintTooltip";
-import type { SkillsCommandResult } from "../../../types";
+import type { SkillsCommandResult } from "@/types";
 
 interface CommandLogProps {
   commandResult: SkillsCommandResult | null;

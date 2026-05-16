@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react"
 import { Copy, Check } from "lucide-react"
 import { animate, spring } from "animejs"
-import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
-import { toast } from "../lib/toast"
+import { BUTTON_GHOST_CLASS } from "@/lib/buttonStyles"
+import { toast } from "@/lib/toast"
 import { Tooltip } from "./Tooltip"
 
 export function CopyButton({ text, message = "已复制到剪贴板" }: { text: string; message?: string }) {

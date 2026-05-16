@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import type { RulePath } from "../types";
-import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { parseRulePaths } from "../lib/parsers";
+import type { RulePath } from "@/types";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { parseRulePaths } from "@/lib/parsers";
 
 const RULE_PATHS_KEY = "ai-modal-rule-paths";
 const RULE_PATHS_DB_KEY = "rule_paths";

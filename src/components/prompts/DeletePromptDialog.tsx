@@ -3,8 +3,8 @@ import {
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
-import type { PromptRecord } from "../../types";
+} from "@/lib/buttonStyles";
+import type { PromptRecord } from "@/types";
 
 interface DeletePromptDialogProps {
   prompt: PromptRecord;

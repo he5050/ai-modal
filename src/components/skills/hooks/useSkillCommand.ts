@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { runSkillsCommand, scanLocalSkills } from "../../../api";
-import { logger } from "../../../lib/devlog";
-import { toast } from "../../../lib/toast";
+import { runSkillsCommand, scanLocalSkills } from "@/api";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import {
   describeSkillsCommand,
   extractNpmConfigWarnings,
   getSkillsCommandActionLabel,
   summarizeCommandFailure,
-} from "../constants";
+} from "@/constants";
 import type {
   SkillSourceMeta,
   SkillSourceType,
@@ -17,7 +17,7 @@ import type {
   SkillsCommandProgressEvent,
   SkillsCommandRequest,
   SkillsCommandResult,
-} from "../../../types";
+} from "@/types";
 
 interface UseSkillCommandOptions {
   catalog: SkillsCatalogSnapshot | null;

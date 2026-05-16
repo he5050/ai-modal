@@ -1,4 +1,4 @@
-import type { ConfigFormat } from "../types";
+import type { ConfigFormat } from "@/types";
 
 const SUPPORTED_CONFIG_FORMATS: ConfigFormat[] = [
   "json",

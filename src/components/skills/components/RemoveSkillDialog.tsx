@@ -1,5 +1,5 @@
 import { X, Trash2 } from "lucide-react";
-import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "../../../lib/buttonStyles";
+import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "@/lib/buttonStyles";
 
 interface RemoveSkillDialogProps {
   pendingRemoveSkill: string;

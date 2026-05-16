@@ -31,7 +31,7 @@ import {
 	startModelMappingGateway,
 	stopModelMappingGateway,
 	testModelMappingProvider,
-} from "../api"
+} from "@/api"
 import {
 	BUTTON_ICON_DANGER_SM_CLASS,
 	BUTTON_GHOST_CLASS,
@@ -39,15 +39,15 @@ import {
 	BUTTON_PRIMARY_CLASS,
 	BUTTON_SECONDARY_CLASS,
 	BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles"
+} from "@/lib/buttonStyles"
 import {
 	ACTION_GROUP_BUTTON_ACTIVE_CLASS,
 	ACTION_GROUP_BUTTON_BASE_CLASS,
 	ACTION_GROUP_BUTTON_INACTIVE_CLASS,
 	ACTION_GROUP_WRAPPER_CLASS,
-} from "../lib/actionGroupStyles"
-import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles"
-import { cn } from "../lib/cn";
+} from "@/lib/actionGroupStyles"
+import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "@/lib/formStyles"
+import { cn } from "@/lib/cn";
 import {
 	DEFAULT_CLAUDE_SLOTS,
 	MODEL_MAPPING_TARGET_PROTOCOLS,
@@ -60,10 +60,10 @@ import {
 	normalizeModelMappingConfig,
 	providerToMappingProvider,
 	toMappingEntry,
-} from "../lib/modelMapping"
-import { getModelProtocolBadgeClass, getModelProtocolLabel } from "../lib/protocolUtils"
-import { toast } from "../lib/toast"
-import { logger } from "../lib/devlog"
+} from "@/lib/modelMapping"
+import { getModelProtocolBadgeClass, getModelProtocolLabel } from "@/lib/protocolUtils"
+import { toast } from "@/lib/toast"
+import { logger } from "@/lib/devlog"
 import type {
 	ModelMappingConfig,
 	ModelMappingLogEntry,
@@ -71,7 +71,7 @@ import type {
 	ModelMappingStatus,
 	ModelMappingTestResult,
 	Provider,
-} from "../types"
+} from "@/types"
 import { CopyButton } from "./CopyButton"
 import { HintTooltip } from "./HintTooltip"
 import { Card, EmptyState, StatusBadge } from "./ui"

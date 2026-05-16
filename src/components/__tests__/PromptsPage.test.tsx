@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PromptsPage } from "../PromptsPage";
-import type { PromptRecord } from "../../types";
+import type { PromptRecord } from "@/types";
 
 const { mockSaveDialog, mockWriteTextFile } = vi.hoisted(() => ({
   mockSaveDialog: vi.fn(),

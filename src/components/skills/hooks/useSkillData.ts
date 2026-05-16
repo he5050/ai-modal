@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
+import { logger } from "@/lib/devlog";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import {
   inspectSkillTargets,
   scanLocalSkills,
   syncSkillTargets,
-} from "../../../api";
-import { loadPersistedJson, savePersistedJson } from "../../../lib/persistence";
-import { toast } from "../../../lib/toast";
-import { buildInstalledSkillSnapshots } from "../../../lib/skillEnrichment";
+} from "@/api";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { toast } from "@/lib/toast";
+import { buildInstalledSkillSnapshots } from "@/lib/skillEnrichment";
 import {
   SKILL_TARGETS_KEY,
   SKILL_TARGETS_DB_KEY,
@@ -29,7 +30,7 @@ import {
   mergeCatalogWithSources,
   parseStoredTargets,
   toAbsolutePath,
-} from "../constants";
+} from "@/constants";
 import type {
   InstalledSkillSnapshot,
   LocalizedOnlineSkillDetail,
@@ -38,7 +39,7 @@ import type {
   SkillTargetConfig,
   SkillTargetStatus,
   SkillsCatalogSnapshot,
-} from "../../../types";
+} from "@/types";
 
 export function useSkillData() {
   const [homePath, setHomePath] = useState("");

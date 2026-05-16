@@ -1,4 +1,4 @@
-import type { ModelResult } from "../../types";
+import type { ModelResult } from "@/types";
 
 export type ImportSummary = {
   valid: import("../../types").Provider[];
@@ -12,7 +12,7 @@ export type SortKey = "name" | "time" | "available" | null;
 export type SortDir = "asc" | "desc";
 
 export type QuickTestProtocol = "chat" | "responses" | "claude" | "gemini";
-export type { ModelTestProtocol } from "../../lib/protocolUtils";
+export type { ModelTestProtocol } from "@/lib/protocolUtils";
 
 export type RowStatus = "pending" | "done";
 

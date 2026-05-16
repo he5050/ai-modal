@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { Provider } from "../../../types";
+import type { Provider } from "@/types";
 
 export function useDetectForm(
   providers: Provider[],

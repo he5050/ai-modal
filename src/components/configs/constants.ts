@@ -1,4 +1,4 @@
-import type { ModelResult } from "../../types";
+import type { ModelResult } from "@/types";
 
 export interface ModelConfigRecord {
   id: string;

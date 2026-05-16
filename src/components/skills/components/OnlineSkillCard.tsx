@@ -1,8 +1,8 @@
 import { Check, Copy, Loader2, Upload } from "lucide-react";
 import { Tooltip } from "../../Tooltip";
 import { OnlineSkillTooltip } from "./OnlineSkillTooltip";
-import { formatInstalls } from "../constants";
-import type { LocalizedOnlineSkillDetail, OnlineSkill } from "../../../types";
+import { formatInstalls } from "@/constants";
+import type { LocalizedOnlineSkillDetail, OnlineSkill } from "@/types";
 
 interface OnlineSkillCardProps {
   skill: OnlineSkill;

@@ -6,9 +6,9 @@ import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_SM_CLASS,
-} from "../../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import { configEditorTheme, getConfigLanguageExtensions } from "../editorSetup";
-import type { ConfigFormat } from "../../../types";
+import type { ConfigFormat } from "@/types";
 
 interface ConfigEditorPanelProps {
   value: string;

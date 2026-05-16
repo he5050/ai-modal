@@ -1,12 +1,13 @@
 import CodeMirror from "@uiw/react-codemirror";
+import { logger } from "@/lib/devlog";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Copy, Save, WandSparkles } from "lucide-react";
 import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_SM_CLASS,
-} from "../../lib/buttonStyles";
-import { toast } from "../../lib/toast";
+} from "@/lib/buttonStyles";
+import { toast } from "@/lib/toast";
 import { editorExtensions } from "./editorSetup";
 
 interface RuleEditorProps {

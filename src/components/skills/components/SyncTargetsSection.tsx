@@ -14,11 +14,11 @@ import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
-import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "../../../lib/formStyles";
+} from "@/lib/buttonStyles";
+import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 import { HintTooltip } from "../../HintTooltip";
-import { BUILTIN_TARGETS } from "../constants";
-import type { SkillRecord, SkillTargetConfig, SkillTargetStatus } from "../../../types";
+import { BUILTIN_TARGETS } from "@/constants";
+import type { SkillRecord, SkillTargetConfig, SkillTargetStatus } from "@/types";
 
 interface SyncTargetsSectionProps {
   targets: SkillTargetConfig[];

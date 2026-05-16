@@ -1,4 +1,4 @@
-import type { LlmRequestKind } from "../../types";
+import type { LlmRequestKind } from "@/types";
 
 export type InstallMode = "search" | "github" | "local" | "update" | "remove";
 export type SkillsTab = "list" | "sync" | "install";

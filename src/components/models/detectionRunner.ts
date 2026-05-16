@@ -1,5 +1,5 @@
-import { listModelsByProvider, testSingleModelByProvider } from "../../api";
-import type { ModelResult } from "../../types";
+import { listModelsByProvider, testSingleModelByProvider } from "@/api";
+import type { ModelResult } from "@/types";
 import type { LiveResult } from "./types";
 
 export interface DetectionRunnerStartPayload {

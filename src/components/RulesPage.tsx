@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { logger } from "@/lib/devlog";
 import {
   ExternalLink,
   FilePenLine,
@@ -17,13 +18,13 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_MD_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import {
   FIELD_INPUT_CLASS,
   FIELD_MONO_INPUT_CLASS,
   FIELD_SELECT_CLASS,
-} from "../lib/formStyles";
-import { toast } from "../lib/toast";
+} from "@/lib/formStyles";
+import { toast } from "@/lib/toast";
 import { HintTooltip } from "./HintTooltip";
 import { ConfirmModal } from "./ui";
 import { RuleEditor } from "./rules/RuleEditor";
@@ -31,7 +32,7 @@ import { useRuleFile } from "./rules/useRuleFile";
 import { useRuleWatch } from "./rules/useRuleWatch";
 import { useSync } from "./rules/useSync";
 import { normalizeText, toAbsolutePath, toDisplayPath } from "./rules/utils";
-import type { RulePath } from "../types";
+import type { RulePath } from "@/types";
 
 interface Props {
   storedPaths: RulePath[];

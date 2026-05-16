@@ -1,26 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
+import { logger } from "@/lib/devlog";
 import { Plus } from "lucide-react";
 import {
   buildConfigGroups,
   inferConfigFormatFromPath,
   normalizeGroupRelativePath,
   resolveGroupAbsolutePath,
-} from "../lib/configGroups";
+} from "@/lib/configGroups";
 import {
   formatConfigContent,
   getSupportedConfigFormatsLabel,
   isSupportedConfigFormat,
-} from "../lib/configFormatter";
-import { toast } from "../lib/toast";
+} from "@/lib/configFormatter";
+import { toast } from "@/lib/toast";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_MD_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
-import { FIELD_SELECT_CLASS, FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
-import type { ConfigGroupId, ConfigPath, Provider } from "../types";
+} from "@/lib/buttonStyles";
+import { FIELD_SELECT_CLASS, FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
+import type { ConfigGroupId, ConfigPath, Provider } from "@/types";
 import { HintTooltip } from "./HintTooltip";
 
 import { SNOW_REQUEST_METHOD_OPTIONS } from "./configs/constants";

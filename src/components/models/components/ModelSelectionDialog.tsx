@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Check, ChevronsUpDown, Loader2, Search, X } from "lucide-react";
-import { BUTTON_PRIMARY_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "../../../lib/buttonStyles";
-import { FIELD_INPUT_CLASS } from "../../../lib/formStyles";
-import type { ModelTestProtocol } from "../../../lib/protocolUtils";
-import { MODEL_TEST_PROTOCOLS } from "../../../lib/protocolUtils";
+import { BUTTON_PRIMARY_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "@/lib/buttonStyles";
+import { FIELD_INPUT_CLASS } from "@/lib/formStyles";
+import type { ModelTestProtocol } from "@/lib/protocolUtils";
+import { MODEL_TEST_PROTOCOLS } from "@/lib/protocolUtils";
 import { getSelectionCheckboxClassName } from "../../ui";
 
 /** 协议按钮的标签和颜色 */

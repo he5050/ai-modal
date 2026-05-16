@@ -1,5 +1,5 @@
-import { cn } from "../../lib/cn";
-import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "../../lib/formStyles";
+import { cn } from "@/lib/cn";
+import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;

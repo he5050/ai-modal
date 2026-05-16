@@ -4,7 +4,7 @@ import type {
   ConfigGroupId,
   ConfigGroupView,
   ConfigPath,
-} from "../types";
+} from "@/types";
 
 interface BuiltinConfigGroupDefinition {
   id: ConfigGroupId;

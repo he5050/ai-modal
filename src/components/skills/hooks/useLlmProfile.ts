@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { loadPersistedJson } from "../../../lib/persistence";
+import { logger } from "@/lib/devlog";
+import { loadPersistedJson } from "@/lib/persistence";
 import {
   MODEL_CONFIG_DB_KEY,
   MODEL_CONFIG_KEY,
-} from "../constants";
-import type { PersistedModelConfig } from "../types";
+} from "@/constants";
+import type { PersistedModelConfig } from "@/types";
 
 export type LlmProfile = {
   toolId: string;

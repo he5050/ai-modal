@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { Copy, TerminalSquare, X } from "lucide-react";
-import type { Provider } from "../../../types";
+import type { Provider } from "@/types";
 import { HintTooltip } from "../../HintTooltip";
-import { toast } from "../../../lib/toast";
-import { BUTTON_SECONDARY_CLASS, BUTTON_ICON_MD_CLASS } from "../../../lib/buttonStyles";
-import type { QuickTestProtocol } from "../types";
+import { toast } from "@/lib/toast";
+import { BUTTON_SECONDARY_CLASS, BUTTON_ICON_MD_CLASS } from "@/lib/buttonStyles";
+import type { QuickTestProtocol } from "@/types";
 import {
   getQuickTestProtocolLabel,
   getQuickTestProtocolBadgeClass,

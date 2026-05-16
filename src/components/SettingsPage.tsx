@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
+import { logger } from "@/lib/devlog";
 import {
   BUTTON_ICON_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_MD_CLASS,
-} from "../lib/buttonStyles"
-import { FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
+} from "@/lib/buttonStyles"
+import { FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 import { Input } from "./ui/Input";
-import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { loadModelMappingSettings, saveModelMappingSettings } from "../api";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { loadModelMappingSettings, saveModelMappingSettings } from "@/api";
 import { HintTooltip } from "./HintTooltip";
 import { ModelConfigSection } from "./ModelConfigSection";
-import { toast } from "../lib/toast";
+import { toast } from "@/lib/toast";
 import { Loader2 } from "lucide-react";
-import type { Provider } from "../types";
+import type { Provider } from "@/types";
 
 export const DEBUG_KEY = "ai-modal-debug";
 export const DEBUG_DB_KEY = "debug_enabled";
@@ -76,7 +77,7 @@ export function SettingsPage({
         setModelscopeKey(key ?? "");
         setModelscopeKeySaved(!!(key && key.trim()));
       })
-      .catch(() => {});
+      .catch((e) => logger.error("Failed to clear model configs", e));
     return () => { active = false; };
   }, []);
 

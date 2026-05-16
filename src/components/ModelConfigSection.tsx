@@ -11,20 +11,20 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { testModelConfig } from "../api";
+import { testModelConfig } from "@/api";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_MD_CLASS,
-} from "../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import {
   buildWritebackUrl,
   inferWritebackKindFromModel,
-} from "../lib/providerBaseUrl";
-import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
-import { logger } from "../lib/devlog";
-import { toast } from "../lib/toast";
+} from "@/lib/providerBaseUrl";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "@/lib/formStyles";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import { Input } from "./ui/Input";
 import {
   getModelProtocolBadgeClass,
@@ -35,7 +35,7 @@ import type {
   ModelResult,
   ProtocolTestResult,
   Provider,
-} from "../types";
+} from "@/types";
 
 const MODEL_CONFIG_KEY = "ai-modal-model-config";
 const MODEL_CONFIG_DB_KEY = "model_config";

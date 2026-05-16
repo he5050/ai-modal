@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
@@ -7,7 +7,7 @@ import {
   BUTTON_DANGER_CLASS,
   BUTTON_SIZE_SM_CLASS,
   BUTTON_SIZE_MD_CLASS,
-} from "../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "danger" | "ghost";

@@ -1,4 +1,4 @@
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 
 export interface EmptyStateProps {
   icon?: React.ReactNode;

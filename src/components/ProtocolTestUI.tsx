@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Check, ChevronDown, ChevronRight, Save, X } from "lucide-react";
-import type { ModelResult, ProtocolTestResult } from "../types";
+import type { ModelResult, ProtocolTestResult } from "@/types";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_ICON_MD_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import { Card } from "./ui";
 import {
   normalizeSupportedProtocolTag,
@@ -19,7 +19,7 @@ import {
   getProtocolSupportState,
   MODEL_TEST_PROTOCOLS,
   type ModelTestProtocol,
-} from "../lib/protocolUtils";
+} from "@/lib/protocolUtils";
 
 export type { ModelTestProtocol };
 export {

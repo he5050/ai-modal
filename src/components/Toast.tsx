@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react"
-import { listenToast } from "../lib/toast"
-import type { ToastItem } from "../lib/toast"
+import { listenToast } from "@/lib/toast"
+import type { ToastItem } from "@/lib/toast"
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react"
 import { animate, spring } from "animejs"
-import { BUTTON_GHOST_CLASS } from "../lib/buttonStyles"
+import { BUTTON_GHOST_CLASS } from "@/lib/buttonStyles"
 
 const ICONS = {
   success: <CheckCircle className="h-4 w-4 text-emerald-400" />,

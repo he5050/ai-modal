@@ -2,7 +2,7 @@ import type {
   InstalledSkillSnapshot,
   SkillEnrichmentRecord,
   SkillRecord,
-} from "../types";
+} from "@/types";
 
 export function getSkillEnrichment(
   skill: SkillRecord,

@@ -3,7 +3,7 @@ import type {
   PromptImportParseResult,
   PromptImportSummary,
   PromptRecord,
-} from "../types";
+} from "@/types";
 
 export const PROMPTS_KEY = "ai-modal-prompts";
 export const PROMPTS_DB_KEY = "prompts";

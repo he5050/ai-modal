@@ -1,18 +1,18 @@
 import { useState, useCallback } from "react";
-import { testSingleModelByProvider } from "../../../api";
-import type { ModelResult } from "../../../types";
-import { logger } from "../../../lib/devlog";
-import { toast } from "../../../lib/toast";
+import { testSingleModelByProvider } from "@/api";
+import type { ModelResult } from "@/types";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import { getConcurrency } from "../../SettingsPage";
-import type { LiveResult, ModelTestProtocol, Phase } from "../types";
-import { MODEL_TEST_PROTOCOLS } from "../constants";
+import type { LiveResult, ModelTestProtocol, Phase } from "@/types";
+import { MODEL_TEST_PROTOCOLS } from "@/constants";
 import { runModelDetection as runDetection } from "../detectionRunner";
 import {
   buildTestSignature,
   mergeSingleResult,
   friendlyError,
 } from "../utils";
-import { normalizeSupportedProtocolTag } from "../../../lib/protocolUtils";
+import { normalizeSupportedProtocolTag } from "@/lib/protocolUtils";
 import { formatProtocolSupportSummary } from "../../ProtocolTestUI";
 
 export function useModelDetection() {

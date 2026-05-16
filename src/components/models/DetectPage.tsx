@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import type { Provider, ProviderLastResult } from "../../types";
-import { HintTooltip } from "../HintTooltip";
-import { logger } from "../../lib/devlog";
-import { toast } from "../../lib/toast";
-import type { ModelTestProtocol } from "../../lib/protocolUtils";
-import { buildTestSignature } from "./utils";
-import { DeleteDialog } from "../ui";
+import type { Provider, ProviderLastResult } from "@/types";
+import { HintTooltip } from "@/components/HintTooltip";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
+import type { ModelTestProtocol } from "@/lib/protocolUtils";
+import { buildTestSignature, getResultDetails } from "./utils";
+import { DeleteDialog } from "@/components/ui";
 import { ModelSelectionDialog } from "./components/ModelSelectionDialog";
 import {
   ModelProtocolDialog,
@@ -135,7 +135,7 @@ export function DetectPage({
     const rows = visibleResults
       .map(
         (r) =>
-          `| ${r.model} | ${r.available ? "✅ 可用" : "❌ 不可用"} | ${r.latency_ms != null ? r.latency_ms + " ms" : "—"} | ${require("./utils").getResultDetails(r).replace(/\n/g, " ")} |`,
+          `| ${r.model} | ${r.available ? "✅ 可用" : "❌ 不可用"} | ${r.latency_ms != null ? r.latency_ms + " ms" : "—"} | ${getResultDetails(r).replace(/\n/g, " ")} |`,
       )
       .join("\n");
     navigator.clipboard.writeText(header + rows);

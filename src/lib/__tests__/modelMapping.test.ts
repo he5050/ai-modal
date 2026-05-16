@@ -6,7 +6,7 @@ import {
   normalizeModelMappingConfig,
   providerToMappingProvider,
 } from "../modelMapping";
-import type { Provider } from "../../types";
+import type { Provider } from "@/types";
 
 describe("modelMapping", () => {
   it("imports only available tested models from existing providers", () => {

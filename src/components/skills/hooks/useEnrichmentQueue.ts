@@ -4,10 +4,10 @@ import {
   getSkillEnrichmentJobStatus,
   startSkillEnrichmentJob,
   stopSkillEnrichmentJob,
-} from "../../../api";
-import { logger } from "../../../lib/devlog";
-import { toast } from "../../../lib/toast";
-import { buildInstalledSkillSnapshot } from "../../../lib/skillEnrichment";
+} from "@/api";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
+import { buildInstalledSkillSnapshot } from "@/lib/skillEnrichment";
 import type { LlmProfile } from "./useLlmProfile";
 import type {
   SkillAnnotationMode,
@@ -15,7 +15,7 @@ import type {
   SkillEnrichmentJobSnapshot,
   SkillRecord,
   SkillsCatalogSnapshot,
-} from "../../../types";
+} from "@/types";
 
 export function useEnrichmentQueue(options: {
   selectedLlmProfile: LlmProfile | null;

@@ -4,7 +4,7 @@ import { json } from "@codemirror/lang-json";
 import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
 import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
-import type { ConfigFormat } from "../../types";
+import type { ConfigFormat } from "@/types";
 
 export const configEditorTheme = EditorView.theme(
   {

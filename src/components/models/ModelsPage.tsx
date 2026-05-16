@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { openExternalUrl } from "../../lib/openExternalUrl";
+import { openExternalUrl } from "@/lib/openExternalUrl";
 import { CopyButton } from "../CopyButton";
 import { HintTooltip } from "../HintTooltip";
 import { Tooltip } from "../Tooltip";
@@ -11,15 +11,15 @@ import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import {
   ACTION_GROUP_BUTTON_ACTIVE_CLASS,
   ACTION_GROUP_BUTTON_BASE_CLASS,
   ACTION_GROUP_BUTTON_INACTIVE_CLASS,
   ACTION_GROUP_WRAPPER_CLASS,
-} from "../../lib/actionGroupStyles";
-import type { Provider, ProviderLastResult } from "../../types";
-import type { ModelTestProtocol } from "../../lib/protocolUtils";
+} from "@/lib/actionGroupStyles";
+import type { Provider, ProviderLastResult } from "@/types";
+import type { ModelTestProtocol } from "@/lib/protocolUtils";
 import {
   ArrowRight,
   ChevronDown,
@@ -35,9 +35,9 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { listModelsByProvider, testSingleModelByProvider } from "../../api";
-import { logger } from "../../lib/devlog";
-import { toast } from "../../lib/toast";
+import { listModelsByProvider, testSingleModelByProvider } from "@/api";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import { friendlyError, summarizeFailedResultDetails } from "./utils";
 import type { Filter } from "./types";
 import { useModelListSort } from "./hooks/useModelListSort";

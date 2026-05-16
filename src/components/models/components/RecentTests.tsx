@@ -4,12 +4,12 @@ import {
   BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import { Trash2, ArrowRight } from "lucide-react";
-import type { Provider } from "../../../types";
-import { RECENT_PAGE_SIZE } from "../constants";
+import type { Provider } from "@/types";
+import { RECENT_PAGE_SIZE } from "@/constants";
 import { maskPreviewText } from "../utils";
-import type { DetectFormState } from "../hooks/useDetectForm";
+import type { DetectFormState } from "@/hooks/useDetectForm";
 
 interface RecentTestsProps {
   providers: Provider[];

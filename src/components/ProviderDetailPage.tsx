@@ -9,8 +9,8 @@ import {
   X,
 } from "lucide-react";
 import { animate, spring } from "animejs";
-import { testSingleModelByProvider } from "../api";
-import type { ModelResult, Provider, ProviderLastResult } from "../types";
+import { testSingleModelByProvider } from "@/api";
+import type { ModelResult, Provider, ProviderLastResult } from "@/types";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
 import { Tooltip } from "./Tooltip";
@@ -37,10 +37,10 @@ import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
-import { openExternalUrl } from "../lib/openExternalUrl";
-import { toast } from "../lib/toast";
-import { logger } from "../lib/devlog";
+} from "@/lib/buttonStyles";
+import { openExternalUrl } from "@/lib/openExternalUrl";
+import { toast } from "@/lib/toast";
+import { logger } from "@/lib/devlog";
 import { getConcurrency } from "./SettingsPage";
 import { formatTime, maskKey, maskPreviewText } from "./models/utils";
 import type { RowStatus, LiveResult } from "./models/types";

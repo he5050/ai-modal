@@ -1,26 +1,26 @@
 import { useState, useEffect, useRef } from "react";
 import { ScanSearch, TerminalSquare } from "lucide-react";
 import { animate, spring } from "animejs";
-import { testSingleModelByProvider } from "../../../api";
-import type { ModelResult, Provider, ProviderLastResult } from "../../../types";
+import { testSingleModelByProvider } from "@/api";
+import type { ModelResult, Provider, ProviderLastResult } from "@/types";
 import { CopyButton } from "../../CopyButton";
 import { Tooltip } from "../../Tooltip";
-import { logger } from "../../../lib/devlog";
-import { toast } from "../../../lib/toast";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import { getConcurrency } from "../../SettingsPage";
-import type { RowStatus, ModelTestProtocol } from "../types";
-import { MODEL_TEST_PROTOCOLS } from "../constants";
+import type { RowStatus, ModelTestProtocol } from "@/types";
+import { MODEL_TEST_PROTOCOLS } from "@/constants";
 import {
   getResultDetails,
   summarizeFailedResultDetails,
   formatTime,
 } from "../utils";
-import { normalizeSupportedProtocolTag } from "../../../lib/protocolUtils";
+import { normalizeSupportedProtocolTag } from "@/lib/protocolUtils";
 import { runModelDetection as runDetection } from "../detectionRunner";
 
 interface LiveResult extends ModelResult {
@@ -400,7 +400,7 @@ export function DetailRow({
 
 import { SelectionCheckbox } from "../../ui";
 import { X } from "lucide-react";
-import { getModelProtocolLabel } from "../../../lib/protocolUtils";
+import { getModelProtocolLabel } from "@/lib/protocolUtils";
 
 function ProtocolDialog({
   model,

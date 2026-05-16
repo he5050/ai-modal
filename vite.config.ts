@@ -1,14 +1,26 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   clearScreen: false,
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',
     css: false,
+    alias: [
+      {
+        find: /^@\/(.*)/,
+        replacement: path.resolve(__dirname, './src/$1'),
+      },
+    ],
   },
   server: {
     port: 1420,

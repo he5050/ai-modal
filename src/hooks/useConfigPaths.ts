@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import type { ConfigPath } from "../types";
-import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { parseConfigPaths } from "../lib/parsers";
+import type { ConfigPath } from "@/types";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { parseConfigPaths } from "@/lib/parsers";
 
 const CONFIG_PATHS_KEY = "ai-modal-config-paths";
 const CONFIG_PATHS_DB_KEY = "config_paths";

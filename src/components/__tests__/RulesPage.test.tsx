@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RulesPage } from "../RulesPage";
-import type { RulePath } from "../../types";
+import type { RulePath } from "@/types";
 
 const watchCallbacks: Array<(event: unknown) => void | Promise<void>> = [];
 

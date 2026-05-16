@@ -5,7 +5,7 @@ import type {
   ModelscopeSearchResponse,
   ModelscopeServerItem,
   ModelscopeServerDetail,
-} from "../../types";
+} from "@/types";
 
 export type McpServerConfig = {
   type?: "stdio" | "http" | string;

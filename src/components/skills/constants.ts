@@ -6,7 +6,7 @@ import type {
   SkillsCommandAction,
   SkillsCommandRequest,
   SkillsCommandResult,
-} from "../../types";
+} from "@/types";
 import type { BuiltinSkillTarget } from "./types";
 
 // ─── Persistence keys ───────────────────────────────────────────────

@@ -16,7 +16,7 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_SM_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 
 export type ConfirmVariant = "default" | "compact" | "warning";
 

@@ -1,4 +1,4 @@
-import type { SkillEnrichmentRecord, SkillRecord } from "../../../types";
+import type { SkillEnrichmentRecord, SkillRecord } from "@/types";
 
 interface SkillCardTooltipProps {
   skill: SkillRecord;

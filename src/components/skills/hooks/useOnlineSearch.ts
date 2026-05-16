@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { searchOnlineSkills, inspectOnlineSkill, translateOnlineSkillDetail, runSkillsCommand, scanLocalSkills, syncSkillTargets } from "../../../api";
-import { logger } from "../../../lib/devlog";
-import { toast } from "../../../lib/toast";
+import { searchOnlineSkills, inspectOnlineSkill, translateOnlineSkillDetail, runSkillsCommand, scanLocalSkills, syncSkillTargets } from "@/api";
+import { logger } from "@/lib/devlog";
+import { toast } from "@/lib/toast";
 import type { LlmProfile } from "./useLlmProfile";
 import type {
   OnlineSkill,
@@ -9,7 +9,7 @@ import type {
   SkillTargetConfig,
   SkillsCatalogSnapshot,
   SkillsCommandResult,
-} from "../../../types";
+} from "@/types";
 
 interface UseOnlineSearchOptions {
   selectedLlmProfile: LlmProfile | null;

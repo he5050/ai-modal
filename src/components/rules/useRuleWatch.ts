@@ -1,8 +1,8 @@
 import { useEffect, type RefObject } from "react";
 import { dirname } from "@tauri-apps/api/path";
 import { watch } from "@tauri-apps/plugin-fs";
-import { toast } from "../../lib/toast";
-import { logger } from "../../lib/devlog";
+import { toast } from "@/lib/toast";
+import { logger } from "@/lib/devlog";
 import {
   normalizeText,
   detectExists,

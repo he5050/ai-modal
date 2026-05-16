@@ -5,7 +5,7 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import { Check } from "lucide-react";
 
 export function DeleteDialog({

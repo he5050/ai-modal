@@ -11,7 +11,7 @@ import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_SM_CLASS,
-} from "../lib/buttonStyles"
+} from "@/lib/buttonStyles"
 
 export interface ConfirmModalProps {
   title: string

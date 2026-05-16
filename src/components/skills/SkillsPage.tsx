@@ -6,17 +6,17 @@ import {
   ACTION_GROUP_BUTTON_BASE_CLASS,
   ACTION_GROUP_BUTTON_INACTIVE_CLASS,
   ACTION_GROUP_WRAPPER_CLASS,
-} from "../../lib/actionGroupStyles";
+} from "@/lib/actionGroupStyles";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
-import { FIELD_INPUT_CLASS } from "../../lib/formStyles";
+} from "@/lib/buttonStyles";
+import { FIELD_INPUT_CLASS } from "@/lib/formStyles";
 import { HintTooltip } from "../HintTooltip";
-import { buildInstalledSkillSnapshot } from "../../lib/skillEnrichment";
-import type { SkillRecord } from "../../types";
+import { buildInstalledSkillSnapshot } from "@/lib/skillEnrichment";
+import type { SkillRecord } from "@/types";
 import type { InstallMode, SkillsTab } from "./types";
 import { useLlmProfile } from "./hooks/useLlmProfile";
 import { useSkillData } from "./hooks/useSkillData";

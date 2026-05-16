@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { logger } from "@/lib/devlog";
 import { dirname, homeDir } from "@tauri-apps/api/path";
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { toast } from "../../lib/toast";
+import { toast } from "@/lib/toast";
 import { detectExists } from "./utils";
-import type { ConfigGroupFileView, ConfigPath } from "../../types";
+import type { ConfigGroupFileView, ConfigPath } from "@/types";
 import type { FileDraftState } from "./constants";
 
 export function useConfigDraft() {

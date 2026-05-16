@@ -1,4 +1,4 @@
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 
 export interface StatusBadgeProps {
   status: "success" | "warning" | "error" | "info" | "unknown";

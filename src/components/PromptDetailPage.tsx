@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { logger } from "@/lib/devlog";
 import { animate, spring } from "animejs";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
@@ -18,14 +19,14 @@ import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../lib/buttonStyles";
-import { renderMarkdownToHtml } from "../lib/promptMarkdown";
-import { parsePromptCategories } from "../lib/promptStore";
-import { toast } from "../lib/toast";
+} from "@/lib/buttonStyles";
+import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
+import { parsePromptCategories } from "@/lib/promptStore";
+import { toast } from "@/lib/toast";
 import { Input } from "./ui/Input";
 import { DeletePromptDialog } from "./prompts/DeletePromptDialog";
 import { createDraft, formatPromptTime, serializeDraftComparable } from "./prompts/utils";
-import type { PromptRecord } from "../types";
+import type { PromptRecord } from "@/types";
 
 interface Props {
   prompt: PromptRecord | null;

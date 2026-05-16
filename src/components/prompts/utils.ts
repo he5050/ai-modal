@@ -1,5 +1,5 @@
-import { createEmptyPrompt } from "../../lib/promptStore";
-import type { PromptRecord } from "../../types";
+import { createEmptyPrompt } from "@/lib/promptStore";
+import type { PromptRecord } from "@/types";
 
 export function summarizePromptContent(content: string) {
   return content.replace(/\s+/g, " ").trim();

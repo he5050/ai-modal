@@ -1,10 +1,10 @@
 import { Check, WandSparkles } from "lucide-react";
-import { FIELD_SELECT_CLASS } from "../../lib/formStyles";
+import { FIELD_SELECT_CLASS } from "@/lib/formStyles";
 import {
   BUTTON_PRIMARY_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import {
   CLAUDE_ENV_MODEL_FIELDS,
   CLAUDE_ENV_MODEL_FIELD_LABELS,

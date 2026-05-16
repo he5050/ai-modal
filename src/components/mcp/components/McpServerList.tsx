@@ -4,8 +4,8 @@ import {
   BUTTON_DANGER_OUTLINE_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
-import type { McpConfig, McpServerConfig, McpServiceTestState } from "../types";
+} from "@/lib/buttonStyles";
+import type { McpConfig, McpServerConfig, McpServiceTestState } from "@/types";
 import { countServerInfo, getServerValidationLabel } from "../utils";
 
 interface McpServerListProps {

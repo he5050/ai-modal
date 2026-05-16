@@ -1,18 +1,18 @@
 import { useRef } from "react";
-import { openExternalUrl } from "../../../lib/openExternalUrl";
+import { openExternalUrl } from "@/lib/openExternalUrl";
 import { CopyButton } from "../../CopyButton";
 import { HintTooltip } from "../../HintTooltip";
 import { Tooltip } from "../../Tooltip";
 import {
   FIELD_INPUT_CLASS,
-} from "../../../lib/formStyles";
+} from "@/lib/formStyles";
 import { Input } from "../../ui";
 import {
   BUTTON_ICON_GHOST_MD_CLASS,
   BUTTON_SECONDARY_CLASS,
   BUTTON_PRIMARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
-} from "../../../lib/buttonStyles";
+} from "@/lib/buttonStyles";
 import {
   ArrowRight,
   ExternalLink,
@@ -24,7 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { animate, spring } from "animejs";
-import type { DetectFormState } from "../hooks/useDetectForm";
+import type { DetectFormState } from "@/hooks/useDetectForm";
 
 interface DetectFormProps {
   form: DetectFormState;

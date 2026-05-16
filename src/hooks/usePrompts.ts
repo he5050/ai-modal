@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import type { PromptRecord } from "../types";
-import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
-import { parsePrompts } from "../lib/parsers";
+import { logger } from "@/lib/devlog";
+import type { PromptRecord } from "@/types";
+import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
+import { parsePrompts } from "@/lib/parsers";
 
 const PROMPTS_KEY = "ai-modal-prompts";
 const PROMPTS_DB_KEY = "prompts";
