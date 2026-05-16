@@ -106,7 +106,7 @@ export function ConfigFileTabs({
             </div>
             <p className="mt-2 text-xs leading-5 text-gray-500">
               请输入当前组根目录下的相对路径，系统会自动解析到{" "}
-              <span className="font-mono text-gray-400">{toDisplayPath(resolveGroupAbsolutePath(homePath, groupRootDir), homePath)}</span>。
+              <span className="font-mono text-gray-400">{toDisplayPath(resolveGroupAbsolutePath(homePath, groupRootDir, newRelativePath), homePath)}</span>。
             </p>
           </div>
         )}

@@ -5,7 +5,7 @@ import {
   BUTTON_SIZE_MD_CLASS,
 } from "../../../lib/buttonStyles";
 import { FIELD_SELECT_CLASS } from "../../../lib/formStyles";
-import type { ConfigGroupId } from "../../types";
+import type { ConfigGroupId } from "../../../types";
 import { Input } from "../../ui";
 
 interface ConfigToolbarProps {

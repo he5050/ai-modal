@@ -8,11 +8,12 @@ import {
   BUTTON_SIZE_SM_CLASS,
 } from "../../../lib/buttonStyles";
 import { configEditorTheme, getConfigLanguageExtensions } from "../editorSetup";
+import type { ConfigFormat } from "../../../types";
 
 interface ConfigEditorPanelProps {
   value: string;
   onChange: (value: string) => void;
-  format: string;
+  format: ConfigFormat;
   loading: boolean;
   fileName: string;
   fileExists: boolean;
