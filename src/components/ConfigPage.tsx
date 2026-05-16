@@ -15,6 +15,7 @@ import {
 import { toast } from "../lib/toast";
 import { CopyButton } from "./CopyButton";
 import { HintTooltip } from "./HintTooltip";
+import { Input, EmptyState, Card } from "./ui";
 import {
   BUTTON_ACCENT_OUTLINE_CLASS,
   BUTTON_DANGER_OUTLINE_CLASS,
@@ -482,12 +483,13 @@ export function ConfigPage({
                 </div>
 
                 <div className="min-w-0">
-                  <input
+                  <Input
                     value={toDisplayPath(selectedFile.absolutePath, homePath)}
                     readOnly
                     placeholder={`/Users/you/.../${selectedFile.fileName}`}
                     aria-label="配置文件路径"
-                    className={`${FIELD_MONO_INPUT_CLASS} cursor-default opacity-80`}
+                    mono
+                    className="cursor-default opacity-80"
                   />
                 </div>
 
@@ -849,9 +851,11 @@ export function ConfigPage({
                         </div>
                       </>
                     ) : (
-                      <div className="mt-3 rounded-xl border border-dashed border-gray-800 bg-black/10 px-4 py-4 text-sm text-gray-500">
-                        当前还没有模型配置。点击右上角"新建"创建第一条。
-                      </div>
+                      <EmptyState
+                        title="当前还没有模型配置"
+                        description="点击右上角新建创建第一条"
+                        className="mt-3 text-left"
+                      />
                     )}
                   </div>
                 </div>

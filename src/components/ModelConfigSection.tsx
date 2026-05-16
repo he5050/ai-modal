@@ -25,6 +25,7 @@ import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles";
 import { logger } from "../lib/devlog";
 import { toast } from "../lib/toast";
+import { Input } from "./ui/Input";
 import {
   getModelProtocolBadgeClass,
   getModelProtocolLabel,
@@ -709,11 +710,12 @@ export function ModelConfigSection({
               Base URL
             </label>
             <div className="relative">
-              <input
+              <Input
                 value={modelConfig.baseUrl}
                 onChange={(e) => updateModelConfig({ baseUrl: e.target.value })}
                 placeholder="https://api.openai.com"
-                className={`${FIELD_MONO_INPUT_CLASS} pr-8`}
+                mono
+                className="pr-8"
               />
               {modelConfig.baseUrl && (
                 <button
@@ -732,12 +734,13 @@ export function ModelConfigSection({
               Token
             </label>
             <div className="relative">
-              <input
+              <Input
                 type={apiKeyVisible ? "text" : "password"}
                 value={modelConfig.apiKey}
                 onChange={(e) => updateModelConfig({ apiKey: e.target.value })}
                 placeholder="sk-..."
-                className={`${FIELD_MONO_INPUT_CLASS} pr-14`}
+                mono
+                className="pr-14"
               />
               <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
                 {modelConfig.apiKey && (
@@ -769,11 +772,12 @@ export function ModelConfigSection({
               Model
             </label>
             <div className="relative">
-              <input
+              <Input
                 value={modelConfig.model}
                 onChange={(e) => updateModelConfig({ model: e.target.value })}
                 placeholder="gpt-4.1-mini"
-                className={`${FIELD_MONO_INPUT_CLASS} pr-8`}
+                mono
+                className="pr-8"
               />
               {modelConfig.model && (
                 <button

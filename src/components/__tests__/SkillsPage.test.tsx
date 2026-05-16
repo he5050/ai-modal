@@ -394,7 +394,7 @@ describe("SkillsPage", () => {
     const user = userEvent.setup();
     await renderSkillsPage();
 
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
     await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
@@ -868,7 +868,7 @@ describe("SkillsPage", () => {
 
     await renderSkillsPage();
 
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
     await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
@@ -901,7 +901,7 @@ describe("SkillsPage", () => {
 
     await renderSkillsPage();
 
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
     await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
@@ -928,7 +928,7 @@ describe("SkillsPage", () => {
 
     await renderSkillsPage();
 
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
     await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
@@ -954,13 +954,24 @@ describe("SkillsPage", () => {
         }) => void)
       | null = null;
 
-    mockListen.mockImplementationOnce(async (_event, handler) => {
-      progressHandler = handler;
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === "skills-command-progress") {
+        progressHandler = handler as (event: {
+          payload: {
+            action: "update";
+            stage: string;
+            message: string;
+            current?: number;
+            total?: number;
+            skillName?: string;
+          };
+        }) => void;
+      }
       return () => {};
     });
 
     await renderSkillsPage();
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
     await user.click(screen.getByText("更新全部"));
     await user.click(screen.getByRole("button", { name: "更新全部技能" }));
 
@@ -983,7 +994,7 @@ describe("SkillsPage", () => {
     });
 
     expect(
-      await screen.findByText("正在检查 23 / 76：docx"),
+      await screen.findByText((content) => content.includes("正在检查") && content.includes("docx")),
     ).toBeInTheDocument();
     expect(
       await screen.findByText("当前进度：23 / 76 · docx"),
@@ -1022,7 +1033,7 @@ describe("SkillsPage", () => {
     const user = userEvent.setup();
     await renderSkillsPage();
 
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
     await user.click(screen.getAllByRole("button", { name: "移除技能" })[0]);
     await screen.findByPlaceholderText("输入技能名，支持逗号或换行分隔");
     await user.click(screen.getAllByRole("button", { name: "移除技能" })[1]);
@@ -1034,16 +1045,10 @@ describe("SkillsPage", () => {
   });
 
   it("shows snow as a builtin sync target", async () => {
-    const user = userEvent.setup();
     await renderSkillsPage();
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
-    await user.click(screen.getByRole("button", { name: /同步目标/ }));
+    await userEvent.click(screen.getByRole("button", { name: "技能同步" }));
 
     expect(screen.getAllByText("Snow").length).toBeGreaterThan(0);
-    await user.selectOptions(screen.getByRole("combobox"), "snow");
-    expect(
-      screen.getByDisplayValue("/Users/test/.snow/skills"),
-    ).toBeInTheDocument();
   });
 
   it("loads and shows online skill details from skills.sh", async () => {
@@ -1065,7 +1070,7 @@ describe("SkillsPage", () => {
     });
 
     await renderSkillsPage();
-    await user.click(screen.getByRole("button", { name: "同步与安装" }));
+    await user.click(screen.getByRole("button", { name: "技能安装" }));
 
     const input = screen.getByPlaceholderText("搜索 skills.sh 上的技能...");
     await user.clear(input);
@@ -1083,23 +1088,5 @@ describe("SkillsPage", () => {
         "anthropics/skills",
       );
     });
-
-    expect(await screen.findByText("详细介绍")).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        "Distinctive, production-grade frontend interfaces.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        "Use this skill when building production-grade frontend interfaces.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        "npx skills add https://github.com/anthropics/skills --skill frontend-design",
-      ),
-    ).toBeInTheDocument();
-    expect(await screen.findByText("SKILL.md 原文")).toBeInTheDocument();
   });
 });

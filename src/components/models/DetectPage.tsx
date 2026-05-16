@@ -8,6 +8,7 @@ import { logger } from "../../lib/devlog";
 import {
   FIELD_INPUT_CLASS,
 } from "../../lib/formStyles";
+import { Input, EmptyState } from "../ui";
 import {
   BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_ICON_GHOST_MD_CLASS,
@@ -357,11 +358,11 @@ export function DetectPage({
                 <HintTooltip content="列表中的 provider 名称。" />
               </div>
               <div className="relative">
-                <input
+                <Input
                   value={form.name}
                   onChange={(e) => form.setName(e.target.value)}
                   placeholder="如：官方 OpenAI、企业代理、网关服务"
-                  className={`${FIELD_INPUT_CLASS} pr-8`}
+                  className="pr-8"
                 />
                 {form.name && (
                   <button
@@ -381,7 +382,7 @@ export function DetectPage({
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="relative flex-1">
-                  <input
+                  <Input
                     value={form.baseUrl}
                     onChange={(e) => form.setBaseUrl(e.target.value)}
                     onBlur={() => {
@@ -389,10 +390,9 @@ export function DetectPage({
                         form.setUrlError("请输入完整 URL（以 http:// 或 https:// 开头）");
                       else form.setUrlError(null);
                     }}
+                    error={form.urlError ?? undefined}
                     placeholder="例如：https://openrouter.ai/api"
-                    className={`${FIELD_INPUT_CLASS} pr-8 ${
-                      form.urlError ? "border-red-500 focus:border-red-500" : ""
-                    }`}
+                    className="pr-8"
                   />
                   {form.baseUrl && (
                     <button
@@ -442,12 +442,12 @@ export function DetectPage({
               <HintTooltip content="模型测试可能走 OpenAI / Claude / Gemini 协议；导出可能包含明文 Key。" />
             </div>
             <div className="relative flex items-center">
-              <input
+              <Input
                 type={form.keyVisible ? "text" : "password"}
                 value={form.apiKey}
                 onChange={(e) => form.setApiKey(e.target.value)}
                 placeholder="sk-..."
-                className={`${FIELD_INPUT_CLASS} pr-24`}
+                className="pr-24"
               />
               <div className="absolute right-2 flex items-center gap-1.5">
                 {form.apiKey && <CopyButton text={form.apiKey} />}
@@ -764,14 +764,11 @@ export function DetectPage({
               </table>
             </div>
           ) : (
-            <div className="mb-6 rounded-xl border border-dashed border-gray-800 bg-gray-900/60 px-6 py-12 text-center">
-              <p className="text-sm font-medium text-gray-300">
-                点击「一键测试」选择模型和协议后，检测结果会显示在这里
-              </p>
-              <p className="mt-1.5 text-xs text-gray-500">
-                系统会从 v1/models 获取模型列表，你可以选择要测试的模型和协议。
-              </p>
-            </div>
+            <EmptyState
+              title="点击「一键测试」选择模型和协议后，检测结果会显示在这里"
+              description="系统会从 v1/models 获取模型列表，你可以选择要测试的模型和协议。"
+              className="mb-6"
+            />
           );
         })()}
 
@@ -862,6 +859,7 @@ export function DetectPage({
                               <button
                                 onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p.id); }}
                                 className={BUTTON_ICON_DANGER_SM_CLASS}
+                                aria-label="删除"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>

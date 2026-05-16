@@ -8,6 +8,7 @@ import {
   BUTTON_SECONDARY_CLASS,
   BUTTON_SIZE_XS_CLASS,
 } from "../lib/buttonStyles";
+import { Card } from "./ui";
 import {
   normalizeSupportedProtocolTag,
   getModelProtocolLabel,
@@ -237,7 +238,7 @@ function ProtocolResultCard({ result }: { result: ProtocolTestResult }) {
   const detail = getProtocolResultDetails(result);
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-950/70 overflow-hidden">
+    <Card className="overflow-hidden p-0">
       {/* 折叠态：摘要行 */}
       <button
         type="button"
@@ -324,7 +325,7 @@ function ProtocolResultCard({ result }: { result: ProtocolTestResult }) {
           <CollapsibleDebugSection title="Response Headers" value={formatDebugMap(result.response_headers)} />
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -340,7 +341,7 @@ function CollapsibleDebugSection({
   if (isEmpty) return null;
 
   return (
-    <div className="rounded-lg border border-gray-800/60 bg-black/20">
+    <Card className="p-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -360,7 +361,7 @@ function CollapsibleDebugSection({
           </pre>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 

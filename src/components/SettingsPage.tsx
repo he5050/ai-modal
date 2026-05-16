@@ -5,6 +5,7 @@ import {
   BUTTON_SIZE_MD_CLASS,
 } from "../lib/buttonStyles"
 import { FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
+import { Input } from "./ui/Input";
 import { loadPersistedJson, savePersistedJson } from "../lib/persistence";
 import { loadModelMappingSettings, saveModelMappingSettings } from "../api";
 import { HintTooltip } from "./HintTooltip";
@@ -233,11 +234,12 @@ export function SettingsPage({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <input
+                <Input
+                  mono
                   value={modelMappingPort}
                   onChange={(event) => setModelMappingPort(event.target.value.replace(/[^\d]/g, "").slice(0, 5))}
                   onBlur={() => void handleModelMappingPortSave()}
-                  className={`${FIELD_MONO_INPUT_CLASS} w-28 text-center`}
+                  className="w-28 text-center"
                   inputMode="numeric"
                   placeholder="5678"
                 />
@@ -264,10 +266,11 @@ export function SettingsPage({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <input
+                <Input
+                  mono
                   value={modelscopeKey}
                   onChange={(event) => setModelscopeKey(event.target.value)}
-                  className={`${FIELD_MONO_INPUT_CLASS} w-72`}
+                  className="w-72"
                   type="password"
                   placeholder="ms-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 />

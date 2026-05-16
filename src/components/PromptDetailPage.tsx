@@ -22,6 +22,7 @@ import {
 import { renderMarkdownToHtml } from "../lib/promptMarkdown";
 import { parsePromptCategories } from "../lib/promptStore";
 import { toast } from "../lib/toast";
+import { Input } from "./ui/Input";
 import { DeletePromptDialog } from "./prompts/DeletePromptDialog";
 import { createDraft, formatPromptTime, serializeDraftComparable } from "./prompts/utils";
 import type { PromptRecord } from "../types";
@@ -384,7 +385,7 @@ export function PromptDetailPage({
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
                   <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
                     <label className="mb-1.5 block text-xs text-gray-500">名称</label>
-                    <input
+                    <Input
                       aria-label="名称"
                       value={draft.title}
                       onChange={(event) =>
@@ -393,18 +394,18 @@ export function PromptDetailPage({
                           title: event.target.value,
                         }))
                       }
-                      className="h-11 w-full rounded-xl border border-gray-700 bg-black/20 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
+                      className="h-11 rounded-xl"
                     />
                   </div>
 
                   <div className="rounded-xl border border-gray-800/80 bg-gray-950/45 px-4 py-4">
                     <label className="mb-1.5 block text-xs text-gray-500">标签</label>
-                    <input
+                    <Input
                       aria-label="标签"
                       value={tagsInput}
                       onChange={(event) => setTagsInput(event.target.value)}
                       placeholder="多个标签用逗号、斜杠或换行分隔"
-                      className="h-11 w-full rounded-xl border border-gray-700 bg-black/20 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-600 focus:border-indigo-500"
+                      className="h-11 rounded-xl"
                     />
                     {draftTags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">

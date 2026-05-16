@@ -47,6 +47,7 @@ import {
 	ACTION_GROUP_WRAPPER_CLASS,
 } from "../lib/actionGroupStyles"
 import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS, FIELD_SELECT_CLASS } from "../lib/formStyles"
+import { cn } from "../lib/cn";
 import {
 	DEFAULT_CLAUDE_SLOTS,
 	MODEL_MAPPING_TARGET_PROTOCOLS,
@@ -73,6 +74,7 @@ import type {
 } from "../types"
 import { CopyButton } from "./CopyButton"
 import { HintTooltip } from "./HintTooltip"
+import { Card, EmptyState, StatusBadge } from "./ui"
 import { ModelSelectionDialog } from "./models/components/ModelSelectionDialog"
 import { SelectionCheckbox } from "./models/components/SharedDialogs"
 
@@ -541,10 +543,10 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 							<HintTooltip content='把第三方 Anthropic 兼容模型映射成 Claude Desktop 可选择的本地模型槽位。' />
 						</div>
 						<div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500'>
-							<span className='inline-flex items-center gap-1.5 rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>
-								<CircleDot className={status?.running ? "h-3.5 w-3.5 text-emerald-400" : "h-3.5 w-3.5 text-gray-600"} />
-								{status?.running ? "Gateway 运行中" : "Gateway 未启动"}
-							</span>
+							<StatusBadge
+								status={status?.running ? "success" : "unknown"}
+								label={status?.running ? "Gateway 运行中" : "Gateway 未启动"}
+							/>
 							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>
 								端口 {status?.port ?? 5678}
 							</span>
@@ -633,11 +635,11 @@ export function ModelMappingPage({ providers, onDirtyChange }: Props) {
 						<SourceActions providers={providers} onImportProvider={openImportProviderDialog} />
 
 						{config.providers.length === 0 ? (
-							<div className='rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-5 py-10 text-center'>
-								<GitBranch className='mx-auto h-8 w-8 text-gray-600' />
-								<p className='mt-3 text-sm font-medium text-gray-300'>还没有模型映射服务商</p>
-								<p className='mt-1 text-xs text-gray-600'>从现有 provider 导入可用模型。</p>
-							</div>
+							<EmptyState
+								icon={<GitBranch className='h-8 w-8' />}
+								title='还没有模型映射服务商'
+								description='从现有 Provider 导入可用模型。'
+							/>
 						) : (
 							config.providers.map((provider, providerIndex) => (
 								<ProviderMappingCard
@@ -736,12 +738,12 @@ function SlotMappingPanel({
 	const filledCount = DEFAULT_CLAUDE_SLOTS.filter((slot) => slotAssignments.has(slot)).length
 
 	return (
-		<section className='rounded-xl border border-gray-800 bg-gray-900'>
-			<div className='flex items-center justify-between border-b border-gray-800 px-4 py-3'>
+		<Card>
+			<div className='flex items-center justify-between border-b border-border-subtle pb-3 mb-3'>
 				<div className='flex items-center gap-2'>
 					<FileCode2 className='h-4 w-4 text-indigo-400' />
-					<h3 className='text-sm font-semibold text-gray-200'>Claude 槽位映射</h3>
-					<span className='rounded-lg border border-gray-700 bg-gray-950 px-2 py-0.5 text-[11px] text-gray-500'>
+					<h3 className='text-sm font-semibold text-text-heading'>Claude 槽位映射</h3>
+					<span className='rounded-lg border border-border-subtle bg-surface-muted px-2 py-0.5 text-[11px] text-text-muted'>
 						{filledCount}/{DEFAULT_CLAUDE_SLOTS.length} 已填充
 					</span>
 				</div>
@@ -774,7 +776,7 @@ function SlotMappingPanel({
 					)
 				})}
 			</div>
-		</section>
+		</Card>
 	)
 }
 
@@ -909,8 +911,8 @@ function ProviderMappingCard({
 	const hasModels = provider.models.length > 0
 
 	return (
-		<section className='rounded-xl border border-gray-800 bg-gray-900'>
-			<div className='flex items-center gap-3 border-b border-gray-800 px-4 py-3'>
+		<Card>
+			<div className='flex items-center gap-3 border-b border-border-subtle pb-3 mb-4'>
 				<button
 					onClick={onToggleCollapse}
 					className={BUTTON_ICON_GHOST_SM_CLASS}
@@ -1033,7 +1035,7 @@ function ProviderMappingCard({
 					</div>
 				</div>
 			)}
-		</section>
+		</Card>
 	)
 }
 
@@ -1187,11 +1189,11 @@ function MappedModelsPanel({
 	claudeDir?: string | null
 }) {
 	return (
-		<section className='rounded-xl border border-gray-800 bg-gray-900'>
-			<div className='flex items-center justify-between border-b border-gray-800 px-4 py-3'>
+		<Card>
+			<div className='flex items-center justify-between border-b border-border-subtle pb-3 mb-3'>
 				<div className='flex items-center gap-2'>
-					<FileCode2 className='h-4 w-4 text-gray-500' />
-					<h3 className='text-sm font-semibold text-gray-200'>Claude 槽位</h3>
+					<FileCode2 className='h-4 w-4 text-text-muted' />
+					<h3 className='text-sm font-semibold text-text-heading'>Claude 槽位</h3>
 				</div>
 				{rows.length > 0 && (
 					<button
@@ -1231,7 +1233,7 @@ function MappedModelsPanel({
 				<PathLine label='配置' value={configPath} />
 				<PathLine label='Claude' value={claudeDir ?? undefined} />
 			</div>
-		</section>
+		</Card>
 	)
 }
 
@@ -1309,11 +1311,11 @@ function LogsPanel({
 	const [selectedLog, setSelectedLog] = useState<ModelMappingLogEntry | null>(null)
 
 	return (
-		<section className='rounded-xl border border-gray-800 bg-gray-900'>
-			<div className='flex items-center justify-between border-b border-gray-800 px-4 py-3'>
+		<Card>
+			<div className='flex items-center justify-between border-b border-border-subtle pb-3 mb-3'>
 				<div className='flex items-center gap-2'>
-					<Activity className={running ? "h-4 w-4 text-emerald-400" : "h-4 w-4 text-gray-500"} />
-					<h3 className='text-sm font-semibold text-gray-200'>请求日志</h3>
+					<Activity className={running ? "h-4 w-4 text-emerald-400" : "h-4 w-4 text-text-muted"} />
+					<h3 className='text-sm font-semibold text-text-heading'>请求日志</h3>
 				</div>
 				<button onClick={onRefresh} className={BUTTON_ICON_GHOST_SM_CLASS}>
 					<RefreshCw className='h-3.5 w-3.5' />
@@ -1384,7 +1386,7 @@ function LogsPanel({
 				)}
 			</div>
 			{selectedLog ? <LogDetailDialog log={selectedLog} onClose={() => setSelectedLog(null)} /> : null}
-		</section>
+		</Card>
 	)
 }
 

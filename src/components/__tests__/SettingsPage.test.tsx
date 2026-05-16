@@ -45,7 +45,9 @@ describe("SettingsPage", () => {
     const input = await screen.findByDisplayValue("5678");
     await user.clear(input);
     await user.type(input, "6789");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    const saveButtons = screen.getAllByRole("button", { name: "保存" });
+    await user.click(saveButtons[0]);
 
     await waitFor(() => {
       expect(mockSaveModelMappingSettings).toHaveBeenCalledWith({ port: 6789 });

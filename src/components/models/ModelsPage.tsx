@@ -3,6 +3,7 @@ import { openExternalUrl } from "../../lib/openExternalUrl";
 import { CopyButton } from "../CopyButton";
 import { HintTooltip } from "../HintTooltip";
 import { Tooltip } from "../Tooltip";
+import { EmptyState, Card } from "../ui";
 import {
   BUTTON_ICON_DANGER_SM_CLASS,
   BUTTON_ICON_GHOST_SM_CLASS,
@@ -379,18 +380,22 @@ export function ModelsPage({
         </div>
 
         {providers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-4 shadow-[0_0_20px_4px_rgba(99,102,241,0.15)]">
-              <ArrowRight className="w-6 h-6 text-indigo-400/60" />
-            </div>
-            <p className="mb-1 text-sm font-medium text-gray-400">还没有任何接口</p>
-            <p className="text-xs text-gray-600">先前往模型检测新增并测试第一个 provider。</p>
-            <button onClick={onGoDetect} className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} mt-4`}>
-              去模型检测新增接口
-            </button>
-          </div>
+          <EmptyState
+            icon={
+              <div className="h-14 w-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shadow-[0_0_20px_4px_rgba(99,102,241,0.15)]">
+                <ArrowRight className="w-6 h-6 text-indigo-400/60" />
+              </div>
+            }
+            title="还没有任何接口"
+            description="先前往模型检测新增并测试第一个 provider。"
+            action={
+              <button onClick={onGoDetect} className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>
+                去模型检测新增接口
+              </button>
+            }
+          />
         ) : (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <Card className="overflow-hidden p-0">
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
@@ -515,17 +520,17 @@ export function ModelsPage({
                       <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <Tooltip content="查看详情" placement="top">
-                            <button onClick={() => onOpenDetail(p)} className={BUTTON_ICON_GHOST_SM_CLASS}>
+                            <button onClick={() => onOpenDetail(p)} className={BUTTON_ICON_GHOST_SM_CLASS} aria-label="详情">
                               <Eye className="h-3.5 w-3.5" />
                             </button>
                           </Tooltip>
                           <Tooltip content="编辑接口" placement="top">
-                            <button onClick={() => onEdit(p)} className={BUTTON_ICON_GHOST_SM_CLASS}>
+                            <button onClick={() => onEdit(p)} className={BUTTON_ICON_GHOST_SM_CLASS} aria-label="编辑">
                               <FilePenLine className="h-3.5 w-3.5" />
                             </button>
                           </Tooltip>
                           <Tooltip content="删除接口" placement="top">
-                            <button onClick={() => setDeleteId(p.id)} className={BUTTON_ICON_DANGER_SM_CLASS}>
+                            <button onClick={() => setDeleteId(p.id)} className={BUTTON_ICON_DANGER_SM_CLASS} aria-label="删除">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </Tooltip>
@@ -536,7 +541,7 @@ export function ModelsPage({
                 })}
               </tbody>
             </table>
-          </div>
+          </Card>
         )}
       </div>
 
