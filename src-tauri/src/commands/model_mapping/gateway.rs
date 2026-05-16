@@ -12,13 +12,13 @@ use tokio::net::TcpListener;
 
 use crate::commands::model_mapping::types::{
     GatewayState, MappingProtocol, ModelMappingConfig, ModelMappingLogEntry,
-    ModelMappingManager, ModelMappingSettings, ModelMappingTestRequest, ModelMappingTestResult,
+    ModelMappingManager, ModelMappingTestRequest, ModelMappingTestResult,
     AutostartRequest,
 };
 use crate::commands::model_mapping::config::{
-    load_config_file, normalize_config, save_config_file, current_port,
-    flatten_config, validate_config, build_status, now_time, push_log,
-    stringify_json_pretty, load_settings_file,
+    save_config_file,
+    flatten_config, now_time, push_log,
+    stringify_json_pretty,
 };
 use crate::commands::model_mapping::protocol::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,

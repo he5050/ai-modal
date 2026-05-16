@@ -4,7 +4,7 @@ use crate::commands::model_mapping::types::{
     ModelMappingConfig, CLAUDE_CONFIG_ID,
 };
 use crate::commands::model_mapping::config::{
-    config_dir, current_port, flatten_config, home_dir, load_config_file, 
+    current_port, flatten_config, home_dir, load_config_file,
     validate_config, write_with_retry,
 };
 

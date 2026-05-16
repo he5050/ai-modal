@@ -195,6 +195,7 @@ pub fn start_model_mapping_gateway_on_startup(manager: Arc<ModelMappingManager>)
 }
 
 #[tauri::command]
+#[allow(dead_code)]
 pub async fn test_model_mapping_provider(
     request: ModelMappingTestRequest,
 ) -> Result<ModelMappingTestResult, String> {

@@ -142,6 +142,7 @@ pub(crate) struct GatewayState {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct ResolvedModel {
     pub(crate) requested_model: String,
     pub(crate) target_model: String,

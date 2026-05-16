@@ -6,12 +6,12 @@ use std::{
 use crate::commands::model_mapping::types::{
     MappingProtocol, ModelMappingConfig, ModelMappingEntry, ModelMappingFlatEntry,
     ModelMappingLogEntry, ModelMappingManager, ModelMappingProvider, ModelMappingSettings,
-    DEFAULT_CLAUDE_SLOTS, DEFAULT_PORT, ResolvedModel,
+    DEFAULT_CLAUDE_SLOTS,
 };
 
 // Re-export for tests and other modules
-pub use crate::commands::model_mapping::protocol::validate_anthropic_message_response;
-pub use crate::commands::model_mapping::gateway::build_anthropic_messages_url;
+// pub use crate::commands::model_mapping::protocol::validate_anthropic_message_response;
+// pub use crate::commands::model_mapping::gateway::build_anthropic_messages_url;
 
 pub fn config_dir() -> PathBuf {
     home_dir().join(".claude-model-proxy")

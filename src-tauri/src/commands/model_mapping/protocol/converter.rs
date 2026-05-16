@@ -1,4 +1,3 @@
-use crate::commands::model_mapping::types::MappingProtocol;
 
 pub fn anthropic_content_to_text(value: &serde_json::Value) -> String {
     if let Some(text) = value.as_str() {
