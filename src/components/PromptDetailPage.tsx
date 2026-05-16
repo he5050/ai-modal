@@ -23,6 +23,7 @@ import {
 import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
 import { parsePromptCategories } from "@/lib/promptStore";
 import { copyWithToast, toast } from "@/lib/toast";
+import DOMPurify from "dompurify";
 import { Input } from "./ui/Input";
 import { DeletePromptDialog } from "./prompts/DeletePromptDialog";
 import { createDraft, formatPromptTime, serializeDraftComparable } from "./prompts/utils";
@@ -153,6 +154,13 @@ export function PromptDetailPage({
     }
   }
 
+  const isCreateMode = mode === "create";
+  const pageTitle = viewMode === "detail"
+    ? "提示词详情"
+    : mode === "create"
+      ? "新增提示词"
+      : "编辑提示词";
+
   async function handleFormatMarkdown() {
     if (!draft.content.trim()) return;
     try {
@@ -265,7 +273,7 @@ export function PromptDetailPage({
             {prompt && viewMode === "detail" && (
               <>
                 <button
-                  onClick={() => void copyPromptContent(prompt.content)}
+                  onClick={() => void copyWithToast(prompt.content, "提示词已复制", "复制提示词失败")}
                   className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -376,7 +384,7 @@ export function PromptDetailPage({
                     <div
                       data-testid="prompt-markdown-preview"
                       className="markdown-preview"
-                      dangerouslySetInnerHTML={{ __html: renderedMarkdown }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderedMarkdown) }}
                     />
                   </div>
                 </div>

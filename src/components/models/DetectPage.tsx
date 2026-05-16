@@ -323,12 +323,18 @@ export function DetectPage({
             void fetchModelsAndShowDialog();
           }}
           onAvailableOnly={() => {
-            const models = form.editingProvider!.lastResult!.results.filter((item) => item.available).map((item) => item.model);
+            const results = form.editingProvider?.lastResult?.results;
+            const models = results
+              ? results.filter((item) => item.available).map((item) => item.model)
+              : [];
             detection.setRetestScopeDialogOpen(false);
             void detection.runModelDetection(form.baseUrl, form.apiKey, form.name, models);
           }}
           onUnavailableOnly={() => {
-            const models = form.editingProvider!.lastResult!.results.filter((item) => !item.available).map((item) => item.model);
+            const results = form.editingProvider?.lastResult?.results;
+            const models = results
+              ? results.filter((item) => !item.available).map((item) => item.model)
+              : [];
             detection.setRetestScopeDialogOpen(false);
             void detection.runModelDetection(form.baseUrl, form.apiKey, form.name, models);
           }}

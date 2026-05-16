@@ -48,13 +48,14 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
   const tools = useMemo(() => {
     const builtin = BUILTIN_TOOLS.map((tool) => {
       const stored = storedPaths.find((item) => item.id === tool.id);
+      const resolvedPath = isAbsolutePath(stored?.path)
+        ? stored?.path
+        : homePath
+            ? buildDefaultPath(homePath, tool.relativePath)
+            : "";
       return {
         ...tool,
-        path: isAbsolutePath(stored?.path)
-          ? stored!.path
-          : homePath
-            ? buildDefaultPath(homePath, tool.relativePath)
-            : "",
+        path: resolvedPath ?? "",
         isBuiltin: true,
         kind: stored?.kind ?? tool.kind ?? ("file" as const),
       };

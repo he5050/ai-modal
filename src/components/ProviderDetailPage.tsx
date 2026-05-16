@@ -669,16 +669,18 @@ export function ProviderDetailPage({
             void runModelDetection();
           }}
           onAvailableOnly={() => {
-            const models = currentProvider
-              .lastResult!.results.filter((item) => item.available)
-              .map((item) => item.model);
+            const results = currentProvider?.lastResult?.results;
+            const models = results
+              ? results.filter((item) => item.available).map((item) => item.model)
+              : [];
             setRetestScopeDialogOpen(false);
             void runModelDetection(models);
           }}
           onUnavailableOnly={() => {
-            const models = currentProvider
-              .lastResult!.results.filter((item) => !item.available)
-              .map((item) => item.model);
+            const results = currentProvider?.lastResult?.results;
+            const models = results
+              ? results.filter((item) => !item.available).map((item) => item.model)
+              : [];
             setRetestScopeDialogOpen(false);
             void runModelDetection(models);
           }}

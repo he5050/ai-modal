@@ -59,6 +59,9 @@ importers:
       animejs:
         specifier: ^4.3.6
         version: 4.3.6
+      dompurify:
+        specifier: ^3.4.3
+        version: 3.4.3
       lucide-react:
         specifier: ^1.7.0
         version: 1.7.0(react@18.3.1)
@@ -93,6 +96,9 @@ importers:
       '@types/animejs':
         specifier: ^3.1.13
         version: 3.1.13
+      '@types/dompurify':
+        specifier: ^3.2.0
+        version: 3.2.0
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.37
@@ -1049,6 +1055,10 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
+  '@types/dompurify@3.2.0':
+    resolution: {integrity: sha512-Fgg31wv9QbLDA0SpTOXO3MaxySc4DKGLi8sna4/Utjo4r3ZRPdCt4UQee8BWr+Q5z21yifghREPJGYaEOEIACg==}
+    deprecated: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -1072,6 +1082,9 @@ packages:
 
   '@types/react@18.3.28':
     resolution: {integrity: sha512-z9VXpC7MWrhfWipitjNdgCauoMLRdIILQsAEV+ZesIzBq/oUlxk0m3ApZuMFCXdnS4U7KrI+l3WRUEGQ8K1QKw==}
+
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@uiw/codemirror-extensions-basic-setup@4.25.9':
     resolution: {integrity: sha512-QFAqr+pu6lDmNpAlecODcF49TlsrZ0bj15zPzfhiqSDl+Um3EsDLFLppixC7kFLn+rdDM2LTvVjn5CPvefpRgw==}
@@ -1440,6 +1453,9 @@ packages:
 
   dom-accessibility-api@0.6.3:
     resolution: {integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==}
+
+  dompurify@3.4.3:
+    resolution: {integrity: sha512-VVwJidIJcp1hpg2OMXML3ZVRPYSZiq4aX7qBh83BSIpOaRDqI+qxhXjjIWnpzkOXhmp0L81lnoME1mnCc9H48A==}
 
   dot-prop@5.3.0:
     resolution: {integrity: sha512-QM8q3zDe58hqUqjraQOmzZ1LIH9SWQJTlEKCH4kJ2oQvLZk7RbQXvtDM2XEq3fwkV9CCvvH4LA0AV+ogFsBM2Q==}
@@ -3419,6 +3435,10 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.0
 
+  '@types/dompurify@3.2.0':
+    dependencies:
+      dompurify: 3.4.3
+
   '@types/estree@1.0.8': {}
 
   '@types/node@20.19.37':
@@ -3441,6 +3461,9 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.15
       csstype: 3.2.3
+
+  '@types/trusted-types@2.0.7':
+    optional: true
 
   '@uiw/codemirror-extensions-basic-setup@4.25.9(@codemirror/autocomplete@6.20.1)(@codemirror/commands@6.10.3)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5)(@codemirror/search@6.6.0)(@codemirror/state@6.6.0)(@codemirror/view@6.40.0)':
     dependencies:
@@ -3820,6 +3843,10 @@ snapshots:
   dom-accessibility-api@0.5.16: {}
 
   dom-accessibility-api@0.6.3: {}
+
+  dompurify@3.4.3:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   dot-prop@5.3.0:
     dependencies:

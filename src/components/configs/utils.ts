@@ -1,8 +1,8 @@
-import { exists } from "@tauri-apps/plugin-fs";
 import type {
   ClaudeEnvModelField,
   ModelConfigRecord,
 } from "./constants";
+import { detectExists as fsDetectExists } from "@/lib/fs";
 
 export function normalizeText(value: string) {
   return value.trim();
@@ -14,13 +14,7 @@ export function toDisplayPath(value: string, homePath: string) {
     : value;
 }
 
-export async function detectExists(path: string) {
-  try {
-    return await exists(path);
-  } catch {
-    return false;
-  }
-}
+export const detectExists = fsDetectExists;
 
 export function createEmptyModelConfig(): ModelConfigRecord {
   return {

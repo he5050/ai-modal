@@ -30,7 +30,7 @@ export function validateUrl(
 
 export function isValidApiKey(value: string | null | undefined): boolean {
   if (isEmpty(value)) return false;
-  const trimmed = value!.trim();
+  const trimmed = (value ?? "").trim();
   return trimmed.length >= 8;
 }
 

@@ -34,6 +34,7 @@ import { toast } from "@/lib/toast";
 import { logger } from "@/lib/devlog";
 import { HintTooltip } from "../HintTooltip";
 import type { ModelscopeRequestProfileInput, ModelscopeServerDetail } from "@/types";
+import DOMPurify from "dompurify";
 import {
   McpConfig,
   McpServerConfig,
@@ -436,7 +437,7 @@ export function McpPage({
     finally { setMsImporting(false); }
   }
 
-  async function handleImportOnlineFromCard(server: any) {
+  async function handleImportOnlineFromCard(server: ModelscopeServerDetail) {
     try {
       const detail = await fetchModelscopeDetail(server.id, { silent: true });
       await handleImportOnline(detail);
@@ -690,7 +691,7 @@ export function McpPage({
                           {(msDetail.operational_urls ?? []).map((item) => <span key={`${item.transport_type ?? "sse"}-${item.url}`} className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200">{item.transport_type ?? "sse"}</span>)}
                         </div>
                         {msDetail.source_url && <p className="break-all text-xs text-gray-500">来源：{msDetail.source_url}</p>}
-                        <div className="markdown-preview rounded-xl border border-gray-800 bg-black/15 px-4 py-4" dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(getModelscopeDetailMarkdown(msDetail)) }} />
+                        <div className="markdown-preview rounded-xl border border-gray-800 bg-black/15 px-4 py-4" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdownToHtml(getModelscopeDetailMarkdown(msDetail))) }} />
                         {Object.keys(extractTransportConfigs(msDetail)).length > 0 && (
                           <div><div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-gray-500">配置预览</div><pre className="max-h-[280px] overflow-auto rounded-xl border border-gray-800 bg-gray-900/80 px-3 py-2 font-mono text-[11px] leading-5 text-gray-300">{JSON.stringify(extractTransportConfigs(msDetail), null, 2)}</pre></div>
                         )}

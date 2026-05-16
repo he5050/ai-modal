@@ -1,4 +1,4 @@
-import { exists } from "@tauri-apps/plugin-fs";
+import { detectExists as fsDetectExists } from "@/lib/fs";
 
 export function normalizeText(value: string) {
   return value.trim();
@@ -22,13 +22,7 @@ export function buildDefaultPath(homePath: string, relativePath: string) {
   return `${homePath.replace(/\/$/, "")}/${relativePath}`;
 }
 
-export async function detectExists(path: string) {
-  try {
-    return await exists(path);
-  } catch {
-    return false;
-  }
-}
+export const detectExists = fsDetectExists;
 
 export function summarizeWatchError(error: unknown) {
   if (error instanceof Error) {
