@@ -22,7 +22,7 @@ import {
 } from "@/lib/buttonStyles";
 import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
 import { parsePromptCategories } from "@/lib/promptStore";
-import { toast } from "@/lib/toast";
+import { copyWithToast, toast } from "@/lib/toast";
 import { Input } from "./ui/Input";
 import { DeletePromptDialog } from "./prompts/DeletePromptDialog";
 import { createDraft, formatPromptTime, serializeDraftComparable } from "./prompts/utils";

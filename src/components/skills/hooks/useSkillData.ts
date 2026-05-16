@@ -30,7 +30,7 @@ import {
   mergeCatalogWithSources,
   parseStoredTargets,
   toAbsolutePath,
-} from "@/constants";
+} from "../constants";
 import type {
   InstalledSkillSnapshot,
   LocalizedOnlineSkillDetail,

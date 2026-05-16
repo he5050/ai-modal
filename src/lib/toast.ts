@@ -114,3 +114,12 @@ export function listenToast(cb: (item: ToastItem) => void) {
     window.removeEventListener(EVENT, handler)
   }
 }
+
+export async function copyWithToast(content: string, successMsg = "已复制到剪贴板", errorMsg = "复制失败") {
+  try {
+    await navigator.clipboard.writeText(content);
+    toast(successMsg, "success");
+  } catch {
+    toast(errorMsg, "error");
+  }
+}

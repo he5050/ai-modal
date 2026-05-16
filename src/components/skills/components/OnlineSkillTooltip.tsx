@@ -2,7 +2,7 @@ import { Copy, Link2, Loader2 } from "lucide-react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } from "@/lib/buttonStyles";
 import { toast } from "@/lib/toast";
-import { formatInstalls } from "@/constants";
+import { formatInstalls } from "../constants";
 import type { LocalizedOnlineSkillDetail, OnlineSkill } from "@/types";
 
 interface OnlineSkillTooltipProps {

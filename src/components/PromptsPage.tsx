@@ -18,7 +18,7 @@ import {
   summarizePromptImport,
 } from "@/lib/promptStore";
 import { renderMarkdownToHtml } from "@/lib/promptMarkdown";
-import { toast } from "@/lib/toast";
+import { copyWithToast, toast } from "@/lib/toast";
 import type { PromptRecord } from "@/types";
 import { Tooltip } from "./Tooltip";
 import { summarizePromptContent, formatPromptTime } from "./prompts/utils";
@@ -53,15 +53,6 @@ export function PromptsPage({
     return matchesTag && matchesQuery;
   });
 
-  async function copyPromptContent(content: string) {
-    try {
-      await navigator.clipboard.writeText(content);
-      toast("提示词已复制", "success");
-    } catch (error) {
-      logger.error("Failed to copy prompt", error);
-      toast("复制提示词失败", "error");
-    }
-  }
 
   async function handleExportJson() {
     try {
@@ -298,7 +289,7 @@ export function PromptsPage({
                             <Eye className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => void copyPromptContent(item.content)}
+                            onClick={() => void copyWithToast(item.content, "提示词已复制", "复制提示词失败")}
                             className={BUTTON_ICON_MD_CLASS}
                             aria-label={`复制${item.title}`}
                           >

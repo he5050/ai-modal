@@ -8,7 +8,7 @@ import {
   extractNpmConfigWarnings,
   getSkillsCommandActionLabel,
   summarizeCommandFailure,
-} from "@/constants";
+} from "../constants";
 import type {
   SkillSourceMeta,
   SkillSourceType,

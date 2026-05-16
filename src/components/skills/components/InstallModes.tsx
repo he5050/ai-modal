@@ -3,7 +3,7 @@ import { open as pickPath } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, GitBranch, Loader2, RefreshCcw, Trash2, Upload } from "lucide-react";
 import { FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 import { toast } from "@/lib/toast";
-import { parseNameList, sourceNeedsWildcard, toAbsolutePath } from "@/constants";
+import { parseNameList, sourceNeedsWildcard, toAbsolutePath } from "../constants";
 import type { InstallMode } from "@/types";
 import type { SkillRecord, SkillSourceType, SkillsCommandAction } from "@/types";
 

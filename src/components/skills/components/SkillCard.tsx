@@ -4,7 +4,7 @@ import { BUTTON_DANGER_OUTLINE_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLA
 import { getSkillEnrichment, getSkillTags, getSkillDescription } from "@/lib/skillEnrichment";
 import { Tooltip } from "../../Tooltip";
 import { SkillCardTooltip } from "./SkillCardTooltip";
-import { formatUpdatedAt } from "@/constants";
+import { formatUpdatedAt } from "../constants";
 import type { SkillEnrichmentRecord, SkillRecord } from "@/types";
 
 interface SkillCardProps {

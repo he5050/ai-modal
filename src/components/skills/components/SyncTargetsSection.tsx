@@ -17,7 +17,7 @@ import {
 } from "@/lib/buttonStyles";
 import { FIELD_INPUT_CLASS, FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles";
 import { HintTooltip } from "../../HintTooltip";
-import { BUILTIN_TARGETS } from "@/constants";
+import { BUILTIN_TARGETS } from "../constants";
 import type { SkillRecord, SkillTargetConfig, SkillTargetStatus } from "@/types";
 
 interface SyncTargetsSectionProps {

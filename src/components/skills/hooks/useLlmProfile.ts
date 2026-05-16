@@ -4,7 +4,7 @@ import { loadPersistedJson } from "@/lib/persistence";
 import {
   MODEL_CONFIG_DB_KEY,
   MODEL_CONFIG_KEY,
-} from "@/constants";
+} from "../constants";
 import type { PersistedModelConfig } from "@/types";
 
 export type LlmProfile = {
