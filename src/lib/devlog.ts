@@ -28,6 +28,9 @@ export const logger = {
   debug: (msg: string) => log("debug", msg),
   info: (msg: string) => log("info", msg),
   warn: (msg: string) => log("warn", msg),
-  error: (msg: string) => log("error", msg),
+  error: (msg: string, err?: unknown) => {
+    log("error", err ? `${msg}: ${String(err ?? "")}` : msg);
+    if (!isDebugEnabled()) logger.error("[ai-modal]", msg, err ?? "");
+  },
   success: (msg: string) => log("success", msg),
 }

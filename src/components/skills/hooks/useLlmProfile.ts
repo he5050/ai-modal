@@ -42,7 +42,7 @@ export function useLlmProfile() {
         setModelConfigs([]);
       }
     } catch (error) {
-      console.error("Failed to refresh ai-modal llm profiles", error);
+      logger.error("Failed to refresh ai-modal llm profiles", error);
     } finally {
       setLoadingLlmProfiles(false);
     }

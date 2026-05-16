@@ -61,7 +61,7 @@ export function useModelConfig() {
         setSavedModelConfigs(parsed);
         setSelectedModelConfigId(parsed[0]?.id ?? "");
       } catch (error) {
-        console.error("Failed to load model configs", error);
+        logger.error("Failed to load model configs", error);
         toast("读取模型配置失败", "error");
       } finally {
         if (active) setModelConfigsReady(true);

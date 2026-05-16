@@ -208,7 +208,7 @@ export function useSkillCommand(options: UseSkillCommandOptions) {
           setCommandProgressStage("done");
         }
       } catch (error) {
-        console.error("Failed to run skills command", error);
+        logger.error("Failed to run skills command", error);
         logger.error(
           `[技能] ${actionLabel}异常：${commandLabel}；${
             error instanceof Error ? error.message : String(error)

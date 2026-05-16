@@ -96,7 +96,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
         const resolved = await homeDir();
         if (active) setHomePath(resolved.replace(/\/$/, ""));
       } catch (error) {
-        console.error("Failed to resolve home directory", error);
+        logger.error("Failed to resolve home directory", error);
         toast("无法解析用户主目录", "error");
       }
     }
@@ -146,7 +146,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
       setSavedContent(content);
       setContentDraft(content);
     } catch (error) {
-      console.error("Failed to read rule file", error);
+      logger.error("Failed to read rule file", error);
       toast("读取规则文件失败", "error");
     } finally {
       setLoadingContent(false);
@@ -183,7 +183,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
       setFileExists(true);
       toast("规则文件已保存", "success");
     } catch (error) {
-      console.error("Failed to save rule file", error);
+      logger.error("Failed to save rule file", error);
       toast("保存失败，请检查路径与权限范围", "error");
     } finally {
       setSaving(false);
@@ -216,7 +216,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
         setPathDraft(toDisplayPath(picked, homePath));
       }
     } catch (error) {
-      console.error("Failed to pick current path", error);
+      logger.error("Failed to pick current path", error);
       toast("选择路径失败", "error");
     }
   }
@@ -226,7 +226,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
     try {
       await openPath(toAbsolutePath(pathDraft, homePath));
     } catch (error) {
-      console.error("Failed to open rule file", error);
+      logger.error("Failed to open rule file", error);
       toast("打开文件失败", "error");
     }
   }
@@ -237,7 +237,7 @@ export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
       const folder = await dirname(toAbsolutePath(pathDraft, homePath));
       await openPath(folder);
     } catch (error) {
-      console.error("Failed to open rule directory", error);
+      logger.error("Failed to open rule directory", error);
       toast("打开目录失败", "error");
     }
   }

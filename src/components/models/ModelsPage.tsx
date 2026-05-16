@@ -42,7 +42,7 @@ import { friendlyError, summarizeFailedResultDetails } from "./utils";
 import type { Filter } from "./types";
 import { useModelListSort } from "./hooks/useModelListSort";
 import { useModelImportExport } from "./hooks/useModelImportExport";
-import { DeleteDialog, SelectionCheckbox } from "./components/SharedDialogs";
+import { DeleteDialog, SelectionCheckbox } from "../ui";
 import { ModelSelectionDialog } from "./components/ModelSelectionDialog";
 import { formatTime, maskPreviewText, maskKey } from "./utils";
 

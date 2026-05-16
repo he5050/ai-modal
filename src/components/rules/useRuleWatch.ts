@@ -104,7 +104,7 @@ export function useRuleWatch({
         );
       } catch (error) {
         const message = summarizeWatchError(error);
-        console.error("Failed to watch rule file", error);
+        logger.error("Failed to watch rule file", error);
         logger.error(
           `[规则监听] 绑定失败: target=${targetPath} watch=${watchPath} kind=${watchTargetKind} exists=${String(targetExists)} error=${message}`,
         );

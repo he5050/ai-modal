@@ -532,7 +532,7 @@ export function ModelConfigSection({
         setModelConfig(next);
         setSavedModelConfig(next);
       } catch (error) {
-        console.error("Failed to load model config", error);
+        logger.error("Failed to load model config", error);
         toast("读取模型配置失败", "error");
       } finally {
         if (active) setModelConfigReady(true);

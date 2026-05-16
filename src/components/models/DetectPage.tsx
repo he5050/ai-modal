@@ -4,8 +4,8 @@ import { HintTooltip } from "../HintTooltip";
 import { logger } from "../../lib/devlog";
 import { toast } from "../../lib/toast";
 import type { ModelTestProtocol } from "../../lib/protocolUtils";
-import { buildTestSignature, friendlyError } from "./utils";
-import { DeleteDialog } from "./components/SharedDialogs";
+import { buildTestSignature } from "./utils";
+import { DeleteDialog } from "../ui";
 import { ModelSelectionDialog } from "./components/ModelSelectionDialog";
 import {
   ModelProtocolDialog,
@@ -14,7 +14,7 @@ import {
 } from "../ProtocolTestUI";
 import { useDetectForm } from "./hooks/useDetectForm";
 import { useModelDetection } from "./hooks/useModelDetection";
-import { listModels } from "../../api";
+import { useModelSelectionDialog } from "./hooks/useModelSelectionDialog";
 import { RECENT_PAGE_SIZE } from "./constants";
 import { DetectForm } from "./components/DetectForm";
 import { DetectResults } from "./components/DetectResults";
@@ -53,14 +53,34 @@ export function DetectPage({
   const [detailDialogResult, setDetailDialogResult] =
     useState<import("../../types").ModelResult | null>(null);
 
-  // ─── 一键测试：模型选择弹窗状态 ────────────────────────────────
-  const [modelSelectionOpen, setModelSelectionOpen] = useState(false);
-  const [modelSelectionLoading, setModelSelectionLoading] = useState(false);
-  const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
-
   const form = useDetectForm(providers, editTarget, onClearEditTarget, onDirtyChange);
   const detection = useModelDetection();
+
+  const modelSelection = useModelSelectionDialog({
+    getBaseUrl: () => form.baseUrl,
+    getApiKey: () => form.apiKey,
+    getProviderName: () => form.name,
+    getInitialSelectedModels: () =>
+      form.editingProvider?.lastResult?.results?.map((item) => item.model) ?? [],
+    onConfirm: (selectedModels, protocols) => {
+      void detection.runModelDetection(
+        form.baseUrl,
+        form.apiKey,
+        form.name,
+        selectedModels,
+        protocols.length > 0 ? protocols : undefined,
+      );
+    },
+    onManualConfirm: (models, protocols) => {
+      void detection.runModelDetection(
+        form.baseUrl,
+        form.apiKey,
+        form.name,
+        models,
+        protocols.length > 0 ? protocols : undefined,
+      );
+    },
+  });
 
   // editTarget 回填检测状态
   useEffect(() => {
@@ -134,10 +154,9 @@ export function DetectPage({
 
   // ─── 一键测试流程 ────────────────────────────────────────────
 
-  async function handleQuickTest() {
+  function handleQuickTest() {
     if (!form.baseUrl.trim()) return;
 
-    // 编辑模式下已有结果 → 弹 retest scope dialog
     if (
       form.editingId &&
       form.editingProvider?.lastResult?.results &&
@@ -147,57 +166,7 @@ export function DetectPage({
       return;
     }
 
-    await fetchModelsAndShowDialog();
-  }
-
-  async function fetchModelsAndShowDialog() {
-    setModelSelectionOpen(true);
-    setModelSelectionLoading(true);
-    setModelSelectionError(null);
-    setFetchedModels([]);
-
-    try {
-      const models = await listModels(form.baseUrl.trim(), form.apiKey.trim());
-      const sorted = [...models].sort((a, b) =>
-        a.toLowerCase().localeCompare(b.toLowerCase()),
-      );
-      setFetchedModels(sorted);
-      setModelSelectionLoading(false);
-      logger.success(`[一键测试] v1/models 获取到 ${sorted.length} 个模型`);
-    } catch (e) {
-      const msg = friendlyError(e);
-      logger.error(`[一键测试] v1/models 获取失败：${msg}`);
-      setModelSelectionError(msg);
-      setModelSelectionLoading(false);
-    }
-  }
-
-  /** 用户选完模型和协议后，开始测试 */
-  function handleModelSelectionConfirm(selectedModels: string[], protocols: ModelTestProtocol[]) {
-    setModelSelectionOpen(false);
-    setFetchedModels([]);
-    setModelSelectionError(null);
-    void detection.runModelDetection(
-      form.baseUrl,
-      form.apiKey,
-      form.name,
-      selectedModels,
-      protocols.length > 0 ? protocols : undefined,
-    );
-  }
-
-  /** 用户手动输入模型和选完协议后，开始测试 */
-  function handleManualModelConfirm(models: string[], protocols: ModelTestProtocol[]) {
-    setModelSelectionOpen(false);
-    setFetchedModels([]);
-    setModelSelectionError(null);
-    void detection.runModelDetection(
-      form.baseUrl,
-      form.apiKey,
-      form.name,
-      models,
-      protocols.length > 0 ? protocols : undefined,
-    );
+    modelSelection.openDialog();
   }
 
   function handleSaveAsNew() {
@@ -367,20 +336,16 @@ export function DetectPage({
         />
       )}
 
-      {modelSelectionOpen && (
+      {modelSelection.dialogState.open && (
         <ModelSelectionDialog
-          models={fetchedModels}
-          initialSelectedModels={form.editingProvider?.lastResult?.results?.map((item) => item.model) ?? []}
-          loading={modelSelectionLoading}
-          fetchError={modelSelectionError}
-          onConfirm={handleModelSelectionConfirm}
-          onManualConfirm={handleManualModelConfirm}
-          onRetry={fetchModelsAndShowDialog}
-          onClose={() => {
-            setModelSelectionOpen(false);
-            setFetchedModels([]);
-            setModelSelectionError(null);
-          }}
+          models={modelSelection.dialogState.fetchedModels}
+          initialSelectedModels={modelSelection.initialSelectedModels}
+          loading={modelSelection.dialogState.loading}
+          fetchError={modelSelection.dialogState.error}
+          onConfirm={modelSelection.handleConfirm}
+          onManualConfirm={modelSelection.handleManualConfirm}
+          onRetry={modelSelection.handleRetry}
+          onClose={modelSelection.closeDialog}
         />
       )}
 

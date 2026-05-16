@@ -22,10 +22,10 @@ import {
 import { FIELD_SELECT_CLASS, FIELD_MONO_INPUT_CLASS } from "../lib/formStyles";
 import type { ConfigGroupId, ConfigPath, Provider } from "../types";
 import { HintTooltip } from "./HintTooltip";
-import { EmptyState } from "./ui";
+
 import { SNOW_REQUEST_METHOD_OPTIONS } from "./configs/constants";
 import { toDisplayPath, getModelConfigLabel, getModelConfigResultText } from "./configs/utils";
-import { ConfigConfirmModal } from "./configs/ConfirmModal";
+import { ConfirmModal } from "./ui";
 import {
   ClaudeApplyModal,
   CodexApplyModal,
@@ -214,7 +214,7 @@ export function ConfigPage({
         "success",
       );
     } catch (error) {
-      console.error("Failed to format config", error);
+      logger.error("Failed to format config", error);
       toast(error instanceof Error ? `配置格式化失败：${error.message}` : "配置格式化失败", "error");
     }
   }
@@ -394,13 +394,6 @@ export function ConfigPage({
                 )}
               </div>
 
-              {/* Model config section (currently disabled) */}
-              {false && (
-                <div className="rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                  <EmptyState title="当前还没有模型配置" description="点击右上角新建创建第一条" className="mt-3 text-left" />
-                </div>
-              )}
-
               <ConfigEditorPanel
                 value={activeContentDraft}
                 onChange={(value) => selectedFile && updateDraftState(selectedFile.id, { contentDraft: value })}
@@ -422,7 +415,8 @@ export function ConfigPage({
 
       {/* Modals */}
       {pendingSwitchTarget && selectedFile && (
-        <ConfigConfirmModal
+        <ConfirmModal
+          variant="warning"
           title="切换当前文件？"
           description="当前文件有未保存内容。请选择直接切换，或先保存后再切换。"
           primaryLabel="切换"
@@ -433,11 +427,13 @@ export function ConfigPage({
       )}
 
       {showDeleteConfirm && selectedFile && !selectedFile.isBuiltin && (
-        <ConfigConfirmModal
+        <ConfirmModal
+          variant="warning"
           title="删除当前组内文件？"
           description={`将移除当前文件"${selectedFile.label}"的入口配置，不会删除磁盘上的实际文件。`}
           primaryLabel="确认删除"
           secondaryLabel="取消"
+          danger
           onPrimary={handleDeleteCurrentCustomPath}
           onSecondary={() => setShowDeleteConfirm(false)}
         />

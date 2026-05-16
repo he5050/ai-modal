@@ -398,7 +398,7 @@ export function DetailRow({
 
 // ─── Inline protocol dialog for DetailRow ────────────────────────
 
-import { SelectionCheckbox } from "./SharedDialogs";
+import { SelectionCheckbox } from "../../ui";
 import { X } from "lucide-react";
 import { getModelProtocolLabel } from "../../../lib/protocolUtils";
 

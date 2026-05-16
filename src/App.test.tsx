@@ -27,11 +27,11 @@ vi.mock("./components/Sidebar", () => ({
   ),
 }));
 
-vi.mock("./components/DetectPage", () => ({
+vi.mock("./components/models/DetectPage", () => ({
   DetectPage: () => <div>Detect Page</div>,
 }));
 
-vi.mock("./components/ModelsPage", () => ({
+vi.mock("./components/models/ModelsPage", () => ({
   ModelsPage: () => <div>Models Page</div>,
 }));
 
@@ -39,7 +39,7 @@ vi.mock("./components/ProviderDetailPage", () => ({
   ProviderDetailPage: () => <div>Provider Detail Page</div>,
 }));
 
-vi.mock("./components/SkillsPage", () => ({
+vi.mock("./components/skills/SkillsPage", () => ({
   SkillsPage: () => <div>Skills Page</div>,
 }));
 

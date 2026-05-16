@@ -197,7 +197,7 @@ export function useEnrichmentQueue(options: {
         if (active) applyEnrichmentSnapshot(snapshot);
       })
       .catch((error) => {
-        console.error("Failed to restore skill enrichment job status", error);
+        logger.error("Failed to restore skill enrichment job status", error);
       });
 
     void listen<SkillEnrichmentJobSnapshot>(
@@ -231,7 +231,7 @@ export function useEnrichmentQueue(options: {
         applyEnrichmentSnapshot(snapshot);
       }
     } catch (error) {
-      console.error("Failed to stop skill enrichment job", error);
+      logger.error("Failed to stop skill enrichment job", error);
       toast("停止技能注解失败", "error");
     }
   }
@@ -287,7 +287,7 @@ export function useEnrichmentQueue(options: {
         toast(message, "warning");
         return;
       }
-      console.error("Failed to start skill enrichment job", error);
+      logger.error("Failed to start skill enrichment job", error);
       toast(`启动技能注解失败：${message}`, "error");
     }
   }

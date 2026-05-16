@@ -145,7 +145,7 @@ export function useSkillData() {
         });
         setLocalizedOnlineSkillDetails(storedLocalizedOnlineSkillDetails);
       } catch (error) {
-        console.error("Failed to bootstrap skill targets", error);
+        logger.error("Failed to bootstrap skill targets", error);
         toast("读取技能目标失败", "error");
       } finally {
         if (active) setTargetsReady(true);
@@ -166,7 +166,7 @@ export function useSkillData() {
       targets,
       SKILL_TARGETS_KEY,
     ).catch((error) => {
-      console.error("Failed to persist skill targets", error);
+      logger.error("Failed to persist skill targets", error);
     });
   }, [targets, targetsReady]);
 
@@ -177,7 +177,7 @@ export function useSkillData() {
       skillSources,
       SKILL_SOURCES_KEY,
     ).catch((error) => {
-      console.error("Failed to persist skill sources", error);
+      logger.error("Failed to persist skill sources", error);
     });
   }, [skillSources, targetsReady]);
 
@@ -188,7 +188,7 @@ export function useSkillData() {
       skillEnrichments,
       SKILL_ENRICHMENTS_KEY,
     ).catch((error) => {
-      console.error("Failed to persist skill enrichments", error);
+      logger.error("Failed to persist skill enrichments", error);
     });
   }, [skillEnrichments, targetsReady]);
 
@@ -199,7 +199,7 @@ export function useSkillData() {
       installedSkillSnapshots,
       INSTALLED_SKILL_SNAPSHOTS_KEY,
     ).catch((error) => {
-      console.error("Failed to persist installed skill snapshots", error);
+      logger.error("Failed to persist installed skill snapshots", error);
     });
   }, [installedSkillSnapshots, targetsReady]);
 
@@ -210,7 +210,7 @@ export function useSkillData() {
       localizedOnlineSkillDetails,
       LOCALIZED_ONLINE_SKILL_DETAILS_KEY,
     ).catch((error) => {
-      console.error("Failed to persist localized online skill details", error);
+      logger.error("Failed to persist localized online skill details", error);
     });
   }, [localizedOnlineSkillDetails, targetsReady]);
 
@@ -232,7 +232,7 @@ export function useSkillData() {
           SKILLS_CATALOG_KEY,
         );
       } catch (error) {
-        console.error("Failed to scan local skills", error);
+        logger.error("Failed to scan local skills", error);
         toast("读取本地技能失败", "error");
       } finally {
         setLoadingCatalog(false);
@@ -255,7 +255,7 @@ export function useSkillData() {
           Object.fromEntries(result.map((item) => [item.id, item])),
         );
       } catch (error) {
-        console.error("Failed to inspect skill targets", error);
+        logger.error("Failed to inspect skill targets", error);
         toast("检查技能目标状态失败", "error");
       } finally {
         setCheckingTargets(false);
@@ -313,7 +313,7 @@ export function useSkillData() {
         catalogRefreshed: false,
       };
     } catch (error) {
-      console.error("Failed to sync skill targets", error);
+      logger.error("Failed to sync skill targets", error);
       toast("技能分发失败", "error");
       return null;
     } finally {
@@ -334,7 +334,7 @@ export function useSkillData() {
       await refreshTargetStatuses();
       return true;
     } catch (error) {
-      console.error("Failed to sync skill target", error);
+      logger.error("Failed to sync skill target", error);
       toast(`${target.label} 同步失败`, "error");
       return false;
     } finally {

@@ -93,7 +93,7 @@ export function useOnlineSearch(options: UseOnlineSearchOptions) {
         setSearchDuration(res.durationMs);
       } catch (err) {
         if (controller.signal.aborted) return;
-        console.error("Failed to search skills", err);
+        logger.error("Failed to search skills", err);
         toast("搜索技能失败", "error");
         setSearchResults([]);
       } finally {

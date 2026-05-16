@@ -103,7 +103,7 @@ export function useSync({
         "warning",
       );
     } catch (error) {
-      console.error("Failed to sync rule file", error);
+      logger.error("Failed to sync rule file", error);
       toast("同步失败，请检查源文件与目标路径", "error");
     } finally {
       setSyncing(false);

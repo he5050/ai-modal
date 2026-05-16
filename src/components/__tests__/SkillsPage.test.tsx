@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SkillsPage } from "../SkillsPage";
+import { SkillsPage } from "../skills/SkillsPage";
 import type {
   SkillAnnotationMode,
   SkillEnrichmentJobSnapshot,

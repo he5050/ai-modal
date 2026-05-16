@@ -50,7 +50,7 @@ export function RuleEditor({
       onContentChange(formatted);
       toast("已按标准 Markdown formatter 格式化", "success");
     } catch (error) {
-      console.error("Failed to format markdown", error);
+      logger.error("Failed to format markdown", error);
       toast("Markdown 格式化失败", "error");
     }
   }
@@ -60,7 +60,7 @@ export function RuleEditor({
       await navigator.clipboard.writeText(contentDraft);
       toast("已复制当前规则内容", "success");
     } catch (error) {
-      console.error("Failed to copy content", error);
+      logger.error("Failed to copy content", error);
       toast("复制失败", "error");
     }
   }

@@ -2,8 +2,8 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { animate, spring } from "animejs";
 import { Sidebar } from "./components/Sidebar";
-import { DetectPage } from "./components/DetectPage";
-import { ModelsPage } from "./components/ModelsPage";
+import { DetectPage } from "./components/models/DetectPage";
+import { ModelsPage } from "./components/models/ModelsPage";
 import { DevLog } from "./components/DevLog";
 import { ToastContainer } from "./components/Toast";
 import {
@@ -15,9 +15,9 @@ import {
 } from "./components/SettingsPage";
 import { ProviderDetailPage } from "./components/ProviderDetailPage";
 import { PromptDetailPage } from "./components/PromptDetailPage";
-import { SkillsPage } from "./components/SkillsPage";
+import { SkillsPage } from "./components/skills/SkillsPage";
 import { ModelMappingPage } from "./components/ModelMappingPage";
-import { McpPage } from "./components/McpPage";
+import { McpPage } from "./components/mcp/McpPage";
 import { loadPersistedJson } from "./lib/persistence";
 import { LeaveConfirmDialog, PageFallback } from "./components/shared/LeaveConfirmDialog";
 import { useProviders } from "./hooks/useProviders";

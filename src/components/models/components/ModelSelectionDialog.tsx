@@ -4,7 +4,7 @@ import { BUTTON_PRIMARY_CLASS, BUTTON_SECONDARY_CLASS, BUTTON_SIZE_XS_CLASS } fr
 import { FIELD_INPUT_CLASS } from "../../../lib/formStyles";
 import type { ModelTestProtocol } from "../../../lib/protocolUtils";
 import { MODEL_TEST_PROTOCOLS } from "../../../lib/protocolUtils";
-import { getSelectionCheckboxClassName } from "./SharedDialogs";
+import { getSelectionCheckboxClassName } from "../../ui";
 
 /** 协议按钮的标签和颜色 */
 const PROTOCOL_CONFIG: Record<ModelTestProtocol, { label: string; color: string; bg: string; borderColor: string; selectedColor: string }> = {

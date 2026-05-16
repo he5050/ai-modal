@@ -147,7 +147,7 @@ export function PromptDetailPage({
       await navigator.clipboard.writeText(content);
       toast("提示词已复制", "success");
     } catch (error) {
-      console.error("Failed to copy prompt", error);
+      logger.error("Failed to copy prompt", error);
       toast("复制提示词失败", "error");
     }
   }
@@ -169,7 +169,7 @@ export function PromptDetailPage({
       }));
       toast("已按标准 Markdown formatter 格式化", "success");
     } catch (error) {
-      console.error("Failed to format markdown", error);
+      logger.error("Failed to format markdown", error);
       toast("Markdown 格式化失败", "error");
     }
   }

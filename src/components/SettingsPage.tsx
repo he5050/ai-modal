@@ -61,7 +61,7 @@ export function SettingsPage({
         setModelMappingPortSaved(settings.port);
       })
       .catch((error) => {
-        console.error("Failed to load model mapping settings", error);
+        logger.error("Failed to load model mapping settings", error);
       });
     return () => {
       active = false;
@@ -88,7 +88,7 @@ export function SettingsPage({
       onDebugChange(next);
       toast(next ? "Debug 模式已开启" : "Debug 模式已关闭", "success");
     } catch (error) {
-      console.error("Failed to update debug mode", error);
+      logger.error("Failed to update debug mode", error);
       toast("Debug 模式更新失败", "error");
     }
   }
@@ -101,7 +101,7 @@ export function SettingsPage({
       localStorage.setItem(CONCURRENCY_KEY, String(v));
       toast(`检测并发数已更新为 ${v}`, "success");
     } catch (error) {
-      console.error("Failed to update concurrency", error);
+      logger.error("Failed to update concurrency", error);
       toast("检测并发数更新失败", "error");
     }
   }
@@ -120,7 +120,7 @@ export function SettingsPage({
       setModelMappingPortSaved(port);
       toast("模型映射代理端口已保存，重启代理后生效", "success");
     } catch (error) {
-      console.error("Failed to update model mapping port", error);
+      logger.error("Failed to update model mapping port", error);
       toast("模型映射代理端口更新失败", "error");
     } finally {
       setModelMappingPortBusy(false);
@@ -135,7 +135,7 @@ export function SettingsPage({
       setModelscopeKeySaved(!!key);
       toast(key ? "ModelScope API Key 已保存" : "ModelScope API Key 已清除", "success");
     } catch (error) {
-      console.error("Failed to save modelscope key", error);
+      logger.error("Failed to save modelscope key", error);
       toast("ModelScope API Key 保存失败", "error");
     } finally {
       setModelscopeKeyBusy(false);

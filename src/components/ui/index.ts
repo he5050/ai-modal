@@ -24,3 +24,8 @@ export type { SectionHeaderProps } from "./SectionHeader";
 
 export { KeyValueRow } from "./KeyValueRow";
 export type { KeyValueRowProps } from "./KeyValueRow";
+
+export { ConfirmModal, DeleteDialog } from "./ConfirmModal";
+export type { ConfirmModalProps, ConfirmVariant } from "./ConfirmModal";
+
+export { SelectionCheckbox, getSelectionCheckboxClassName } from "./SelectionCheckbox";

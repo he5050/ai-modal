@@ -57,7 +57,7 @@ export function PromptsPage({
       await navigator.clipboard.writeText(content);
       toast("提示词已复制", "success");
     } catch (error) {
-      console.error("Failed to copy prompt", error);
+      logger.error("Failed to copy prompt", error);
       toast("复制提示词失败", "error");
     }
   }
@@ -73,7 +73,7 @@ export function PromptsPage({
       await writeTextFile(targetPath, serializePromptRecords(prompts));
       toast("提示词库已导出", "success");
     } catch (error) {
-      console.error("Failed to export prompts", error);
+      logger.error("Failed to export prompts", error);
       toast("导出提示词失败", "error");
     }
   }
@@ -90,7 +90,7 @@ export function PromptsPage({
       onImport(merged.nextRecords);
       toast(summarizePromptImport(summary), "success");
     } catch (error) {
-      console.error("Failed to import prompts", error);
+      logger.error("Failed to import prompts", error);
       toast(
         error instanceof Error ? error.message : "导入提示词失败",
         "error",

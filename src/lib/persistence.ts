@@ -74,7 +74,7 @@ export async function loadPersistedJson<T>(
 
     return fallback;
   } catch (error) {
-    console.error(`Failed to load persisted state for ${dbKey}`, error);
+    logger.error(`Failed to load persisted state for ${dbKey}`, error);
     return readLocalStorageJson(legacyKey, fallback);
   }
 }

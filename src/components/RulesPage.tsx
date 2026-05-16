@@ -25,7 +25,7 @@ import {
 } from "../lib/formStyles";
 import { toast } from "../lib/toast";
 import { HintTooltip } from "./HintTooltip";
-import { ConfirmModal } from "./ConfirmModal";
+import { ConfirmModal } from "./ui";
 import { RuleEditor } from "./rules/RuleEditor";
 import { useRuleFile } from "./rules/useRuleFile";
 import { useRuleWatch } from "./rules/useRuleWatch";
@@ -154,7 +154,7 @@ export function RulesPage({
         setCustomPath(toDisplayPath(picked, homePath));
       }
     } catch (error) {
-      console.error("Failed to pick custom path", error);
+      logger.error("Failed to pick custom path", error);
       toast("选择文件失败", "error");
     }
   }

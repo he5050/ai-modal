@@ -22,7 +22,7 @@ export function useConfigDraft() {
         const resolved = await homeDir();
         if (active) setHomePath(resolved.replace(/\/$/, ""));
       } catch (error) {
-        console.error("Failed to resolve home directory", error);
+        logger.error("Failed to resolve home directory", error);
         toast("无法解析用户主目录", "error");
       }
     }
@@ -93,7 +93,7 @@ export function useConfigDraft() {
           loadedPath: file.absolutePath,
         });
       } catch (error) {
-        console.error("Failed to read config file", error);
+        logger.error("Failed to read config file", error);
         toast("读取配置文件失败", "error");
         updateDraftState(file.id, {
           loading: false,
@@ -153,7 +153,7 @@ export function useConfigDraft() {
       toast("配置文件已保存", "success");
       return true;
     } catch (error) {
-      console.error("Failed to save config file", error);
+      logger.error("Failed to save config file", error);
       toast("保存失败，请检查路径与权限范围", "error");
       return false;
     } finally {
@@ -165,7 +165,7 @@ export function useConfigDraft() {
     try {
       await openPath(file.absolutePath);
     } catch (error) {
-      console.error("Failed to open config file", error);
+      logger.error("Failed to open config file", error);
       toast("打开文件失败", "error");
     }
   }
@@ -175,7 +175,7 @@ export function useConfigDraft() {
       const folder = await dirname(file.absolutePath);
       await openPath(folder);
     } catch (error) {
-      console.error("Failed to open config directory", error);
+      logger.error("Failed to open config directory", error);
       toast("打开目录失败", "error");
     }
   }

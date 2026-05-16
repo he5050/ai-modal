@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open as pickPath } from "@tauri-apps/plugin-dialog";
-import { exists, readTextFile } from "@tauri-apps/plugin-fs";
+import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { homeDir } from "@tauri-apps/api/path";
 import {
   CheckCircle2,
   Download,
@@ -32,7 +33,7 @@ import { renderMarkdownToHtml } from "../../lib/promptMarkdown";
 import { toast } from "../../lib/toast";
 import { logger } from "../../lib/devlog";
 import { HintTooltip } from "../HintTooltip";
-import type { ModelscopeRequestProfileInput } from "../../types";
+import type { ModelscopeRequestProfileInput, ModelscopeServerDetail } from "../../types";
 import {
   McpConfig,
   McpServerConfig,
@@ -57,6 +58,7 @@ import {
   extractTransportConfigs,
   getModelscopeDetailData,
   getModelscopeDetailMarkdown,
+  ensureParentDir,
   getModelscopeDisplayName,
   getModelscopeSearchItems,
   getModelscopeSearchTotal,
@@ -106,7 +108,7 @@ export function McpPage({
   const [msLoading, setMsLoading] = useState(false);
   const [msError, setMsError] = useState<string | null>(null);
   const [msTotal, setMsTotal] = useState(0);
-  const [msDetail, setMsDetail] = useState<any>(null);
+  const [msDetail, setMsDetail] = useState<ModelscopeServerDetail | null>(null);
   const [msDetailLoading, setMsDetailLoading] = useState(false);
   const [msDetailError, setMsDetailError] = useState<string | null>(null);
   const [msDetailModalOpen, setMsDetailModalOpen] = useState(false);
@@ -134,7 +136,7 @@ export function McpPage({
     let active = true;
     async function bootstrap() {
       try {
-        const home = normalizeHomePath(await (await import("@tauri-apps/api/path")).homeDir());
+        const home = normalizeHomePath(await homeDir());
         const nextSourcePath = buildSourcePath(home);
         const sourceExists = await exists(nextSourcePath);
         const nextConfig = sourceExists
@@ -217,8 +219,8 @@ export function McpPage({
 
   async function persistSourceConfig(nextConfig: McpConfig, options?: { backup?: boolean }) {
     if (options?.backup) await backupIfExists(sourcePath);
-    await (await import("./utils")).ensureParentDir(sourcePath);
-    await (await import("@tauri-apps/plugin-fs")).writeTextFile(sourcePath, stringifyConfig(nextConfig));
+    await ensureParentDir(sourcePath);
+    await writeTextFile(sourcePath, stringifyConfig(nextConfig));
   }
 
   async function saveSource() {
@@ -417,7 +419,7 @@ export function McpPage({
     void fetchModelscopeDetail(serverId, { silent: false }).catch(() => {});
   }
 
-  async function handleImportOnline(serverDetail: any) {
+  async function handleImportOnline(serverDetail: ModelscopeServerDetail) {
     const importEntries = buildImportedServerEntries(serverDetail);
     if (importEntries.length === 0) { toast("该服务没有可导入的配置", "warning"); return; }
     setMsImporting(true);

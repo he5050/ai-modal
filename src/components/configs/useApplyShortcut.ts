@@ -158,7 +158,7 @@ export function useApplyShortcut({
       setClaudeApplyModalOpen(false);
       toast("已将 Claude 模型映射应用到当前草稿", "success");
     } catch (error) {
-      console.error("Failed to apply Claude shortcut config", error);
+      logger.error("Failed to apply Claude shortcut config", error);
       toast(
         error instanceof Error
           ? `应用失败：${error.message}`
@@ -245,7 +245,7 @@ export function useApplyShortcut({
       setCodexApplyModalOpen(false);
       toast("已将 Codex 配置应用到当前草稿", "success");
     } catch (error) {
-      console.error("Failed to apply Codex shortcut config", error);
+      logger.error("Failed to apply Codex shortcut config", error);
       toast(
         error instanceof Error
           ? `应用失败：${error.message}`
@@ -344,7 +344,7 @@ export function useApplyShortcut({
       setGeminiApplyModalOpen(false);
       toast("已将 Gemini 配置应用到当前草稿", "success");
     } catch (error) {
-      console.error("Failed to apply Gemini shortcut config", error);
+      logger.error("Failed to apply Gemini shortcut config", error);
       toast(
         error instanceof Error
           ? `应用失败：${error.message}`
@@ -401,7 +401,7 @@ export function useApplyShortcut({
       setSnowApplyModalOpen(false);
       toast("已将 Snow 配置应用到当前草稿", "success");
     } catch (error) {
-      console.error("Failed to apply Snow shortcut config", error);
+      logger.error("Failed to apply Snow shortcut config", error);
       toast(
         error instanceof Error
           ? `应用失败：${error.message}`
@@ -469,7 +469,7 @@ export function useApplyShortcut({
       setOpenCodeApplyModalOpen(false);
       toast("已将 OpenCode 配置应用到当前草稿", "success");
     } catch (error) {
-      console.error("Failed to apply OpenCode shortcut config", error);
+      logger.error("Failed to apply OpenCode shortcut config", error);
       toast(
         error instanceof Error
           ? `应用失败：${error.message}`
