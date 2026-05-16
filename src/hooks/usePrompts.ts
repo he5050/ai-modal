@@ -27,7 +27,7 @@ export function usePrompts() {
 
   useEffect(() => {
     if (!storageReady) return;
-    void savePersistedJson(PROMPTS_DB_KEY, prompts, PROMPTS_KEY).catch(() => {});
+    void savePersistedJson(PROMPTS_DB_KEY, prompts, PROMPTS_KEY).catch((e) => logger.error("Failed to persist prompts", e));
   }, [prompts, storageReady]);
 
   const savePrompt = useCallback((next: PromptRecord) => {

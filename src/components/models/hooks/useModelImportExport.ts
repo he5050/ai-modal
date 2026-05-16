@@ -7,7 +7,7 @@ import type { Provider } from "@/types";
 import { logger } from "@/lib/devlog";
 import { toast } from "@/lib/toast";
 import { savePersistedJson } from "@/lib/persistence";
-import { RECENT_EXPORT_DIR_KEY, EXPORT_DIR_DB_KEY } from "@/constants";
+import { RECENT_EXPORT_DIR_KEY, EXPORT_DIR_DB_KEY } from "../constants";
 import {
   escapeCsvCell,
   parseJsonProviders,

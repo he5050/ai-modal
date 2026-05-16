@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { logger } from "@/lib/devlog";
 import type { ConfigPath } from "@/types";
 import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
 import { parseConfigPaths } from "@/lib/parsers";
@@ -29,7 +30,7 @@ export function useConfigPaths() {
     const payload = configPaths.map(({ id, label, path, isBuiltin, kind, format }) => ({
       id, label, path, isBuiltin, kind, format,
     }));
-    void savePersistedJson(CONFIG_PATHS_DB_KEY, payload, CONFIG_PATHS_KEY).catch(() => {});
+    void savePersistedJson(CONFIG_PATHS_DB_KEY, payload, CONFIG_PATHS_KEY).catch((e) => logger.error("Failed to persist config paths", e));
   }, [configPaths, storageReady]);
 
   const upsertPath = useCallback((next: ConfigPath) => {

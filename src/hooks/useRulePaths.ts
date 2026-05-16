@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { logger } from "@/lib/devlog";
 import type { RulePath } from "@/types";
 import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
 import { parseRulePaths } from "@/lib/parsers";
@@ -29,7 +30,7 @@ export function useRulePaths() {
     const payload = rulePaths.map(({ id, label, path, isBuiltin, kind }) => ({
       id, label, path, isBuiltin, kind,
     }));
-    void savePersistedJson(RULE_PATHS_DB_KEY, payload, RULE_PATHS_KEY).catch(() => {});
+    void savePersistedJson(RULE_PATHS_DB_KEY, payload, RULE_PATHS_KEY).catch((e) => logger.error("Failed to persist rule paths", e));
   }, [rulePaths, storageReady]);
 
   const changePath = useCallback((id: string, path: string) => {

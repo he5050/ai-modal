@@ -5,7 +5,7 @@ import { logger } from "@/lib/devlog";
 import { toast } from "@/lib/toast";
 import { getConcurrency } from "../../SettingsPage";
 import type { LiveResult, ModelTestProtocol, Phase } from "@/types";
-import { MODEL_TEST_PROTOCOLS } from "@/constants";
+import { MODEL_TEST_PROTOCOLS } from "../constants";
 import { runModelDetection as runDetection } from "../detectionRunner";
 import {
   buildTestSignature,

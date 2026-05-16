@@ -267,8 +267,7 @@ export function useSkillData() {
 
   useEffect(() => {
     void refreshCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshCatalog]);
 
   useEffect(() => {
     if (!targetsReady) return;

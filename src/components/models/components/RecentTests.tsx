@@ -7,7 +7,7 @@ import {
 } from "@/lib/buttonStyles";
 import { Trash2, ArrowRight } from "lucide-react";
 import type { Provider } from "@/types";
-import { RECENT_PAGE_SIZE } from "@/constants";
+import { RECENT_PAGE_SIZE } from "../constants";
 import { maskPreviewText } from "../utils";
 import type { DetectFormState } from "@/hooks/useDetectForm";
 

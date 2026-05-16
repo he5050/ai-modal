@@ -14,7 +14,7 @@ import {
 } from "@/lib/buttonStyles";
 import { getConcurrency } from "../../SettingsPage";
 import type { RowStatus, ModelTestProtocol } from "@/types";
-import { MODEL_TEST_PROTOCOLS } from "@/constants";
+import { MODEL_TEST_PROTOCOLS } from "../constants";
 import {
   getResultDetails,
   summarizeFailedResultDetails,
