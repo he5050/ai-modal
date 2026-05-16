@@ -260,12 +260,14 @@ fn write_with_retry(path: &PathBuf, data: &str) -> Result<(), String> {
 
 fn save_config_file(config: &ModelMappingConfig) -> Result<(), String> {
     let dir = config_dir();
-    std::fs::create_dir_all(&dir).map_err(|err| format!("无法创建目录 {}: {}", dir.display(), err))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("无法创建目录 {}: {}", dir.display(), err))?;
     let data = serde_json::to_string_pretty(config).map_err(|err| err.to_string())?;
     let target = config_path();
     let tmp = target.with_extension("json.tmp");
     write_with_retry(&tmp, &data)?;
-    std::fs::rename(&tmp, &target).map_err(|err| format!("无法更新 {}: {}", target.display(), err))?;
+    std::fs::rename(&tmp, &target)
+        .map_err(|err| format!("无法更新 {}: {}", target.display(), err))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -277,7 +279,8 @@ fn save_config_file(config: &ModelMappingConfig) -> Result<(), String> {
 fn save_settings_file(settings: &ModelMappingSettings) -> Result<(), String> {
     normalize_port(settings.port)?;
     let dir = config_dir();
-    std::fs::create_dir_all(&dir).map_err(|err| format!("无法创建目录 {}: {}", dir.display(), err))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("无法创建目录 {}: {}", dir.display(), err))?;
     let data = serde_json::to_string_pretty(settings).map_err(|err| err.to_string())?;
     let target = settings_path();
     let tmp = target.with_extension("json.tmp");
@@ -448,27 +451,32 @@ fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
                 };
                 let target_url = provider.target_url.clone();
                 ModelMappingProvider {
-                models: provider
-                    .models
-                    .into_iter()
-                    .map(|model| {
-                        let supported_protocols = normalize_supported_protocols(&model, &target_url);
-                        let target_protocol = resolve_target_protocol(&model);
-                        let source_protocol = resolve_source_protocol(&model, &target_url, &target_protocol);
-                        let normalized_slot =
-                            normalize_slot(&model.slot, model.name.trim(), &mut allocate_auto_slot);
-                        ModelMappingEntry {
-                            slot: normalized_slot,
-                            display_name: effective_display_name(&model, &provider_label),
-                            supported_protocols,
-                            source_protocol,
-                            target_protocol,
-                            ..model
-                        }
-                    })
-                    .collect(),
-                ..provider
-            }
+                    models: provider
+                        .models
+                        .into_iter()
+                        .map(|model| {
+                            let supported_protocols =
+                                normalize_supported_protocols(&model, &target_url);
+                            let target_protocol = resolve_target_protocol(&model);
+                            let source_protocol =
+                                resolve_source_protocol(&model, &target_url, &target_protocol);
+                            let normalized_slot = normalize_slot(
+                                &model.slot,
+                                model.name.trim(),
+                                &mut allocate_auto_slot,
+                            );
+                            ModelMappingEntry {
+                                slot: normalized_slot,
+                                display_name: effective_display_name(&model, &provider_label),
+                                supported_protocols,
+                                source_protocol,
+                                target_protocol,
+                                ..model
+                            }
+                        })
+                        .collect(),
+                    ..provider
+                }
             })
             .collect(),
     }
@@ -519,12 +527,19 @@ fn normalize_supported_protocols(entry: &ModelMappingEntry, target_url: &str) ->
         }
     }
     if result.is_empty() {
-        result.push(protocol_to_string(infer_mapping_protocol(target_url, &entry.name)));
+        result.push(protocol_to_string(infer_mapping_protocol(
+            target_url,
+            &entry.name,
+        )));
     }
     result
 }
 
-fn resolve_source_protocol(entry: &ModelMappingEntry, target_url: &str, target_protocol: &str) -> String {
+fn resolve_source_protocol(
+    entry: &ModelMappingEntry,
+    target_url: &str,
+    target_protocol: &str,
+) -> String {
     let supported = normalize_supported_protocols(entry, target_url);
     if let Some(explicit) = normalize_protocol_value(&entry.source_protocol)
         .or_else(|| normalize_protocol_value(&entry.protocol))
@@ -634,8 +649,13 @@ fn validate_config(config: &ModelMappingConfig) -> Result<(), String> {
         if provider.target_url.trim().is_empty() {
             return Err(format!("第 {} 个服务商缺少 API 地址。", index + 1));
         }
-        if !provider.target_url.starts_with("http://") && !provider.target_url.starts_with("https://") {
-            return Err(format!("第 {} 个服务商 API 地址必须以 http:// 或 https:// 开头。", index + 1));
+        if !provider.target_url.starts_with("http://")
+            && !provider.target_url.starts_with("https://")
+        {
+            return Err(format!(
+                "第 {} 个服务商 API 地址必须以 http:// 或 https:// 开头。",
+                index + 1
+            ));
         }
         if provider.api_key.trim().is_empty() {
             return Err(format!("第 {} 个服务商缺少 API Key。", index + 1));
@@ -665,18 +685,16 @@ fn claude_3p_dir() -> Option<PathBuf> {
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join("AppData/Local"));
         let packages = localappdata.join("Packages");
-        let store_dir = std::fs::read_dir(&packages)
-            .ok()
-            .and_then(|entries| {
-                entries.flatten().find_map(|entry| {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with("Claude_") || name.starts_with("Claude_pzs8sxrjxfjjc") {
-                        Some(entry.path().join("LocalCache/Roaming/Claude-3p"))
-                    } else {
-                        None
-                    }
-                })
-            });
+        let store_dir = std::fs::read_dir(&packages).ok().and_then(|entries| {
+            entries.flatten().find_map(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("Claude_") || name.starts_with("Claude_pzs8sxrjxfjjc") {
+                    Some(entry.path().join("LocalCache/Roaming/Claude-3p"))
+                } else {
+                    None
+                }
+            })
+        });
         store_dir.unwrap_or_else(|| {
             let appdata = std::env::var("APPDATA")
                 .ok()
@@ -724,7 +742,10 @@ fn write_json_atomic(path: &PathBuf, value: &serde_json::Value) -> Result<(), St
     std::fs::rename(&tmp, path).map_err(|err| format!("无法更新 {}: {}", path.display(), err))
 }
 
-fn write_claude_gateway_config(config: &ModelMappingConfig, validate: bool) -> Result<String, String> {
+fn write_claude_gateway_config(
+    config: &ModelMappingConfig,
+    validate: bool,
+) -> Result<String, String> {
     if validate {
         validate_config(config)?;
     }
@@ -752,11 +773,12 @@ fn write_claude_gateway_config(config: &ModelMappingConfig, validate: bool) -> R
         .and_then(|value| value.as_str())
         .unwrap_or("")
         .to_string();
-    let target_id = if !applied_id.is_empty() && config_lib.join(format!("{}.json", applied_id)).exists() {
-        applied_id
-    } else {
-        CLAUDE_CONFIG_ID.to_string()
-    };
+    let target_id =
+        if !applied_id.is_empty() && config_lib.join(format!("{}.json", applied_id)).exists() {
+            applied_id
+        } else {
+            CLAUDE_CONFIG_ID.to_string()
+        };
 
     let config_file = config_lib.join(format!("{}.json", target_id));
     let mut gateway = read_json_or_empty(&config_file);
@@ -781,7 +803,9 @@ fn write_claude_gateway_config(config: &ModelMappingConfig, validate: bool) -> R
                 entry
                     .get("id")
                     .and_then(|value| value.as_str())
-                    .map(|id| id == CLAUDE_CONFIG_ID || config_lib.join(format!("{}.json", id)).exists())
+                    .map(|id| {
+                        id == CLAUDE_CONFIG_ID || config_lib.join(format!("{}.json", id)).exists()
+                    })
                     .unwrap_or(false)
             })
             .collect();
@@ -789,7 +813,8 @@ fn write_claude_gateway_config(config: &ModelMappingConfig, validate: bool) -> R
             .iter()
             .any(|entry| entry.get("id").and_then(|value| value.as_str()) == Some(CLAUDE_CONFIG_ID))
         {
-            next_entries.push(serde_json::json!({"id": CLAUDE_CONFIG_ID, "name": "AIModal Model Mapping"}));
+            next_entries
+                .push(serde_json::json!({"id": CLAUDE_CONFIG_ID, "name": "AIModal Model Mapping"}));
         }
         meta["entries"] = serde_json::json!(next_entries);
         write_json_atomic(&meta_path, &meta)?;
@@ -906,7 +931,12 @@ fn stringify_json_pretty(value: &serde_json::Value) -> String {
 }
 
 async fn gateway_models_handler(State(state): State<Arc<GatewayState>>) -> Json<serde_json::Value> {
-    let config = state.manager.config.read().unwrap_or_else(|err| err.into_inner()).clone();
+    let config = state
+        .manager
+        .config
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .clone();
     let models: Vec<serde_json::Value> = flatten_config(&config)
         .iter()
         .flat_map(|entry| {
@@ -946,7 +976,12 @@ async fn gateway_proxy_handler(
         Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
     };
 
-    let config = state.manager.config.read().unwrap_or_else(|err| err.into_inner()).clone();
+    let config = state
+        .manager
+        .config
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .clone();
     let requested = data
         .get("model")
         .and_then(|value| value.as_str())
@@ -1104,9 +1139,9 @@ async fn gateway_proxy_handler(
                         builder = builder.header(name, value);
                     }
                 }
-                builder
-                    .body(Body::from(body_bytes))
-                    .unwrap_or_else(|_| (StatusCode::BAD_GATEWAY, "Invalid upstream response").into_response())
+                builder.body(Body::from(body_bytes)).unwrap_or_else(|_| {
+                    (StatusCode::BAD_GATEWAY, "Invalid upstream response").into_response()
+                })
             } else {
                 let raw_text = resp.text().await.unwrap_or_default();
                 match openai_response_to_anthropic_message(
@@ -1206,8 +1241,17 @@ fn apply_thinking_effort(data: &mut serde_json::Value, effort: &str) -> String {
     }
 }
 
-async fn api_get_config_handler(State(state): State<Arc<GatewayState>>) -> Json<ModelMappingConfig> {
-    Json(state.manager.config.read().unwrap_or_else(|err| err.into_inner()).clone())
+async fn api_get_config_handler(
+    State(state): State<Arc<GatewayState>>,
+) -> Json<ModelMappingConfig> {
+    Json(
+        state
+            .manager
+            .config
+            .read()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone(),
+    )
 }
 
 async fn api_save_config_handler(
@@ -1216,7 +1260,11 @@ async fn api_save_config_handler(
 ) -> Json<serde_json::Value> {
     match save_config_file(&config) {
         Ok(()) => {
-            *state.manager.config.write().unwrap_or_else(|err| err.into_inner()) = config;
+            *state
+                .manager
+                .config
+                .write()
+                .unwrap_or_else(|err| err.into_inner()) = config;
             Json(serde_json::json!({ "ok": true }))
         }
         Err(err) => Json(serde_json::json!({ "ok": false, "message": err })),
@@ -1235,25 +1283,43 @@ async fn api_test_handler(Json(request): Json<ModelMappingTestRequest>) -> Json<
 }
 
 async fn api_apply_handler(State(state): State<Arc<GatewayState>>) -> Json<serde_json::Value> {
-    let config = state.manager.config.read().unwrap_or_else(|err| err.into_inner()).clone();
+    let config = state
+        .manager
+        .config
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .clone();
     match apply_to_claude_desktop(&config) {
         Ok(_) => {
             restart_claude_desktop();
-            Json(serde_json::json!({ "ok": true, "message": "Applied! Claude Desktop is restarting..." }))
+            Json(
+                serde_json::json!({ "ok": true, "message": "Applied! Claude Desktop is restarting..." }),
+            )
         }
         Err(err) => Json(serde_json::json!({ "ok": false, "message": err })),
     }
 }
 
-async fn api_logs_handler(State(state): State<Arc<GatewayState>>) -> Json<Vec<ModelMappingLogEntry>> {
-    Json(state.manager.logs.read().unwrap_or_else(|err| err.into_inner()).clone())
+async fn api_logs_handler(
+    State(state): State<Arc<GatewayState>>,
+) -> Json<Vec<ModelMappingLogEntry>> {
+    Json(
+        state
+            .manager
+            .logs
+            .read()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone(),
+    )
 }
 
 async fn api_autostart_get_handler() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "enabled": is_autostart_enabled() }))
 }
 
-async fn api_autostart_set_handler(Json(request): Json<AutostartRequest>) -> Json<serde_json::Value> {
+async fn api_autostart_set_handler(
+    Json(request): Json<AutostartRequest>,
+) -> Json<serde_json::Value> {
     match set_autostart(request.enabled) {
         Ok(()) => Json(serde_json::json!({ "ok": true })),
         Err(err) => Json(serde_json::json!({ "ok": false, "message": err })),
@@ -1277,14 +1343,19 @@ fn restart_claude_desktop() {
                 .output();
             for _ in 0..15 {
                 std::thread::sleep(std::time::Duration::from_millis(500));
-                if let Ok(output) = std::process::Command::new("pgrep").args(["-x", "Claude"]).output() {
+                if let Ok(output) = std::process::Command::new("pgrep")
+                    .args(["-x", "Claude"])
+                    .output()
+                {
                     if output.stdout.is_empty() {
                         break;
                     }
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = std::process::Command::new("open").args(["-a", "Claude"]).output();
+            let _ = std::process::Command::new("open")
+                .args(["-a", "Claude"])
+                .output();
         }
 
         #[cfg(target_os = "windows")]
@@ -1395,11 +1466,17 @@ async fn run_gateway_until_shutdown(
     });
     let app = Router::new()
         .route("/", get(gateway_root_handler))
-        .route("/api/config", get(api_get_config_handler).post(api_save_config_handler))
+        .route(
+            "/api/config",
+            get(api_get_config_handler).post(api_save_config_handler),
+        )
         .route("/api/test", post(api_test_handler))
         .route("/api/apply", post(api_apply_handler))
         .route("/api/logs", get(api_logs_handler))
-        .route("/api/autostart", get(api_autostart_get_handler).post(api_autostart_set_handler))
+        .route(
+            "/api/autostart",
+            get(api_autostart_get_handler).post(api_autostart_set_handler),
+        )
         .route("/v1/models", get(gateway_models_handler))
         .route("/*path", post(gateway_proxy_handler))
         .with_state(state);
@@ -1430,11 +1507,22 @@ pub fn save_model_mapping_settings(
     settings: ModelMappingSettings,
 ) -> Result<ModelMappingStatus, String> {
     save_settings_file(&settings)?;
-    let config = manager.config.read().unwrap_or_else(|err| err.into_inner()).clone();
+    let config = manager
+        .config
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .clone();
     if let Err(err) = write_claude_gateway_config(&config, false) {
-        eprintln!("[model-mapping] update gateway config after port change failed: {}", err);
+        eprintln!(
+            "[model-mapping] update gateway config after port change failed: {}",
+            err
+        );
     }
-    let running = manager.runtime.read().unwrap_or_else(|err| err.into_inner()).running;
+    let running = manager
+        .runtime
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .running;
     Ok(build_status(running, Some(config)))
 }
 
@@ -1446,8 +1534,15 @@ pub fn save_model_mapping_config(
     let normalized = normalize_config(config);
     validate_config(&normalized)?;
     save_config_file(&normalized)?;
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = normalized.clone();
-    let running = manager.runtime.read().unwrap_or_else(|err| err.into_inner()).running;
+    *manager
+        .config
+        .write()
+        .unwrap_or_else(|err| err.into_inner()) = normalized.clone();
+    let running = manager
+        .runtime
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .running;
     Ok(build_status(running, Some(normalized)))
 }
 
@@ -1458,7 +1553,10 @@ pub fn apply_model_mapping_to_claude(
 ) -> Result<String, String> {
     let normalized = normalize_config(config);
     save_config_file(&normalized)?;
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = normalized.clone();
+    *manager
+        .config
+        .write()
+        .unwrap_or_else(|err| err.into_inner()) = normalized.clone();
     let message = apply_to_claude_desktop(&normalized)?;
     restart_claude_desktop();
     Ok(format!("{}，Claude Desktop 正在重启", message))
@@ -1483,9 +1581,15 @@ pub async fn start_model_mapping_gateway(
     let normalized = normalize_config(config);
     validate_config(&normalized)?;
     save_config_file(&normalized)?;
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = normalized.clone();
+    *manager
+        .config
+        .write()
+        .unwrap_or_else(|err| err.into_inner()) = normalized.clone();
     let shutdown_receiver = {
-        let mut runtime = manager.runtime.write().unwrap_or_else(|err| err.into_inner());
+        let mut runtime = manager
+            .runtime
+            .write()
+            .unwrap_or_else(|err| err.into_inner());
         if runtime.running {
             return Ok(build_status(true, Some(normalized)));
         }
@@ -1498,10 +1602,15 @@ pub async fn start_model_mapping_gateway(
     let manager_arc = manager.inner().clone();
     let port = current_port();
     tauri::async_runtime::spawn(async move {
-        if let Err(err) = run_gateway_until_shutdown(manager_arc.clone(), port, shutdown_receiver).await {
+        if let Err(err) =
+            run_gateway_until_shutdown(manager_arc.clone(), port, shutdown_receiver).await
+        {
             eprintln!("[model-mapping] gateway stopped: {}", err);
         }
-        let mut runtime = manager_arc.runtime.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut runtime = manager_arc
+            .runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         runtime.running = false;
         runtime.shutdown = None;
     });
@@ -1513,7 +1622,10 @@ pub async fn start_model_mapping_gateway(
 pub fn stop_model_mapping_gateway(
     manager: tauri::State<'_, Arc<ModelMappingManager>>,
 ) -> Result<ModelMappingStatus, String> {
-    let mut runtime = manager.runtime.write().unwrap_or_else(|err| err.into_inner());
+    let mut runtime = manager
+        .runtime
+        .write()
+        .unwrap_or_else(|err| err.into_inner());
     if let Some(shutdown) = runtime.shutdown.take() {
         let _ = shutdown.send(());
     }
@@ -1523,10 +1635,16 @@ pub fn stop_model_mapping_gateway(
 
 pub fn start_model_mapping_gateway_on_startup(manager: Arc<ModelMappingManager>) {
     let config = normalize_config(load_config_file());
-    *manager.config.write().unwrap_or_else(|err| err.into_inner()) = config;
+    *manager
+        .config
+        .write()
+        .unwrap_or_else(|err| err.into_inner()) = config;
     let port = current_port();
     let shutdown_receiver = {
-        let mut runtime = manager.runtime.write().unwrap_or_else(|err| err.into_inner());
+        let mut runtime = manager
+            .runtime
+            .write()
+            .unwrap_or_else(|err| err.into_inner());
         if runtime.running {
             return;
         }
@@ -1536,10 +1654,14 @@ pub fn start_model_mapping_gateway_on_startup(manager: Arc<ModelMappingManager>)
         shutdown_receiver
     };
     tauri::async_runtime::spawn(async move {
-        if let Err(err) = run_gateway_until_shutdown(manager.clone(), port, shutdown_receiver).await {
+        if let Err(err) = run_gateway_until_shutdown(manager.clone(), port, shutdown_receiver).await
+        {
             eprintln!("[model-mapping] gateway stopped: {}", err);
         }
-        let mut runtime = manager.runtime.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut runtime = manager
+            .runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         runtime.running = false;
         runtime.shutdown = None;
     });
@@ -1579,9 +1701,7 @@ pub async fn test_model_mapping_provider(
     );
 
     let (url, body) = build_mapping_test_request(&request, protocol);
-    let mut builder = client
-        .post(url)
-        .header("content-type", "application/json");
+    let mut builder = client.post(url).header("content-type", "application/json");
     builder = match protocol {
         MappingProtocol::Claude => builder
             .header("authorization", format!("Bearer {}", request.api_key))
@@ -1589,7 +1709,9 @@ pub async fn test_model_mapping_provider(
         MappingProtocol::OpenAiChat | MappingProtocol::OpenAiResponses => {
             builder.bearer_auth(&request.api_key)
         }
-        MappingProtocol::OpenRouter => builder.bearer_auth(&request.api_key).header("X-Title", "AIModal"),
+        MappingProtocol::OpenRouter => builder
+            .bearer_auth(&request.api_key)
+            .header("X-Title", "AIModal"),
         MappingProtocol::Gemini => builder.header("x-goog-api-key", &request.api_key),
     };
     let response = builder.json(&body).send().await;
@@ -1609,7 +1731,8 @@ pub async fn test_model_mapping_provider(
                 Ok(ModelMappingTestResult {
                     ok: false,
                     status: Some(status),
-                    message: extract_mapping_error_message(&text).unwrap_or_else(|| format!("HTTP {}", status)),
+                    message: extract_mapping_error_message(&text)
+                        .unwrap_or_else(|| format!("HTTP {}", status)),
                 })
             }
         }
@@ -1672,7 +1795,9 @@ fn validate_mapping_response(
 ) -> MappingResponseValidation {
     match protocol {
         MappingProtocol::Claude => validate_anthropic_message_response(text),
-        MappingProtocol::OpenAiChat | MappingProtocol::OpenAiResponses | MappingProtocol::OpenRouter => {
+        MappingProtocol::OpenAiChat
+        | MappingProtocol::OpenAiResponses
+        | MappingProtocol::OpenRouter => {
             match openai_response_to_anthropic_message(protocol, model, text) {
                 Ok(value) => {
                     let preview = value
@@ -1689,7 +1814,10 @@ fn validate_mapping_response(
                     let suffix = if preview.trim().is_empty() {
                         String::new()
                     } else {
-                        format!("，响应：{}", preview.trim().chars().take(40).collect::<String>())
+                        format!(
+                            "，响应：{}",
+                            preview.trim().chars().take(40).collect::<String>()
+                        )
                     };
                     MappingResponseValidation {
                         ok: true,
@@ -1702,34 +1830,39 @@ fn validate_mapping_response(
                 },
             }
         }
-        MappingProtocol::Gemini => match openai_response_to_anthropic_message(protocol, model, text) {
-            Ok(value) => {
-                let preview = value
-                    .get("content")
-                    .and_then(|content| content.as_array())
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(|item| item.get("text").and_then(|text| text.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("")
-                    })
-                    .unwrap_or_default();
-                let suffix = if preview.trim().is_empty() {
-                    String::new()
-                } else {
-                    format!("，响应：{}", preview.trim().chars().take(40).collect::<String>())
-                };
-                MappingResponseValidation {
-                    ok: true,
-                    message: format!("模型可用 HTTP 200{}", suffix),
+        MappingProtocol::Gemini => {
+            match openai_response_to_anthropic_message(protocol, model, text) {
+                Ok(value) => {
+                    let preview = value
+                        .get("content")
+                        .and_then(|content| content.as_array())
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|item| item.get("text").and_then(|text| text.as_str()))
+                                .collect::<Vec<_>>()
+                                .join("")
+                        })
+                        .unwrap_or_default();
+                    let suffix = if preview.trim().is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            "，响应：{}",
+                            preview.trim().chars().take(40).collect::<String>()
+                        )
+                    };
+                    MappingResponseValidation {
+                        ok: true,
+                        message: format!("模型可用 HTTP 200{}", suffix),
+                    }
                 }
+                Err(err) => MappingResponseValidation {
+                    ok: false,
+                    message: err,
+                },
             }
-            Err(err) => MappingResponseValidation {
-                ok: false,
-                message: err,
-            },
-        },
+        }
     }
 }
 
@@ -1745,10 +1878,7 @@ fn validate_anthropic_message_response(text: &str) -> MappingResponseValidation 
     };
 
     if let Some(message) = extract_mapping_error_message(text) {
-        return MappingResponseValidation {
-            ok: false,
-            message,
-        };
+        return MappingResponseValidation { ok: false, message };
     }
 
     let has_message_shape = value
@@ -1827,7 +1957,8 @@ fn strip_trailing_suffixes(base_url: &str, suffixes: &[&str]) -> String {
 }
 
 fn build_openai_style_url(base_url: &str, leaf: &str) -> String {
-    let normalized = strip_trailing_suffixes(base_url, &["/chat/completions", "/responses", "/models"]);
+    let normalized =
+        strip_trailing_suffixes(base_url, &["/chat/completions", "/responses", "/models"]);
     if normalized.ends_with("/v1")
         || normalized.ends_with("/v1beta/openai")
         || normalized.ends_with("/openai")
@@ -1889,6 +2020,27 @@ fn anthropic_content_to_text(value: &serde_json::Value) -> String {
         .unwrap_or_default()
 }
 
+/// 提取最后一条 user 消息作为纯字符串（用于 Responses API input）
+fn extract_last_user_message_as_string(data: &serde_json::Value) -> String {
+    if let Some(messages) = data.get("messages").and_then(|v| v.as_array()) {
+        // 从后往前找第一条 user 消息
+        for message in messages.iter().rev() {
+            let role = message.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            if role == "user" {
+                let content = message
+                    .get("content")
+                    .map(anthropic_content_to_text)
+                    .unwrap_or_default();
+                if !content.trim().is_empty() {
+                    return content;
+                }
+            }
+        }
+    }
+    // 如果没找到，返回默认值
+    "Hello".to_string()
+}
+
 fn anthropic_to_openai_messages(data: &serde_json::Value) -> Vec<serde_json::Value> {
     let mut messages = Vec::new();
     if let Some(system) = data.get("system") {
@@ -1903,7 +2055,11 @@ fn anthropic_to_openai_messages(data: &serde_json::Value) -> Vec<serde_json::Val
                 .get("role")
                 .and_then(|role| role.as_str())
                 .unwrap_or("user");
-            let role = if role == "assistant" { "assistant" } else { "user" };
+            let role = if role == "assistant" {
+                "assistant"
+            } else {
+                "user"
+            };
             let content = item
                 .get("content")
                 .map(anthropic_content_to_text)
@@ -1922,12 +2078,36 @@ fn anthropic_to_openai_chat_request(data: &serde_json::Value) -> serde_json::Val
         .get("max_tokens")
         .and_then(|value| value.as_u64())
         .unwrap_or(1024);
-    serde_json::json!({
+
+    let mut body = serde_json::json!({
         "model": data.get("model").cloned().unwrap_or_else(|| serde_json::json!("")),
         "messages": anthropic_to_openai_messages(data),
         "max_completion_tokens": max_tokens,
-        "stream": false
-    })
+    });
+
+    // 传递 temperature 参数
+    if let Some(temperature) = data.get("temperature") {
+        body["temperature"] = temperature.clone();
+    }
+
+    // 传递 top_p 参数
+    if let Some(top_p) = data.get("top_p") {
+        body["top_p"] = top_p.clone();
+    }
+
+    // 转换 stop_sequences -> stop
+    if let Some(stop_sequences) = data.get("stop_sequences").and_then(|v| v.as_array()) {
+        body["stop"] = serde_json::json!(stop_sequences);
+    }
+
+    // 继承 stream 参数
+    if let Some(stream) = data.get("stream").and_then(|v| v.as_bool()) {
+        body["stream"] = serde_json::json!(stream);
+    } else {
+        body["stream"] = serde_json::json!(false);
+    }
+
+    body
 }
 
 fn anthropic_to_openai_responses_request(data: &serde_json::Value) -> serde_json::Value {
@@ -1935,27 +2115,32 @@ fn anthropic_to_openai_responses_request(data: &serde_json::Value) -> serde_json
         .get("max_tokens")
         .and_then(|value| value.as_u64())
         .unwrap_or(1024);
-    let input = anthropic_to_openai_messages(data)
-        .iter()
-        .filter_map(|message| {
-            let role = message.get("role").and_then(|role| role.as_str()).unwrap_or("user");
-            let content = message
-                .get("content")
-                .and_then(|content| content.as_str())
-                .unwrap_or("");
-            if content.trim().is_empty() {
-                None
-            } else {
-                Some(format!("{role}: {content}"))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    serde_json::json!({
+
+    // Responses API 的 input 应该是纯字符串，取最后一条 user 消息
+    let input = extract_last_user_message_as_string(data);
+
+    let mut body = serde_json::json!({
         "model": data.get("model").cloned().unwrap_or_else(|| serde_json::json!("")),
         "input": input,
         "max_output_tokens": max_tokens
-    })
+    });
+
+    // 传递 temperature 参数
+    if let Some(temperature) = data.get("temperature") {
+        body["temperature"] = temperature.clone();
+    }
+
+    // 传递 top_p 参数
+    if let Some(top_p) = data.get("top_p") {
+        body["top_p"] = top_p.clone();
+    }
+
+    // 转换 stop_sequences
+    if let Some(stop_sequences) = data.get("stop_sequences").and_then(|v| v.as_array()) {
+        body["stop"] = serde_json::json!(stop_sequences);
+    }
+
+    body
 }
 
 fn anthropic_to_gemini_request(data: &serde_json::Value) -> serde_json::Value {
@@ -2013,6 +2198,22 @@ fn anthropic_to_gemini_request(data: &serde_json::Value) -> serde_json::Value {
 
     if let Some(temperature) = data.get("temperature").and_then(|value| value.as_f64()) {
         body["generationConfig"]["temperature"] = serde_json::json!(temperature);
+    }
+
+    // 传递 top_p 参数
+    if let Some(top_p) = data.get("top_p").and_then(|value| value.as_f64()) {
+        body["generationConfig"]["topP"] = serde_json::json!(top_p);
+    }
+
+    // 转换 stop_sequences
+    if let Some(stop_sequences) = data.get("stop_sequences").and_then(|v| v.as_array()) {
+        let stops: Vec<_> = stop_sequences
+            .iter()
+            .filter_map(|s| s.as_str().map(String::from))
+            .collect();
+        if !stops.is_empty() {
+            body["generationConfig"]["stopSequences"] = serde_json::json!(stops);
+        }
     }
 
     body
@@ -2105,7 +2306,9 @@ fn openai_response_to_anthropic_message(
         return Err(message);
     }
     let text = match protocol {
-        MappingProtocol::OpenAiChat | MappingProtocol::OpenRouter => extract_openai_chat_text(&value),
+        MappingProtocol::OpenAiChat | MappingProtocol::OpenRouter => {
+            extract_openai_chat_text(&value)
+        }
         MappingProtocol::OpenAiResponses => extract_openai_responses_text(&value),
         MappingProtocol::Gemini => extract_gemini_text(&value),
         _ => None,
@@ -2235,7 +2438,11 @@ pub fn get_model_mapping_status(
 pub fn get_model_mapping_logs(
     manager: tauri::State<'_, Arc<ModelMappingManager>>,
 ) -> Result<Vec<ModelMappingLogEntry>, String> {
-    Ok(manager.logs.read().unwrap_or_else(|err| err.into_inner()).clone())
+    Ok(manager
+        .logs
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .clone())
 }
 
 fn build_status(running: bool, config: Option<ModelMappingConfig>) -> ModelMappingStatus {
@@ -2325,27 +2532,30 @@ mod tests {
     #[test]
     fn normalize_config_upgrades_old_auto_slot_to_canonical_default() {
         let config = ModelMappingConfig {
-            providers: vec![provider_with_models(vec![ModelMappingEntry {
-                name: "glm-5-turbo".to_string(),
-                slot: "anthropic/claude-glm-5-turbo".to_string(),
-                display_name: String::new(),
-                supported_protocols: vec!["gemini".to_string()],
-                source_protocol: "gemini".to_string(),
-                target_protocol: "claude".to_string(),
-                to_1m: String::new(),
-                enabled: true,
-                protocol: "claude".to_string(),
-            }, ModelMappingEntry {
-                name: "kimi-k2.6".to_string(),
-                slot: "anthropic/claude-claude-kimi-k2.6".to_string(),
-                display_name: String::new(),
-                supported_protocols: vec!["openai-responses".to_string()],
-                source_protocol: "openai-responses".to_string(),
-                target_protocol: "claude".to_string(),
-                to_1m: String::new(),
-                enabled: true,
-                protocol: "claude".to_string(),
-            }])],
+            providers: vec![provider_with_models(vec![
+                ModelMappingEntry {
+                    name: "glm-5-turbo".to_string(),
+                    slot: "anthropic/claude-glm-5-turbo".to_string(),
+                    display_name: String::new(),
+                    supported_protocols: vec!["gemini".to_string()],
+                    source_protocol: "gemini".to_string(),
+                    target_protocol: "claude".to_string(),
+                    to_1m: String::new(),
+                    enabled: true,
+                    protocol: "claude".to_string(),
+                },
+                ModelMappingEntry {
+                    name: "kimi-k2.6".to_string(),
+                    slot: "anthropic/claude-claude-kimi-k2.6".to_string(),
+                    display_name: String::new(),
+                    supported_protocols: vec!["openai-responses".to_string()],
+                    source_protocol: "openai-responses".to_string(),
+                    target_protocol: "claude".to_string(),
+                    to_1m: String::new(),
+                    enabled: true,
+                    protocol: "claude".to_string(),
+                },
+            ])],
         };
 
         let normalized = normalize_config(config);
@@ -2556,12 +2766,9 @@ mod tests {
             }]
         }"#;
 
-        let converted = openai_response_to_anthropic_message(
-            MappingProtocol::Gemini,
-            "gemini-2.5-pro",
-            raw,
-        )
-        .expect("gemini response should convert");
+        let converted =
+            openai_response_to_anthropic_message(MappingProtocol::Gemini, "gemini-2.5-pro", raw)
+                .expect("gemini response should convert");
 
         assert_eq!(converted["role"], serde_json::json!("assistant"));
         assert_eq!(converted["model"], serde_json::json!("gemini-2.5-pro"));
