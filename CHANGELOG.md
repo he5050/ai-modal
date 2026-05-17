@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.8.0](https://github.com/he5050/ai-modal/compare/v0.7.0...v0.8.0) (2026-05-17)
+
+
+### Bug Fixes
+
+* 修复安全与空值问题，统一文件检测逻辑 ([858ae74](https://github.com/he5050/ai-modal/commit/858ae740c2a1e74bb2b97a7d16f01e742bc08f41))
+* 修复导入路径与日志记录问题 ([380f3d8](https://github.com/he5050/ai-modal/commit/380f3d86e5adba04b1c54c0ca8b33a308e83fe33))
+* 修复配置路径解析及类型导入 ([833c894](https://github.com/he5050/ai-modal/commit/833c894b5b851efa225e7eddd7f0f7f3d2d2d2f9))
+
+
+### Features
+
+* 模型检测接入选择弹窗并移除加密存储 ([9f12167](https://github.com/he5050/ai-modal/commit/9f12167d9d8e8886cd2bacb36d248d7e512a5d4e))
+* 添加模型检测取消、XSS防护与技能列表虚拟滚动 ([905e610](https://github.com/he5050/ai-modal/commit/905e610a3c32e99600000c438334c9a414664db7))
+* 引入通用UI组件并替换现有使用点 ([f4db781](https://github.com/he5050/ai-modal/commit/f4db7813e56e2b65b1f554a86b1755ff7f08fab8))
+* 优化性能与重构模型管理模块 ([674b7eb](https://github.com/he5050/ai-modal/commit/674b7eb29692f3f4174858f4f89594318e56c721))
+* **models:** 添加详情页跳转功能和本地模型选择 ([0db1261](https://github.com/he5050/ai-modal/commit/0db1261ef3a109246d23a585ef82c066b754d15a))
+
 # [0.7.0](https://github.com/he5050/ai-modal/compare/v0.6.0...v0.7.0) (2026-05-15)
 
 
