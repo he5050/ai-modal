@@ -230,6 +230,7 @@ export default function App() {
             onSaveResult={saveResult}
             onDirtyChange={setEditingDirty}
             onOpenModels={() => handlePageChange("models")}
+            onOpenDetail={handleOpenProviderDetail}
           />
         )}
         {page === "models" && (

@@ -35,6 +35,7 @@ interface Props {
   onSaveResult: (id: string, result: ProviderLastResult) => void;
   onDirtyChange: (dirty: boolean) => void;
   onOpenModels: () => void;
+  onOpenDetail: (provider: Provider) => void;
 }
 
 export function DetectPage({
@@ -47,6 +48,7 @@ export function DetectPage({
   onSaveResult,
   onDirtyChange,
   onOpenModels,
+  onOpenDetail,
 }: Props) {
   const [recentPage, setRecentPage] = useState(1);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -183,8 +185,14 @@ export function DetectPage({
     logger.info(
       `[另存为] 「${data.name}」已创建，id: ${newId}，含 ${visibleResults.length} 条检测结果`,
     );
-    toast("已另存为新接口", "success");
-    handleReset();
+    toast("已另存为新接口，返回详情页", "success");
+    // 切换到新创建的 Provider 并返回详情页
+    form.setEditingId(newId);
+    const newProvider = providers.find((p) => p.id === newId);
+    if (newProvider) {
+      onClearEditTarget();
+      onOpenDetail(newProvider);
+    }
     form.setSaving(false);
   }
 
@@ -228,7 +236,13 @@ export function DetectPage({
       logger.info(
         `[更新] 「${data.name}」已更新，含 ${visibleResults.length} 条当前检测结果`,
       );
-      toast("已更新", "success");
+      toast("已更新，返回详情页", "success");
+      // 返回详情页
+      const updatedProvider = providers.find((p) => p.id === form.editingId);
+      if (updatedProvider) {
+        onClearEditTarget();
+        onOpenDetail(updatedProvider);
+      }
     } else {
       const newId = onAddProvider(data);
       if (visibleResults.length > 0) {
@@ -237,9 +251,15 @@ export function DetectPage({
       logger.info(
         `[保存] 「${data.name}」已保存，id: ${newId}，含 ${visibleResults.length} 条检测结果`,
       );
-      toast("已保存", "success");
+      toast("已保存，返回详情页", "success");
+      // 切换到新创建的 Provider 并返回详情页
+      form.setEditingId(newId);
+      const newProvider = providers.find((p) => p.id === newId);
+      if (newProvider) {
+        onClearEditTarget();
+        onOpenDetail(newProvider);
+      }
     }
-    handleReset();
     form.setSaving(false);
   }
 
@@ -321,23 +341,31 @@ export function DetectPage({
           unavailableCount={form.editingProvider.lastResult.results.filter((item) => !item.available).length}
           onAll={() => {
             detection.setRetestScopeDialogOpen(false);
-            void fetchModelsAndShowDialog();
+            modelSelection.openDialog();
           }}
           onAvailableOnly={() => {
+            // 获取本地已保存的可用模型
             const results = form.editingProvider?.lastResult?.results;
-            const models = results
+            const availableModels = results
               ? results.filter((item) => item.available).map((item) => item.model)
               : [];
+
             detection.setRetestScopeDialogOpen(false);
-            void detection.runModelDetection(form.baseUrl, form.apiKey, form.name, models);
+
+            // 使用本地模型弹出选择框
+            modelSelection.openDialogWithLocalModels(availableModels);
           }}
           onUnavailableOnly={() => {
+            // 获取本地已保存的不可用模型
             const results = form.editingProvider?.lastResult?.results;
-            const models = results
+            const unavailableModels = results
               ? results.filter((item) => !item.available).map((item) => item.model)
               : [];
+
             detection.setRetestScopeDialogOpen(false);
-            void detection.runModelDetection(form.baseUrl, form.apiKey, form.name, models);
+
+            // 使用本地模型弹出选择框
+            modelSelection.openDialogWithLocalModels(unavailableModels);
           }}
           onCancel={() => detection.setRetestScopeDialogOpen(false)}
         />

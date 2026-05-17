@@ -11,6 +11,7 @@ interface UseModelSelectionDialogOptions {
   getInitialSelectedModels?: () => string[];
   onConfirm: (selectedModels: string[], protocols: import("../../../lib/protocolUtils").ModelTestProtocol[]) => void;
   onManualConfirm?: (models: string[], protocols: import("../../../lib/protocolUtils").ModelTestProtocol[]) => void;
+  localModels?: string[]; // 新增：直接使用本地模型，不走 API
 }
 
 interface ModelSelectionDialogState {
@@ -23,6 +24,7 @@ interface ModelSelectionDialogState {
 interface UseModelSelectionDialogReturn {
   dialogState: ModelSelectionDialogState;
   openDialog: () => void;
+  openDialogWithLocalModels: (models: string[]) => void;
   closeDialog: () => void;
   handleConfirm: (selectedModels: string[], protocols: import("../../../lib/protocolUtils").ModelTestProtocol[]) => void;
   handleManualConfirm: (models: string[], protocols: import("../../../lib/protocolUtils").ModelTestProtocol[]) => void;
@@ -37,6 +39,7 @@ export function useModelSelectionDialog({
   getInitialSelectedModels,
   onConfirm,
   onManualConfirm,
+  localModels,
 }: UseModelSelectionDialogOptions): UseModelSelectionDialogReturn {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -60,6 +63,19 @@ export function useModelSelectionDialog({
     setError(null);
     setFetchedModels([]);
 
+    // 如果提供了本地模型，直接使用
+    if (localModels && localModels.length > 0) {
+      const sorted = [...localModels].sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase()),
+      );
+      setFetchedModels(sorted);
+      setLoading(false);
+      const name = getProviderName?.() ?? "provider";
+      logger.success(`[模型选择] ${name} 使用本地已保存模型，共 ${sorted.length} 个`);
+      return;
+    }
+
+    // 否则从 API 获取
     try {
       const models = await listModels(getBaseUrl().trim(), getApiKey().trim());
       const sorted = [...models].sort((a, b) =>
@@ -76,7 +92,7 @@ export function useModelSelectionDialog({
       setError(msg);
       setLoading(false);
     }
-  }, [getBaseUrl, getApiKey, getProviderName]);
+  }, [getBaseUrl, getApiKey, getProviderName, localModels]);
 
   const handleConfirm = useCallback(
     (selectedModels: string[], protocols: import("../../../lib/protocolUtils").ModelTestProtocol[]) => {
@@ -114,9 +130,22 @@ export function useModelSelectionDialog({
     })();
   }, [getBaseUrl, getApiKey]);
 
+  const openDialogWithLocalModels = useCallback((models: string[]) => {
+    setOpen(true);
+    setLoading(false);
+    setError(null);
+    const sorted = [...models].sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
+    setFetchedModels(sorted);
+    const name = getProviderName?.() ?? "provider";
+    logger.success(`[模型选择] ${name} 使用本地已保存模型，共 ${sorted.length} 个`);
+  }, [getProviderName]);
+
   return {
     dialogState: { open, loading, error, fetchedModels },
     openDialog,
+    openDialogWithLocalModels,
     closeDialog,
     handleConfirm,
     handleManualConfirm,
