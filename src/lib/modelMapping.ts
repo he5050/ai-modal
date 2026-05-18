@@ -232,7 +232,12 @@ export function countMappingModels(config: ModelMappingConfig) {
 export function getActiveMappingModels(config: ModelMappingConfig) {
   return config.providers.flatMap((provider) =>
     provider.models
-      .filter((model) => model.name.trim() && Boolean(model.enabled) && (model.target_protocol || "claude") === "claude")
+      .filter((model) =>
+        model.name.trim() &&
+        Boolean(model.enabled) &&
+        (model.target_protocol || "claude") === "claude" &&
+        model.slot?.trim(), // 只返回分配了槽位的模型
+      )
       .map((model) => ({ provider, model })),
   );
 }

@@ -358,4 +358,26 @@ describe("modelMapping", () => {
 
     expect(count).toBe(1);
   });
+
+  it("getActiveMappingModels only returns models with assigned slots", () => {
+    const activeModels = getActiveMappingModels({
+      providers: [
+        {
+          id: "custom",
+          name: "Custom",
+          target_url: "",
+          api_key: "",
+          models: [
+            { name: "with-slot", to_1m: "", enabled: true, source_protocol: "claude", target_protocol: "claude", slot: "anthropic/claude-opus-current" },
+            { name: "without-slot", to_1m: "", enabled: true, source_protocol: "claude", target_protocol: "claude", slot: "" },
+            { name: "disabled", to_1m: "", enabled: false, source_protocol: "claude", target_protocol: "claude", slot: "anthropic/claude-sonnet-current" },
+          ],
+          thinking_effort: "",
+        },
+      ],
+    });
+
+    expect(activeModels).toHaveLength(1);
+    expect(activeModels[0].model.name).toBe("with-slot");
+  });
 });
