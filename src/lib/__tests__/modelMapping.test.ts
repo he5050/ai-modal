@@ -40,7 +40,7 @@ describe("modelMapping", () => {
     expect(imported.models).toHaveLength(1);
     expect(imported.models[0]).toMatchObject({
       name: "available-model",
-      slot: "anthropic/claude-opus-current",
+      slot: "",
       display_name: "OpenRouter-available-model",
       supported_protocols: ["openai-chat"],
       source_protocol: "openai-chat",
@@ -90,13 +90,13 @@ describe("modelMapping", () => {
       ],
     });
 
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
+    expect(normalized.providers[0].models[0].slot).toBe("");
     expect(normalized.providers[0].models[0].display_name).toBe("Custom-deepseek-v4-flash");
     expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
     expect(normalized.providers[0].models[0].target_protocol).toBe("claude");
     expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-4-5");
     expect(normalized.providers[0].models[1].display_name).toBe("Custom Plus");
-    expect(normalized.providers[0].models[2].slot).toBe("anthropic/claude-sonnet-current");
+    expect(normalized.providers[0].models[2].slot).toBe("");
     expect(normalized.providers[0].models[2].display_name).toBe("Custom-glm-5-turbo");
     expect(normalized.providers[0].models[2].source_protocol).toBe("gemini");
     expect(normalized.providers[0].models[2].target_protocol).toBe("claude");
@@ -133,8 +133,8 @@ describe("modelMapping", () => {
       ],
     });
 
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
-    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-current");
+    expect(normalized.providers[0].models[0].slot).toBe("");
+    expect(normalized.providers[0].models[1].slot).toBe("");
     expect(normalized.providers[0].models[0].source_protocol).toBe("gemini");
     expect(normalized.providers[0].models[1].source_protocol).toBe("openai-responses");
   });
@@ -257,9 +257,9 @@ describe("modelMapping", () => {
       ],
     });
 
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
-    expect(normalized.providers[0].models[1].slot).toBe("anthropic/claude-sonnet-current");
-    expect(normalized.providers[1].models[0].slot).toBe("anthropic/claude-haiku-current");
+    expect(normalized.providers[0].models[0].slot).toBe("");
+    expect(normalized.providers[0].models[1].slot).toBe("");
+    expect(normalized.providers[1].models[0].slot).toBe("");
   });
 
   it("returns the normalized slot value for display", () => {
@@ -291,9 +291,9 @@ describe("modelMapping", () => {
 
     expect(imported.models).toHaveLength(14);
     expect(active).toHaveLength(0);
-    expect(normalized.providers[0].models[0].slot).toBe("anthropic/claude-opus-current");
-    expect(normalized.providers[0].models[7].slot).toBe("anthropic/claude-haiku-3-5");
-    expect(normalized.providers[0].models[8].slot).toBe("anthropic/claude-custom-9");
+    expect(normalized.providers[0].models[0].slot).toBe("");
+    expect(normalized.providers[0].models[7].slot).toBe("");
+    expect(normalized.providers[0].models[8].slot).toBe("");
   });
 
   it("imports only the selected available models when a subset is provided", () => {

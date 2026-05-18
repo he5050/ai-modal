@@ -127,6 +127,8 @@ export default function App() {
   function applyPageChange(p: AppPage) {
     setPage(p);
     if (p !== "detect") setEditTarget(null);
+    // 切换页面时重置未保存状态，避免从需要保存的页面切换到其他页面后错误触发弹窗
+    setEditingDirty(false);
   }
 
   function handlePageChange(p: AppPage) {
@@ -145,6 +147,11 @@ export default function App() {
   }
 
   function handleOpenProviderDetail(provider: Provider) {
+    if (editingDirty) {
+      setPendingPage("provider-detail");
+      setDetailProviderId(provider.id);
+      return;
+    }
     setDetailProviderId(provider.id);
     setPage("provider-detail");
   }
