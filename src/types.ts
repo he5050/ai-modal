@@ -160,6 +160,37 @@ export interface ModelMappingTestResult {
   message: string;
 }
 
+// CLI Proxy Types
+export type CliToolType = "claude-code" | "codex" | "gemini-cli" | "opencode" | "aider";
+
+export interface CliToolConfig {
+  id: string;
+  type: CliToolType;
+  enabled: boolean;
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  port: number;
+  customArgs: string;
+}
+
+export interface CliProxyConfig {
+  tools: CliToolConfig[];
+}
+
+export interface CliProxyStatus {
+  running: boolean;
+  port: number;
+  toolCount: number;
+  runningTools: string[];
+}
+
+export interface CliProxyTestResult {
+  ok: boolean;
+  status?: number | null;
+  message: string;
+}
+
 export interface McpServerConfigInput {
   type?: string;
   command?: string;

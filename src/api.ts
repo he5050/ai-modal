@@ -41,6 +41,9 @@ import type {
   SkillsCommandResult,
   SystemLlmSnapshot,
   SyncSkillTargetResult,
+  CliProxyConfig,
+  CliProxyStatus,
+  CliProxyTestResult,
 } from "./types";
 
 export async function listModels(
@@ -183,6 +186,39 @@ export async function getModelMappingAutostart(): Promise<boolean> {
 
 export async function setModelMappingAutostart(enabled: boolean): Promise<boolean> {
   return invoke("set_model_mapping_autostart", { enabled });
+}
+
+// CLI Proxy APIs
+export async function loadCliProxyConfig(): Promise<CliProxyConfig> {
+  return invoke("load_cli_proxy_config");
+}
+
+export async function saveCliProxyConfig(
+  config: CliProxyConfig,
+): Promise<CliProxyStatus> {
+  return invoke("save_cli_proxy_config", { config });
+}
+
+export async function getCliProxyStatus(): Promise<CliProxyStatus> {
+  return invoke("get_cli_proxy_status");
+}
+
+export async function startCliProxyService(
+  toolId: string,
+): Promise<CliProxyStatus> {
+  return invoke("start_cli_proxy_service", { toolId });
+}
+
+export async function stopCliProxyService(
+  toolId: string,
+): Promise<CliProxyStatus> {
+  return invoke("stop_cli_proxy_service", { toolId });
+}
+
+export async function testCliProxyConnection(
+  toolId: string,
+): Promise<CliProxyTestResult> {
+  return invoke("test_cli_proxy_connection", { toolId });
 }
 
 export async function scanLocalSkills(): Promise<SkillsCatalogSnapshot> {
