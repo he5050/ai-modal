@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.9.0](https://github.com/he5050/ai-modal/compare/v0.8.0...v0.9.0) (2026-05-20)
+
+
+### Bug Fixes
+
+* **modelMapping:** 让getActiveMappingModels只返回分配了槽位的模型 ([bd0ca7a](https://github.com/he5050/ai-modal/commit/bd0ca7aee9b68913fcc6e3cf1d52492b4d2cf69e))
+* 调整槽位自动填充逻辑并修复页面切换状态问题 ([b93e9d8](https://github.com/he5050/ai-modal/commit/b93e9d886a27f20ff195479be0776dd61bb58de9))
+
+
+### Features
+
+* **api:** 添加CLI代理相关API ([be777d0](https://github.com/he5050/ai-modal/commit/be777d0e006ff9f5595c72c342901514aa9234fb))
+* 新增CLI代理功能，优化模型槽位管理 ([4404a96](https://github.com/he5050/ai-modal/commit/4404a96e4851296343587cd63c410a02329c6a8e))
+
 # [0.8.0](https://github.com/he5050/ai-modal/compare/v0.7.0...v0.8.0) (2026-05-17)
 
 
