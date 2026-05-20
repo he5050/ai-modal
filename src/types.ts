@@ -104,6 +104,7 @@ export interface ModelMappingEntry {
   id?: string;
   name: string;
   slot?: string;
+  slots?: string[];
   display_name?: string;
   supported_protocols?: string[];
   source_protocol?: LlmRequestKind | "openrouter" | string;
@@ -172,6 +173,8 @@ export interface CliToolConfig {
   model: string;
   port: number;
   customArgs: string;
+  protocol: string;
+  basePath: string;
 }
 
 export interface CliProxyConfig {

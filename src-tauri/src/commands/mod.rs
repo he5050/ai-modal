@@ -1,3 +1,4 @@
+pub mod cli_proxy;
 pub mod mcp;
 pub mod model;
 pub mod model_mapping;

@@ -53,7 +53,7 @@ import {
 	THINKING_EFFORT_LABELS,
 	countMappingModels,
 	getActiveMappingModels,
-	getModelSlot,
+	getModelSlots,
 	getPresetModels,
 	getThinkingOptions,
 	normalizeModelMappingConfig,
@@ -131,27 +131,30 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 		}
 	}, [])
 
+	// 只在日志标签页可见且网关运行时轮询日志
 	useEffect(() => {
-		if (!status?.running) return
+		if (!status?.running || selectedTab !== "logs") return
 		const timer = window.setInterval(() => {
 			void refreshLogs()
-		}, 2500)
+		}, 3000)
 		return () => window.clearInterval(timer)
-	}, [status?.running])
+	}, [status?.running, selectedTab])
 
 	const totalModels = countMappingModels(config)
 	const mappedRows = useMemo(
 		() =>
-			getActiveMappingModels(config).map(({ provider, model }) => ({
-				provider: provider.name || "未命名服务商",
-				source: getModelSlot(model),
-				target: model.name,
-				displayName: model.display_name?.trim() || `${provider.name || "provider"}-${model.name}`,
-				sourceProtocol: model.source_protocol || "claude",
-				targetProtocol: model.target_protocol || "claude",
-				supports1m: Boolean(model.to_1m),
-				thinking: provider.thinking_effort || "",
-			})),
+			getActiveMappingModels(config).flatMap(({ provider, model }) =>
+				getModelSlots(model).map((slot) => ({
+					provider: provider.name || "未命名服务商",
+					source: slot,
+					target: model.name,
+					displayName: model.display_name?.trim() || `${provider.name || "provider"}-${model.name}`,
+					sourceProtocol: model.source_protocol || "claude",
+					targetProtocol: model.target_protocol || "claude",
+					supports1m: Boolean(model.to_1m),
+					thinking: provider.thinking_effort || "",
+				})),
+			),
 		[config],
 	)
 
@@ -477,14 +480,19 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 
 	function handleSlotAssignment(slotIndex: number, modelKey: string | "") {
 		if (!modelKey) {
-			// 清除该插槽的映射：找到占用该 slot 的模型，将其 slot 清空
 			const slotId = DEFAULT_CLAUDE_SLOTS[slotIndex]
 			const nextProviders = config.providers.map((provider) => ({
 				...provider,
 				models: provider.models.map((model) => {
-					const modelSlot = model.slot?.trim() ?? ""
-					if (modelSlot === slotId) {
-						return { ...model, slot: "", enabled: false }
+					const currentSlots = getModelSlots(model)
+					if (currentSlots.includes(slotId)) {
+						const updatedSlots = currentSlots.filter((s) => s !== slotId)
+						return {
+							...model,
+							slot: updatedSlots[0] ?? "",
+							slots: updatedSlots,
+							enabled: updatedSlots.length > 0 ? model.enabled : false,
+						}
 					}
 					return model
 				}),
@@ -492,7 +500,6 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 			updateConfig({ providers: nextProviders })
 			return
 		}
-		// modelKey 格式: "providerIndex:modelIndex"
 		const [piStr, miStr] = modelKey.split(":")
 		const pi = Number(piStr)
 		const mi = Number(miStr)
@@ -503,18 +510,27 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 
 		const slotId = DEFAULT_CLAUDE_SLOTS[slotIndex]
 
-		// 先清除其他模型占用此 slot 的情况
 		const nextProviders = config.providers.map((provider, pIdx) => ({
 			...provider,
 			models: provider.models.map((model, mIdx) => {
-				const modelSlot = model.slot?.trim() ?? ""
-				// 清除占用目标 slot 的其他模型
-				if (modelSlot === slotId && !(pIdx === pi && mIdx === mi)) {
-					return { ...model, slot: "", enabled: false }
+				const currentSlots = getModelSlots(model)
+				if (currentSlots.includes(slotId) && !(pIdx === pi && mIdx === mi)) {
+					const updatedSlots = currentSlots.filter((s) => s !== slotId)
+					return {
+						...model,
+						slot: updatedSlots[0] ?? "",
+						slots: updatedSlots,
+						enabled: updatedSlots.length > 0 ? model.enabled : false,
+					}
 				}
-				// 将选中的模型分配到该 slot
 				if (pIdx === pi && mIdx === mi) {
-					return { ...model, slot: slotId, enabled: true }
+					const updatedSlots = [...currentSlots.filter((s) => s !== slotId), slotId]
+					return {
+						...model,
+						slot: updatedSlots[0] ?? "",
+						slots: updatedSlots,
+						enabled: true,
+					}
 				}
 				return model
 			}),
@@ -695,24 +711,23 @@ function SlotMappingPanel({
 	config: ModelMappingConfig
 	onSlotAssign: (slotIndex: number, modelKey: string | "") => void
 }) {
-	// 收集所有 provider 中已启用模型的选项，格式：{ key: "pi:mi", label, providerName, modelName, slot }
-	const enabledModelOptions = useMemo(() => {
+	const slottedModelOptions = useMemo(() => {
 		const options: Array<{
 			key: string
 			label: string
 			providerName: string
 			modelName: string
-			slot: string
+			slots: string[]
 		}> = []
 		config.providers.forEach((provider, pi) => {
 			provider.models.forEach((model, mi) => {
-				if (model.enabled && model.name.trim()) {
+				if (model.name.trim() && model.enabled) {
 					options.push({
 						key: `${pi}:${mi}`,
 						label: `${provider.name || "未命名"} / ${model.name}`,
 						providerName: provider.name || "未命名",
 						modelName: model.name,
-						slot: model.slot?.trim() ?? "",
+						slots: getModelSlots(model),
 					})
 				}
 			})
@@ -720,14 +735,12 @@ function SlotMappingPanel({
 		return options
 	}, [config])
 
-	// 为每个插槽找到当前分配的模型
 	const slotAssignments = useMemo(() => {
-		const map = new Map<string, string>() // slotId -> modelKey
+		const map = new Map<string, string>()
 		config.providers.forEach((provider, pi) => {
 			provider.models.forEach((model, mi) => {
-				const slot = model.slot?.trim() ?? ""
-				if (slot) {
-					map.set(slot, `${pi}:${mi}`)
+				for (const s of getModelSlots(model)) {
+					map.set(s, `${pi}:${mi}`)
 				}
 			})
 		})
@@ -747,25 +760,26 @@ function SlotMappingPanel({
 					</span>
 				</div>
 			</div>
-			<div className='space-y-1.5 px-4 py-3'>
+			<div className='space-y-1 px-2 py-2'>
 				{DEFAULT_CLAUDE_SLOTS.map((slotId, slotIndex) => {
 					const currentKey = slotAssignments.get(slotId) ?? ""
+					const shortSlot = slotId.replace("anthropic/", "")
 
 					return (
-						<div key={slotId} className='flex items-center gap-2'>
-							<div className='flex h-9 w-7 shrink-0 items-center justify-center rounded-md border border-gray-700 bg-gray-950 text-xs font-medium text-gray-500'>
+						<div key={slotId} className='flex items-center gap-1.5'>
+							<div className='flex h-7 w-5 shrink-0 items-center justify-center rounded border border-gray-700 bg-gray-950 text-[10px] font-medium text-gray-500'>
 								{slotIndex + 1}
 							</div>
-							<div className='flex h-9 min-w-[260px] shrink-0 items-center rounded-md border border-gray-800 bg-gray-950 px-2.5 font-mono text-xs text-indigo-300'>
-								<span className='truncate'>{slotId}</span>
+							<div className='flex h-7 min-w-0 flex-1 items-center rounded border border-gray-800 bg-gray-950 px-2 font-mono text-[11px] text-indigo-300'>
+								<span className='truncate'>{shortSlot}</span>
 							</div>
-							<span className='shrink-0 text-gray-600'>→</span>
+							<span className='shrink-0 text-gray-600 text-xs'>→</span>
 							<select
 								value={currentKey}
 								onChange={(e) => onSlotAssign(slotIndex, e.target.value || "")}
-								className={`${FIELD_SELECT_CLASS} h-9 min-w-0 flex-1 text-xs`}>
-								<option value=''>-- 未分配 --</option>
-								{enabledModelOptions.map((opt) => (
+								className={`${FIELD_SELECT_CLASS} h-7 !w-auto flex-1 text-xs`}>
+								<option value=''>--</option>
+								{slottedModelOptions.map((opt) => (
 									<option key={opt.key} value={opt.key}>
 										{opt.label}
 									</option>

@@ -13,6 +13,7 @@ pub const DEFAULT_CLAUDE_SLOTS: &[&str] = &[
     "anthropic/claude-sonnet-4",
     "anthropic/claude-sonnet-3-7",
     "anthropic/claude-haiku-3-5",
+    "anthropic/claude-haiku-4-5-20251001",
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -43,6 +44,8 @@ pub struct ModelMappingEntry {
     pub name: String,
     #[serde(default)]
     pub slot: String,
+    #[serde(default)]
+    pub slots: Vec<String>,
     #[serde(default)]
     pub display_name: String,
     #[serde(default)]

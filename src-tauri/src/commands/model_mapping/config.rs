@@ -226,6 +226,20 @@ pub fn effective_slot(model: &ModelMappingEntry) -> String {
     model.slot.trim().to_string()
 }
 
+pub fn effective_slots(model: &ModelMappingEntry) -> Vec<String> {
+    let mut result: Vec<String> = model
+        .slots
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let legacy = model.slot.trim().to_string();
+    if !legacy.is_empty() && !result.contains(&legacy) {
+        result.insert(0, legacy);
+    }
+    result
+}
+
 fn effective_display_name(model: &ModelMappingEntry, provider_name: &str) -> String {
     let trimmed = model.display_name.trim();
     if trimmed.is_empty() {
@@ -239,11 +253,12 @@ pub fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
     let mut reserved_slots = HashSet::new();
     for provider in &config.providers {
         for model in &provider.models {
-            let trimmed = model.slot.trim();
-            if trimmed.is_empty() || is_auto_generated_slot(trimmed, model.name.trim()) {
-                continue;
+            for s in effective_slots(model) {
+                if s.is_empty() || is_auto_generated_slot(&s, model.name.trim()) {
+                    continue;
+                }
+                reserved_slots.insert(normalize_explicit_slot(&s));
             }
-            reserved_slots.insert(normalize_explicit_slot(trimmed));
         }
     }
 
@@ -279,13 +294,25 @@ pub fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
                             let target_protocol = resolve_target_protocol(&model);
                             let source_protocol =
                                 resolve_source_protocol(&model, &target_url, &target_protocol);
-                            let normalized_slot = normalize_slot(
-                                &model.slot,
-                                model.name.trim(),
-                                &mut allocate_auto_slot,
-                            );
+                            let raw_slots = effective_slots(&model);
+                            let normalized_slots: Vec<String> = if raw_slots.is_empty() {
+                                vec![allocate_auto_slot()]
+                            } else {
+                                raw_slots
+                                    .into_iter()
+                                    .map(|s| {
+                                        if s.is_empty() || is_auto_generated_slot(&s, model.name.trim()) {
+                                            allocate_auto_slot()
+                                        } else {
+                                            normalize_explicit_slot(&s)
+                                        }
+                                    })
+                                    .collect()
+                            };
+                            let legacy_slot = normalized_slots.first().cloned().unwrap_or_default();
                             ModelMappingEntry {
-                                slot: normalized_slot,
+                                slot: legacy_slot,
+                                slots: normalized_slots,
                                 display_name: effective_display_name(&model, &provider_label),
                                 supported_protocols,
                                 source_protocol,
@@ -438,23 +465,34 @@ pub fn flatten_config(config: &ModelMappingConfig) -> Vec<ModelMappingFlatEntry>
             {
                 continue;
             }
-            result.push(ModelMappingFlatEntry {
-                slot: effective_slot(model),
-                name: model.name.trim().to_string(),
-                display_name: effective_display_name(model, &provider.name),
-                supported_protocols: model.supported_protocols.clone(),
-                source_protocol: model.source_protocol.clone(),
-                target_protocol: model.target_protocol.clone(),
-                provider_name: provider.name.clone(),
-                target_url: provider.target_url.clone(),
-                supports_1m: !model.to_1m.trim().is_empty(),
-                thinking_effort: provider.thinking_effort.clone(),
-                protocol: protocol_to_string(parse_mapping_protocol(
-                    &resolve_effective_upstream_protocol(model, &provider.target_url),
-                    &provider.target_url,
-                    &model.name,
-                )),
-            });
+            let all_slots = effective_slots(model);
+            let slots_to_emit: Vec<String> = if all_slots.is_empty() {
+                vec![effective_slot(model)]
+            } else {
+                all_slots
+            };
+            for slot in slots_to_emit {
+                if slot.is_empty() {
+                    continue;
+                }
+                result.push(ModelMappingFlatEntry {
+                    slot,
+                    name: model.name.trim().to_string(),
+                    display_name: effective_display_name(model, &provider.name),
+                    supported_protocols: model.supported_protocols.clone(),
+                    source_protocol: model.source_protocol.clone(),
+                    target_protocol: model.target_protocol.clone(),
+                    provider_name: provider.name.clone(),
+                    target_url: provider.target_url.clone(),
+                    supports_1m: !model.to_1m.trim().is_empty(),
+                    thinking_effort: provider.thinking_effort.clone(),
+                    protocol: protocol_to_string(parse_mapping_protocol(
+                        &resolve_effective_upstream_protocol(model, &provider.target_url),
+                        &provider.target_url,
+                        &model.name,
+                    )),
+                });
+            }
         }
     }
     result
@@ -520,7 +558,7 @@ pub fn now_time() -> String {
 pub fn push_log(manager: &ModelMappingManager, entry: ModelMappingLogEntry) {
     let mut logs = manager.logs.write().unwrap_or_else(|err| err.into_inner());
     logs.insert(0, entry);
-    logs.truncate(50);
+    logs.truncate(20);
 }
 
 pub fn stringify_json_pretty(value: &serde_json::Value) -> String {
@@ -591,9 +629,9 @@ mod tests {
     use crate::commands::model_mapping::config::{
         normalize_config, flatten_config, make_slot,
         parse_mapping_protocol, MappingProtocol,
-        build_anthropic_messages_url,
     };
     use crate::commands::model_mapping::gateway::resolve_model;
+    use crate::commands::model_mapping::gateway::build_anthropic_messages_url;
     use crate::commands::model_mapping::protocol::validate_anthropic_message_response;
 
     fn provider_with_models(models: Vec<ModelMappingEntry>) -> ModelMappingProvider {
@@ -602,6 +640,29 @@ mod tests {
             target_url: "https://example.com/anthropic".to_string(),
             api_key: "secret".to_string(),
             models,
+            ..Default::default()
+        }
+    }
+
+    fn test_entry(name: &str) -> ModelMappingEntry {
+        ModelMappingEntry {
+            name: name.to_string(),
+            enabled: true,
+            supported_protocols: vec!["claude".to_string()],
+            source_protocol: "claude".to_string(),
+            target_protocol: "claude".to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn test_entry_with_slot(name: &str, slot: &str) -> ModelMappingEntry {
+        ModelMappingEntry {
+            name: name.to_string(),
+            slot: slot.to_string(),
+            enabled: true,
+            supported_protocols: vec!["claude".to_string()],
+            source_protocol: "claude".to_string(),
+            target_protocol: "claude".to_string(),
             ..Default::default()
         }
     }
@@ -619,14 +680,12 @@ mod tests {
         let models = (0..10)
             .map(|index| ModelMappingEntry {
                 name: format!("model-{index}"),
-                slot: String::new(),
-                display_name: String::new(),
                 supported_protocols: vec!["openai-chat".to_string()],
                 source_protocol: "openai-chat".to_string(),
                 target_protocol: "claude".to_string(),
                 to_1m: "auto".to_string(),
                 enabled: true,
-                protocol: "openai-chat".to_string(),
+                ..Default::default()
             })
             .collect();
         let config = ModelMappingConfig {
@@ -648,12 +707,8 @@ mod tests {
                 name: "deepseek-v4-flash".to_string(),
                 slot: "anthropic/claude-sonnet-4-5".to_string(),
                 display_name: "Manual Alias".to_string(),
-                supported_protocols: vec!["claude".to_string()],
-                source_protocol: "claude".to_string(),
-                target_protocol: "claude".to_string(),
-                to_1m: String::new(),
                 enabled: true,
-                protocol: "claude".to_string(),
+                ..Default::default()
             }])],
         };
 
@@ -669,24 +724,18 @@ mod tests {
                 ModelMappingEntry {
                     name: "glm-5-turbo".to_string(),
                     slot: "anthropic/claude-glm-5-turbo".to_string(),
-                    display_name: String::new(),
                     supported_protocols: vec!["gemini".to_string()],
                     source_protocol: "gemini".to_string(),
-                    target_protocol: "claude".to_string(),
-                    to_1m: String::new(),
                     enabled: true,
-                    protocol: "claude".to_string(),
+                    ..Default::default()
                 },
                 ModelMappingEntry {
                     name: "kimi-k2.6".to_string(),
                     slot: "anthropic/claude-claude-kimi-k2.6".to_string(),
-                    display_name: String::new(),
                     supported_protocols: vec!["openai-responses".to_string()],
                     source_protocol: "openai-responses".to_string(),
-                    target_protocol: "claude".to_string(),
-                    to_1m: String::new(),
                     enabled: true,
-                    protocol: "claude".to_string(),
+                    ..Default::default()
                 },
             ])],
         };
@@ -712,28 +761,8 @@ mod tests {
                     target_url: "https://example.com/anthropic".to_string(),
                     api_key: "secret".to_string(),
                     models: vec![
-                        ModelMappingEntry {
-                            name: "a-1".to_string(),
-                            slot: String::new(),
-                            display_name: String::new(),
-                            supported_protocols: vec!["claude".to_string()],
-                            source_protocol: "claude".to_string(),
-                            target_protocol: "claude".to_string(),
-                            to_1m: String::new(),
-                            enabled: true,
-                            protocol: "claude".to_string(),
-                        },
-                        ModelMappingEntry {
-                            name: "a-2".to_string(),
-                            slot: String::new(),
-                            display_name: String::new(),
-                            supported_protocols: vec!["claude".to_string()],
-                            source_protocol: "claude".to_string(),
-                            target_protocol: "claude".to_string(),
-                            to_1m: String::new(),
-                            enabled: true,
-                            protocol: "claude".to_string(),
-                        },
+                        test_entry("a-1"),
+                        test_entry("a-2"),
                     ],
                     ..Default::default()
                 },
@@ -741,17 +770,7 @@ mod tests {
                     name: "GLM 智谱".to_string(),
                     target_url: "https://example.com/anthropic".to_string(),
                     api_key: "secret".to_string(),
-                    models: vec![ModelMappingEntry {
-                        name: "b-1".to_string(),
-                        slot: String::new(),
-                        display_name: String::new(),
-                        supported_protocols: vec!["claude".to_string()],
-                        source_protocol: "claude".to_string(),
-                        target_protocol: "claude".to_string(),
-                        to_1m: String::new(),
-                        enabled: true,
-                        protocol: "claude".to_string(),
-                    }],
+                    models: vec![test_entry("b-1")],
                     ..Default::default()
                 },
             ],
@@ -779,25 +798,14 @@ mod tests {
             providers: vec![provider_with_models(vec![
                 ModelMappingEntry {
                     name: "claude-opus-4".to_string(),
-                    slot: String::new(),
-                    display_name: String::new(),
-                    supported_protocols: vec!["claude".to_string()],
-                    source_protocol: "claude".to_string(),
-                    target_protocol: "claude".to_string(),
-                    to_1m: String::new(),
                     enabled: true,
-                    protocol: "claude".to_string(),
+                    ..Default::default()
                 },
                 ModelMappingEntry {
                     name: "claude-sonnet-4-5".to_string(),
-                    slot: String::new(),
                     display_name: "My Sonnet Alias".to_string(),
-                    supported_protocols: vec!["claude".to_string()],
-                    source_protocol: "claude".to_string(),
-                    target_protocol: "claude".to_string(),
-                    to_1m: String::new(),
                     enabled: true,
-                    protocol: "claude".to_string(),
+                    ..Default::default()
                 },
             ])],
         };
@@ -824,9 +832,8 @@ mod tests {
                 supported_protocols: vec!["claude".to_string(), "gemini".to_string()],
                 source_protocol: "gemini".to_string(),
                 target_protocol: "claude".to_string(),
-                to_1m: String::new(),
                 enabled: true,
-                protocol: "gemini".to_string(),
+                ..Default::default()
             }])],
         };
 
@@ -841,14 +848,9 @@ mod tests {
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![ModelMappingEntry {
                 name: "hybrid-model".to_string(),
-                slot: String::new(),
-                display_name: String::new(),
                 supported_protocols: vec!["gemini".to_string(), "claude".to_string()],
-                source_protocol: String::new(),
-                target_protocol: "claude".to_string(),
-                to_1m: String::new(),
                 enabled: true,
-                protocol: String::new(),
+                ..Default::default()
             }])],
         };
 
@@ -863,14 +865,9 @@ mod tests {
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![ModelMappingEntry {
                 name: "kimi-k2.6".to_string(),
-                slot: String::new(),
-                display_name: String::new(),
-                supported_protocols: vec!["claude".to_string()],
-                source_protocol: "claude".to_string(),
-                target_protocol: "claude".to_string(),
                 to_1m: "auto".to_string(),
                 enabled: true,
-                protocol: "claude".to_string(),
+                ..Default::default()
             }])],
         };
 
@@ -882,17 +879,7 @@ mod tests {
     #[test]
     fn resolve_model_matches_manual_slot_override() {
         let config = ModelMappingConfig {
-            providers: vec![provider_with_models(vec![ModelMappingEntry {
-                name: "deepseek-v4-flash".to_string(),
-                slot: "anthropic/claude-sonnet-4-5".to_string(),
-                display_name: "Manual Alias".to_string(),
-                supported_protocols: vec!["claude".to_string()],
-                source_protocol: "claude".to_string(),
-                target_protocol: "claude".to_string(),
-                to_1m: String::new(),
-                enabled: true,
-                protocol: "claude".to_string(),
-            }])],
+            providers: vec![provider_with_models(vec![test_entry_with_slot("deepseek-v4-flash", "anthropic/claude-sonnet-4-5")])],
         };
 
         let resolved = resolve_model("anthropic/claude-sonnet-4-5", &config)
@@ -904,17 +891,7 @@ mod tests {
     #[test]
     fn resolve_model_matches_legacy_slot_when_model_name_already_has_claude_prefix() {
         let config = ModelMappingConfig {
-            providers: vec![provider_with_models(vec![ModelMappingEntry {
-                name: "claude-haiku-4-5-20251001".to_string(),
-                slot: String::new(),
-                display_name: String::new(),
-                supported_protocols: vec!["claude".to_string()],
-                source_protocol: "claude".to_string(),
-                target_protocol: "claude".to_string(),
-                to_1m: String::new(),
-                enabled: true,
-                protocol: "claude".to_string(),
-            }])],
+            providers: vec![provider_with_models(vec![test_entry("claude-haiku-4-5-20251001")])],
         };
 
         let resolved = resolve_model("claude-haiku-4-5-20251001", &config)

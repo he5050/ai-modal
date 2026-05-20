@@ -21,7 +21,7 @@ interface ProxyConfigCardProps {
 	port: number
 	model?: string
 	enabled: boolean
-	onUpdate: (patch: { apiUrl?: string; apiKey?: string; port?: number; model?: string; enabled?: boolean }) => void
+	onUpdate: (patch: { apiUrl?: string; apiKey?: string; port?: number; model?: string; enabled?: boolean; customArgs?: string }) => void
 	onDelete: () => void
 	onStart: () => void
 	onStop: () => void

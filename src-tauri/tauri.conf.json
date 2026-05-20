@@ -26,7 +26,7 @@
         "height": 780,
         "minWidth": 900,
         "minHeight": 600,
-        "titleBarStyle": "Overlay",
+        "titleBarStyle": "Transparent",
         "theme": "Dark"
       }
     ],

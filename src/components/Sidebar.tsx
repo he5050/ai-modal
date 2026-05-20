@@ -48,7 +48,7 @@ export function Sidebar({
         data-tauri-drag-region
         className="border-b border-gray-800 px-4 pb-4 pt-8"
       >
-        <div className="flex items-center gap-2">
+        <div className="pointer-events-none flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md border border-indigo-500/50 bg-indigo-600/90">
             <Zap className="h-3.5 w-3.5 fill-white text-white" />
           </div>

@@ -22,18 +22,18 @@ import { ProxyPageHeader, ProxyConfigCard } from "./components"
 import type { CliProxyConfig, CliProxyStatus, CliToolConfig, CliToolType, Provider } from "@/types"
 import { useProviders } from "@/hooks/useProviders"
 
-// CLI 工具定义
 export interface CliToolDefinition {
 	type: CliToolType
 	name: string
 	description: string
 	defaultPort: number
 	defaultApiUrl: string
+	defaultProtocol: string
+	defaultBasePath: string
 	envVars: string[]
 	docsUrl: string
 }
 
-// CLI 工具定义列表
 export const CLI_TOOLS: CliToolDefinition[] = [
 	{
 		type: "claude-code",
@@ -41,6 +41,8 @@ export const CLI_TOOLS: CliToolDefinition[] = [
 		description: "Anthropic 官方 CLI 工具",
 		defaultPort: 5679,
 		defaultApiUrl: "https://api.anthropic.com",
+		defaultProtocol: "claude",
+		defaultBasePath: "",
 		envVars: ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"],
 		docsUrl: "https://docs.anthropic.com/en/docs/claude-code/overview",
 	},
@@ -50,6 +52,8 @@ export const CLI_TOOLS: CliToolDefinition[] = [
 		description: "OpenAI Codex 命令行工具",
 		defaultPort: 5680,
 		defaultApiUrl: "https://api.openai.com",
+		defaultProtocol: "openai-chat",
+		defaultBasePath: "/v1",
 		envVars: ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
 		docsUrl: "https://github.com/openai/codex",
 	},
@@ -59,6 +63,8 @@ export const CLI_TOOLS: CliToolDefinition[] = [
 		description: "Google Gemini 命令行工具",
 		defaultPort: 5681,
 		defaultApiUrl: "https://generativelanguage.googleapis.com",
+		defaultProtocol: "gemini",
+		defaultBasePath: "/v1beta",
 		envVars: ["GEMINI_API_KEY", "GEMINI_BASE_URL"],
 		docsUrl: "https://github.com/google-gemini/gemini-cli",
 	},
@@ -68,6 +74,8 @@ export const CLI_TOOLS: CliToolDefinition[] = [
 		description: "开源 AI 编程助手",
 		defaultPort: 5682,
 		defaultApiUrl: "https://api.openai.com",
+		defaultProtocol: "openai-chat",
+		defaultBasePath: "/v1",
 		envVars: ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
 		docsUrl: "https://github.com/opencode-ai/opencode",
 	},
@@ -77,12 +85,13 @@ export const CLI_TOOLS: CliToolDefinition[] = [
 		description: "AI 配对编程工具",
 		defaultPort: 5683,
 		defaultApiUrl: "https://api.openai.com",
+		defaultProtocol: "openai-chat",
+		defaultBasePath: "/v1",
 		envVars: ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
 		docsUrl: "https://aider.chat/",
 	},
 ]
 
-// 默认配置
 const createDefaultCliConfig = (type: CliToolType): CliToolConfig => {
 	const tool = CLI_TOOLS.find((t) => t.type === type)!
 	return {
@@ -94,7 +103,21 @@ const createDefaultCliConfig = (type: CliToolType): CliToolConfig => {
 		model: "",
 		port: tool.defaultPort,
 		customArgs: "",
+		protocol: tool.defaultProtocol,
+		basePath: tool.defaultBasePath,
 	}
+}
+
+function getEffectiveBasePath(toolConfig: CliToolConfig): string {
+	const bp = toolConfig.basePath?.trim() ?? ""
+	if (bp) return bp
+	const tool = CLI_TOOLS.find((t) => t.type === toolConfig.type)
+	return tool?.defaultBasePath ?? "/v1"
+}
+
+function buildLocalBaseUrl(toolConfig: CliToolConfig): string {
+	const basePath = getEffectiveBasePath(toolConfig)
+	return `http://localhost:${toolConfig.port}${basePath}`
 }
 
 interface CliTabProps {
@@ -107,13 +130,11 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 	const [loading, setLoading] = useState(true)
 	const [busy, setBusy] = useState<string | null>(null)
 
-	// Provider 导入相关
 	const { providers } = useProviders()
 	const [showImportDialog, setShowImportDialog] = useState(false)
 	const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
 	const [selectedToolsToImport, setSelectedToolsToImport] = useState<CliToolType[]>([])
 
-	// 加载配置
 	useEffect(() => {
 		let active = true
 		async function bootstrap() {
@@ -137,8 +158,15 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		}
 	}, [])
 
-	// 保存配置
 	const handleSave = async () => {
+		const ports = config.tools.map((t) => t.port)
+		const duplicatePorts = ports.filter((p, i) => ports.indexOf(p) !== i)
+		if (duplicatePorts.length > 0) {
+			const unique = [...new Set(duplicatePorts)]
+			toast(`端口冲突：${unique.join(", ")} 被多个工具使用`, "error")
+			return
+		}
+
 		setBusy("save")
 		logger.info("[CLI 代理] 开始保存配置")
 		try {
@@ -155,7 +183,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		}
 	}
 
-	// 添加 CLI 配置
 	const addCliConfig = (type: CliToolType) => {
 		const existing = config.tools.find((c) => c.type === type)
 		if (existing) {
@@ -168,17 +195,20 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		logger.info(`[CLI 代理] 添加配置：${type}`)
 	}
 
-	// 更新配置
 	const updateConfig = (id: string, patch: Partial<CliToolConfig>) => {
 		const newTools = config.tools.map((c) => (c.id === id ? { ...c, ...patch } : c))
 		setConfig({ tools: newTools })
 		onDirtyChange?.(true)
 	}
 
-	// 删除配置
 	const deleteConfig = async (id: string) => {
-		if (status?.runningTools.includes(id)) {
-			await handleStopService(id)
+		if (status?.runningTools?.includes(id)) {
+			try {
+				await handleStopService(id)
+			} catch {
+				toast("停止服务失败，请手动停止后再删除", "error")
+				return
+			}
 		}
 		const newTools = config.tools.filter((c) => c.id !== id)
 		setConfig({ tools: newTools })
@@ -186,7 +216,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		logger.info(`[CLI 代理] 删除配置：${id}`)
 	}
 
-	// 启动服务
 	const handleStartService = async (id: string) => {
 		setBusy(`start-${id}`)
 		logger.info(`[CLI 代理] 启动服务：${id}`)
@@ -203,7 +232,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		}
 	}
 
-	// 停止服务
 	const handleStopService = async (id: string) => {
 		setBusy(`stop-${id}`)
 		logger.info(`[CLI 代理] 停止服务：${id}`)
@@ -220,7 +248,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		}
 	}
 
-	// 测试连接
 	const handleTestConnection = async (id: string) => {
 		const toolConfig = config.tools.find((c) => c.id === id)
 		if (!toolConfig) return
@@ -243,14 +270,13 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		}
 	}
 
-	// 生成环境变量配置
 	const generateEnvConfig = (toolConfig: CliToolConfig): string => {
 		const tool = CLI_TOOLS.find((t) => t.type === toolConfig.type)!
 		const lines: string[] = []
 		lines.push(`# ${tool.name} 配置`)
 		lines.push(`${tool.envVars[0]}=${toolConfig.apiKey}`)
 		if (tool.envVars[1]) {
-			lines.push(`${tool.envVars[1]}=http://localhost:${toolConfig.port}/v1`)
+			lines.push(`${tool.envVars[1]}=${buildLocalBaseUrl(toolConfig)}`)
 		}
 		if (toolConfig.model) {
 			lines.push(`# 推荐模型: ${toolConfig.model}`)
@@ -258,43 +284,46 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		return lines.join("\n")
 	}
 
-	// 获取可用的 CLI 工具
 	const availableTools = CLI_TOOLS.filter((tool) => !config.tools.some((c) => c.type === tool.type))
 
-	// 根据 Provider 判断可导入的 CLI 工具类型
 	function getImportableToolsFromProvider(provider: Provider): CliToolType[] {
 		const importable: CliToolType[] = []
 		const baseUrl = provider.baseUrl.toLowerCase()
+		const supportedProtocols = (provider as { supportedProtocols?: string[] }).supportedProtocols
+		const hasProtocol = (p: string) => supportedProtocols?.some((sp) => sp.toLowerCase().includes(p)) ?? false
 
-		if (baseUrl.includes("anthropic")) {
+		if (baseUrl.includes("anthropic") || hasProtocol("anthropic") || hasProtocol("claude")) {
 			importable.push("claude-code")
 		}
-		if (baseUrl.includes("openai")) {
+		if (baseUrl.includes("openai") || hasProtocol("openai") || hasProtocol("openai-chat")) {
 			importable.push("codex", "opencode", "aider")
 		}
-		if (baseUrl.includes("gemini") || baseUrl.includes("google")) {
+		if (baseUrl.includes("gemini") || baseUrl.includes("google") || hasProtocol("gemini")) {
 			importable.push("gemini-cli")
 		}
 
-		// 过滤掉已存在的
+		if (importable.length === 0 && baseUrl.includes("/anthropic")) {
+			importable.push("claude-code")
+		}
+		if (importable.length === 0 && (baseUrl.includes("/v1") || baseUrl.includes("/openai"))) {
+			importable.push("codex", "opencode", "aider")
+		}
+
 		return importable.filter((type) => !config.tools.some((c) => c.type === type))
 	}
 
-	// 打开导入对话框
 	function openImportDialog() {
 		setSelectedProvider(null)
 		setSelectedToolsToImport([])
 		setShowImportDialog(true)
 	}
 
-	// 选择 Provider
 	function handleSelectProvider(provider: Provider) {
 		setSelectedProvider(provider)
 		const importable = getImportableToolsFromProvider(provider)
 		setSelectedToolsToImport(importable)
 	}
 
-	// 执行导入
 	function executeImport() {
 		if (!selectedProvider || selectedToolsToImport.length === 0) return
 
@@ -309,6 +338,8 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 				model: "",
 				port: tool.defaultPort,
 				customArgs: "",
+				protocol: tool.defaultProtocol,
+				basePath: tool.defaultBasePath,
 			}
 			setConfig((prev) => ({ tools: [...prev.tools, newConfig] }))
 		})
@@ -321,7 +352,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 		logger.info(`[CLI 代理] 从 Provider 导入配置: ${selectedProvider.name}, 工具: ${selectedToolsToImport.join(", ")}`)
 	}
 
-	// 切换工具选择
 	function toggleToolSelection(type: CliToolType) {
 		setSelectedToolsToImport((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
 	}
@@ -340,16 +370,16 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 			<ProxyPageHeader
 				title='CLI 代理配置'
 				hint='为各种 AI CLI 工具提供 API 转发代理服务，支持 Claude Code、Codex、Gemini CLI 等。'
-				statusLabel={
-					status && status.runningTools.length > 0 ? `${status.runningTools.length} 个服务运行中` : "无运行中服务"
-				}
-				statusType={status && status.runningTools.length > 0 ? "success" : "unknown"}
+				statusLabel={(() => {
+					const len = status?.runningTools?.length ?? 0
+					return len > 0 ? `${len} 个服务运行中` : "无运行中服务"
+				})()}
+				statusType={(status?.runningTools?.length ?? 0) > 0 ? "success" : "unknown"}
 				countLabel={`${config.tools.length} 个配置`}
 				onSave={handleSave}
 				saving={busy === "save"}
 			/>
 
-			{/* 添加工具按钮 */}
 			<div className='shrink-0 px-5 pb-4'>
 				<div className='flex flex-wrap items-center gap-2'>
 					{availableTools.length > 0 &&
@@ -370,7 +400,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 				</div>
 			</div>
 
-			{/* 配置列表 */}
 			<div className='min-h-0 flex-1 overflow-y-auto px-5 pb-5'>
 				{config.tools.length === 0 ? (
 					<EmptyState
@@ -382,7 +411,7 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 					<div className='space-y-4'>
 						{config.tools.map((toolConfig) => {
 							const tool = CLI_TOOLS.find((t) => t.type === toolConfig.type)!
-							const isRunning = status?.runningTools.includes(toolConfig.id) ?? false
+							const isRunning = status?.runningTools?.includes(toolConfig.id) ?? false
 							const isBusy = busy?.includes(toolConfig.id) ?? false
 
 							return (
@@ -398,7 +427,7 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 									port={toolConfig.port}
 									model={toolConfig.model}
 									enabled={toolConfig.enabled}
-									onUpdate={(patch) => updateConfig(toolConfig.id, { ...patch, customArgs: toolConfig.customArgs })}
+									onUpdate={(patch) => updateConfig(toolConfig.id, patch)}
 									onDelete={() => void deleteConfig(toolConfig.id)}
 									onStart={() => void handleStartService(toolConfig.id)}
 									onStop={() => void handleStopService(toolConfig.id)}
@@ -432,7 +461,7 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 														<span className='text-emerald-500'>{envVar}</span>
 														<span>=</span>
 														<span className='truncate text-gray-500'>
-															{envVar.includes("KEY") ? "***" : `http://localhost:${toolConfig.port}/v1`}
+															{envVar.includes("KEY") ? "***" : buildLocalBaseUrl(toolConfig)}
 														</span>
 													</div>
 												))}
@@ -446,7 +475,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 				)}
 			</div>
 
-			{/* Provider 导入对话框 */}
 			{showImportDialog && (
 				<div className='fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4'>
 					<Card className='w-full max-w-lg'>
@@ -459,7 +487,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 
 						<div className='p-4'>
 							{!selectedProvider ? (
-								// 选择 Provider
 								<div className='space-y-3'>
 									<p className='text-xs text-gray-500'>选择一个 Provider 来导入其 API 配置到 CLI 工具：</p>
 									<div className='max-h-64 space-y-2 overflow-y-auto'>
@@ -494,7 +521,6 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 									</div>
 								</div>
 							) : (
-								// 选择要导入的工具
 								<div className='space-y-4'>
 									<div className='rounded-lg border border-gray-800 bg-gray-900/50 p-3'>
 										<p className='text-xs text-gray-500'>已选择 Provider</p>

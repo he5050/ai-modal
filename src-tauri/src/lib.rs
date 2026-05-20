@@ -7,6 +7,10 @@ use commands::mcp::{
     extract_modelscope_mcp_server, extract_modelscope_mcp_server_with_profile,
     inspect_modelscope_mcp_server, search_modelscope_mcp_servers, test_mcp_server,
 };
+use commands::cli_proxy::{
+    get_cli_proxy_status, load_cli_proxy_config, save_cli_proxy_config,
+    start_cli_proxy_service, stop_cli_proxy_service, test_cli_proxy_connection, CliProxyManager,
+};
 use commands::model::{list_models, test_models};
 use commands::model_mapping::{
     apply_model_mapping_to_claude, ensure_model_mapping_claude_gateway,
@@ -54,6 +58,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(SkillEnrichmentJobManager::default())
         .manage(std::sync::Arc::new(ModelMappingManager::default()))
+        .manage(std::sync::Arc::new(CliProxyManager::default()))
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:state.db", migrations)
@@ -102,6 +107,17 @@ pub fn run() {
                         let cls = class!(NSAppearance);
                         let appearance: cocoa::base::id = msg_send![cls, appearanceNamed: name];
                         let _: () = msg_send![ns_window, setAppearance: appearance];
+
+                        // 设置标题栏背景色为红色
+                        use cocoa::appkit::{NSColor, NSWindow};
+                        let bg_color = NSColor::colorWithRed_green_blue_alpha_(
+                            cocoa::base::nil,
+                            220.0 / 255.0,  // Red
+                            53.0 / 255.0,   // Green
+                            69.0 / 255.0,   // Blue
+                            1.0,            // Alpha
+                        );
+                        ns_window.setBackgroundColor_(bg_color);
                     }
                 }
             }
@@ -135,6 +151,12 @@ pub fn run() {
             test_model_mapping_provider,
             get_model_mapping_autostart,
             set_model_mapping_autostart,
+            load_cli_proxy_config,
+            save_cli_proxy_config,
+            get_cli_proxy_status,
+            start_cli_proxy_service,
+            stop_cli_proxy_service,
+            test_cli_proxy_connection,
             test_model_config,
             list_models_by_provider,
             test_models_by_provider,

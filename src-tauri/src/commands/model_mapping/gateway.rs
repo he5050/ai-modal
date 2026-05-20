@@ -74,7 +74,9 @@ pub(crate) fn resolve_model(model: &str, config: &ModelMappingConfig) -> Result<
             if !entry.enabled || entry.target_protocol.trim() != "claude" {
                 continue;
             }
-            if base_model == effective_slot(entry) || base_model == legacy_slot(entry.name.trim()) {
+            let matched = effective_slots(entry).iter().any(|s| base_model == s.as_str())
+                || base_model == legacy_slot(entry.name.trim());
+            if matched {
                 let target_model = if wants_1m && !entry.to_1m.trim().is_empty() {
                     format!("{}[1m]", entry.name.trim())
                 } else {
@@ -103,7 +105,7 @@ pub(crate) fn resolve_model(model: &str, config: &ModelMappingConfig) -> Result<
 }
 
 use crate::commands::model_mapping::config::{
-    effective_slot, legacy_slot, parse_mapping_protocol, resolve_effective_upstream_protocol,
+    effective_slot, effective_slots, legacy_slot, parse_mapping_protocol, resolve_effective_upstream_protocol,
 };
 
 #[derive(Debug)]
