@@ -491,7 +491,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 							...model,
 							slot: updatedSlots[0] ?? "",
 							slots: updatedSlots,
-							enabled: updatedSlots.length > 0 ? model.enabled : false,
+							// 移除 slot 时不改变 enabled 状态，由用户手动控制
 						}
 					}
 					return model
@@ -520,7 +520,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 						...model,
 						slot: updatedSlots[0] ?? "",
 						slots: updatedSlots,
-						enabled: updatedSlots.length > 0 ? model.enabled : false,
+						// 移除 slot 时不改变 enabled 状态，由用户手动控制
 					}
 				}
 				if (pIdx === pi && mIdx === mi) {
