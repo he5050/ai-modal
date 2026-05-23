@@ -59,6 +59,7 @@ pub async fn start_cli_proxy_service(
     manager: tauri::State<'_, Arc<CliProxyManager>>,
     tool_id: String,
 ) -> Result<CliProxyStatus, String> {
+    // 1. 从内存读取当前配置
     let config = manager
         .config
         .read()
@@ -79,6 +80,24 @@ pub async fn start_cli_proxy_service(
     }
     if tool_config.api_key.trim().is_empty() {
         return Err("请先配置 API Key".to_string());
+    }
+
+    // 2. 自动保存配置到文件（确保启动的是最新配置）
+    save_cli_proxy_config_file(&config)?;
+
+    // 3. 检查端口是否被占用
+    let port = tool_config.port;
+    match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+        Ok(listener) => {
+            // 端口可用，立即释放
+            drop(listener);
+        }
+        Err(_) => {
+            return Err(format!(
+                "端口 {} 已被占用，请更换端口或等待其他服务释放",
+                port
+            ));
+        }
     }
 
     let shutdown_receiver = {
@@ -104,7 +123,6 @@ pub async fn start_cli_proxy_service(
     };
 
     let manager_arc = manager.inner().clone();
-    let port = tool_config.port;
     let id_for_cleanup = tool_id.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(err) =

@@ -9,6 +9,7 @@ import {
   Settings,
   SlidersHorizontal,
   Sparkles,
+  Terminal,
 } from 'lucide-react'
 import type { AppPage } from '../types'
 
@@ -26,6 +27,7 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
   { key: 'models', label: '模型列表', Icon: List, section: 'core' },
   { key: 'model-mapping', label: '模型映射', Icon: GitBranch, section: 'core' },
   { key: 'mcp', label: 'MCP 管理', Icon: Cable, section: 'core' },
+  { key: 'curl-task', label: 'cURL 任务', Icon: Terminal, section: 'core' },
   { key: 'skills', label: '技能管理', Icon: Sparkles, section: 'assets' },
   { key: 'prompts', label: '提示词管理', Icon: MessageSquareQuote, section: 'assets' },
   { key: 'rules', label: '规则管理', Icon: BookOpen, section: 'assets' },

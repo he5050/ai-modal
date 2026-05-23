@@ -1,4 +1,4 @@
-import { Loader2, Play, Square, Trash2, Wifi } from "lucide-react"
+import { Loader2, Play, Square, Trash2, Wifi, ChevronDown } from "lucide-react"
 import {
 	BUTTON_ICON_DANGER_SM_CLASS,
 	BUTTON_PRIMARY_CLASS,
@@ -21,6 +21,7 @@ interface ProxyConfigCardProps {
 	port: number
 	model?: string
 	enabled: boolean
+	availableModels?: string[]
 	onUpdate: (patch: { apiUrl?: string; apiKey?: string; port?: number; model?: string; enabled?: boolean; customArgs?: string }) => void
 	onDelete: () => void
 	onStart: () => void
@@ -42,6 +43,7 @@ export function ProxyConfigCard({
 	port,
 	model = "",
 	enabled,
+	availableModels = [],
 	onUpdate,
 	onDelete,
 	onStart,
@@ -91,13 +93,20 @@ export function ProxyConfigCard({
 						placeholder='API 地址'
 						disabled={isBusy}
 					/>
-					<input
-						value={model}
-						onChange={(e) => onUpdate({ model: e.target.value })}
-						className={FIELD_MONO_INPUT_CLASS}
-						placeholder='模型名称 (可选)'
-						disabled={isBusy}
-					/>
+					<div className="relative">
+						<select
+							value={model}
+							onChange={(e) => onUpdate({ model: e.target.value })}
+							className={`${FIELD_MONO_INPUT_CLASS} w-full appearance-none pr-8`}
+							disabled={isBusy}
+						>
+							<option value="">-- 选择模型 (可选) --</option>
+							{availableModels.map((m) => (
+								<option key={m} value={m}>{m}</option>
+							))}
+						</select>
+						<ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+					</div>
 				</div>
 
 				{/* API Key */}

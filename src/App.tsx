@@ -19,6 +19,8 @@ import { SkillsPage } from "./components/skills/SkillsPage";
 import { ModelMappingPage } from "./components/ModelMappingPage";
 import { McpPage } from "./components/mcp/McpPage";
 import { loadPersistedJson } from "./lib/persistence";
+import CurlTaskPage from "./components/curl-task/CurlTaskPage";
+import CurlTaskDetail from "./components/curl-task/CurlTaskDetail";
 import { LeaveConfirmDialog, PageFallback } from "./components/shared/LeaveConfirmDialog";
 import { useProviders } from "./hooks/useProviders";
 import { usePrompts } from "./hooks/usePrompts";
@@ -54,6 +56,8 @@ export default function App() {
   const [detailProviderId, setDetailProviderId] = useState<string | null>(null);
   const [detailPromptId, setDetailPromptId] = useState<string | null>(null);
   const [promptDetailMode, setPromptDetailMode] = useState<"detail" | "edit" | "create">("detail");
+  const [curlTaskDetailId, setCurlTaskDetailId] = useState<string | null>(null);
+  const [curlTaskDetailMode, setCurlTaskDetailMode] = useState<"create" | "edit">("create");
   const [editingDirty, setEditingDirty] = useState(false);
   const [debugEnabled, setDebugEnabled] = useState(
     () => localStorage.getItem("ai-modal-debug") === "true",
@@ -160,6 +164,12 @@ export default function App() {
     setDetailPromptId(promptId);
     setPromptDetailMode(mode);
     setPage("prompt-detail");
+  }
+
+  function handleOpenCurlTaskDetail(taskId: string | null, mode: "create" | "edit") {
+    setCurlTaskDetailId(taskId);
+    setCurlTaskDetailMode(mode);
+    setPage("curl-task-detail");
   }
 
   function handleSavePrompt(nextPrompt: import("./types").PromptRecord) {
@@ -328,6 +338,16 @@ export default function App() {
               onDirtyChange={setEditingDirty}
             />
           </Suspense>
+        )}
+        {page === "curl-task" && (
+          <CurlTaskPage onOpenDetail={handleOpenCurlTaskDetail} />
+        )}
+        {page === "curl-task-detail" && (
+          <CurlTaskDetail
+            taskId={curlTaskDetailId}
+            mode={curlTaskDetailMode}
+            onBack={() => handlePageChange("curl-task")}
+          />
         )}
       </main>
       {debugEnabled && <DevLog />}

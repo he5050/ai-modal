@@ -9,7 +9,9 @@ export type AppPage =
   | "provider-detail"
   | "rules"
   | "configs"
-  | "settings";
+  | "settings"
+  | "curl-task"
+  | "curl-task-detail";
 
 export type ConfigFormat = "json" | "toml" | "yaml" | "xml" | "env";
 
@@ -192,6 +194,34 @@ export interface CliProxyTestResult {
   ok: boolean;
   status?: number | null;
   message: string;
+}
+
+// ─── Curl Task Types ──────────────────────────────────────────────
+
+export interface ParsedCurl {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string | null;
+}
+
+export interface CurlTask {
+  id: string;
+  label: string;
+  curl: string;
+  parsedCurl: ParsedCurl;
+  selectedFields: string[];
+  lastResult?: Record<string, unknown> | null;
+  lastRunAt?: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CurlTaskExecuteResult {
+  ok: boolean;
+  status: number;
+  data: Record<string, unknown> | null;
+  error?: string | null;
 }
 
 export interface McpServerConfigInput {

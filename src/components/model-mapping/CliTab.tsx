@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { Copy, Import, Loader2, Terminal, X } from "lucide-react"
+import { useEffect, useState, useMemo } from "react"
+import { Copy, Import, Loader2, Terminal, X, ChevronDown } from "lucide-react"
 import {
 	BUTTON_GHOST_CLASS,
 	BUTTON_SECONDARY_CLASS,
@@ -286,6 +286,19 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 
 	const availableTools = CLI_TOOLS.filter((tool) => !config.tools.some((c) => c.type === tool.type))
 
+	// 获取所有可用的模型列表（从已配置的 Provider 中）
+	const availableModels = useMemo(() => {
+		const models: string[] = []
+		providers.forEach((provider) => {
+			provider.models?.forEach((model) => {
+				if (model.name && !models.includes(model.name)) {
+					models.push(model.name)
+				}
+			})
+		})
+		return models.sort()
+	}, [providers])
+
 	function getImportableToolsFromProvider(provider: Provider): CliToolType[] {
 		const importable: CliToolType[] = []
 		const baseUrl = provider.baseUrl.toLowerCase()
@@ -427,6 +440,7 @@ export function CliTab({ onDirtyChange }: CliTabProps) {
 									port={toolConfig.port}
 									model={toolConfig.model}
 									enabled={toolConfig.enabled}
+									availableModels={availableModels}
 									onUpdate={(patch) => updateConfig(toolConfig.id, patch)}
 									onDelete={() => void deleteConfig(toolConfig.id)}
 									onStart={() => void handleStartService(toolConfig.id)}

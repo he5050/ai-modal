@@ -24,6 +24,24 @@ async fn cli_gateway_root_handler(
     }))
 }
 
+async fn cli_gateway_health_handler(
+    State(state): State<Arc<CliGatewayState>>,
+) -> Json<serde_json::Value> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    Json(serde_json::json!({
+        "ok": true,
+        "status": "healthy",
+        "tool_type": state.tool_config.tool_type.as_str(),
+        "port": state.port,
+        "upstream": state.tool_config.api_url,
+        "model": state.tool_config.model,
+        "timestamp": now,
+    }))
+}
+
 async fn cli_gateway_models_handler(
     State(state): State<Arc<CliGatewayState>>,
 ) -> Json<serde_json::Value> {
@@ -224,6 +242,7 @@ pub async fn run_cli_gateway_until_shutdown(
 
     let app = Router::new()
         .route("/", get(cli_gateway_root_handler))
+        .route("/health", get(cli_gateway_health_handler))
         .route("/v1/models", get(cli_gateway_models_handler))
         .route("/*path", post(cli_gateway_proxy_handler))
         .with_state(state);

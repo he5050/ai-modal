@@ -221,6 +221,34 @@ export async function testCliProxyConnection(
   return invoke("test_cli_proxy_connection", { toolId });
 }
 
+// ─── Curl Task APIs ───────────────────────────────────────────────
+
+import type {
+  CurlTask,
+  CurlTaskExecuteResult,
+  ParsedCurl,
+} from "./types";
+
+export async function loadCurlTasks(): Promise<CurlTask[]> {
+  return invoke("load_curl_tasks");
+}
+
+export async function saveCurlTask(task: CurlTask): Promise<void> {
+  return invoke("save_curl_task", { task });
+}
+
+export async function deleteCurlTask(id: string): Promise<void> {
+  return invoke("delete_curl_task", { id });
+}
+
+export async function executeCurlTask(id: string): Promise<CurlTaskExecuteResult> {
+  return invoke("execute_curl_task", { id });
+}
+
+export async function parseCurlCommand(curl: string): Promise<ParsedCurl> {
+  return invoke("parse_curl_command", { curl });
+}
+
 export async function scanLocalSkills(): Promise<SkillsCatalogSnapshot> {
   return invoke("scan_local_skills");
 }

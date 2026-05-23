@@ -1,8 +1,9 @@
 pub mod cli_proxy;
+pub mod curl_task;
 pub mod mcp;
 pub mod model;
-pub mod model_mapping;
 pub mod model_config;
+pub mod model_mapping;
 pub mod provider;
 pub mod skill_enrichment;
 pub mod skill_enrichment_job;

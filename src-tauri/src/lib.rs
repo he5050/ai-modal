@@ -31,6 +31,9 @@ use commands::skill_enrichment_job::{
     get_skill_enrichment_job_status, start_skill_enrichment_job, stop_skill_enrichment_job,
     SkillEnrichmentJobManager,
 };
+use commands::curl_task::{
+    delete_curl_task, execute_curl_task, load_curl_tasks, parse_curl_command, save_curl_task,
+};
 use commands::skills::{
     inspect_online_skill, inspect_skill_targets, run_skills_command, scan_local_skills,
     search_online_skills, sync_skill_targets,
@@ -108,13 +111,13 @@ pub fn run() {
                         let appearance: cocoa::base::id = msg_send![cls, appearanceNamed: name];
                         let _: () = msg_send![ns_window, setAppearance: appearance];
 
-                        // 设置标题栏背景色为红色
+                        // 设置标题栏背景色为深色（与主题一致）
                         use cocoa::appkit::{NSColor, NSWindow};
                         let bg_color = NSColor::colorWithRed_green_blue_alpha_(
                             cocoa::base::nil,
-                            220.0 / 255.0,  // Red
-                            53.0 / 255.0,   // Green
-                            69.0 / 255.0,   // Blue
+                            17.0 / 255.0,   // Red (深灰色 #111827)
+                            24.0 / 255.0,   // Green
+                            39.0 / 255.0,   // Blue
                             1.0,            // Alpha
                         );
                         ns_window.setBackgroundColor_(bg_color);
@@ -173,6 +176,11 @@ pub fn run() {
             start_skill_enrichment_job,
             get_skill_enrichment_job_status,
             stop_skill_enrichment_job,
+            load_curl_tasks,
+            save_curl_task,
+            delete_curl_task,
+            execute_curl_task,
+            parse_curl_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

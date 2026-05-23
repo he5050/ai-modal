@@ -711,6 +711,7 @@ function SlotMappingPanel({
 	config: ModelMappingConfig
 	onSlotAssign: (slotIndex: number, modelKey: string | "") => void
 }) {
+	const [collapsed, setCollapsed] = useState(false)
 	const slottedModelOptions = useMemo(() => {
 		const options: Array<{
 			key: string
@@ -753,6 +754,12 @@ function SlotMappingPanel({
 		<Card>
 			<div className='flex items-center justify-between border-b border-border-subtle pb-3 mb-3'>
 				<div className='flex items-center gap-2'>
+					<button
+						onClick={() => setCollapsed((v) => !v)}
+						className={BUTTON_ICON_GHOST_SM_CLASS}
+						aria-label={collapsed ? "展开槽位映射" : "折叠槽位映射"}>
+						{collapsed ? <ChevronRight className='h-3.5 w-3.5' /> : <ChevronDown className='h-3.5 w-3.5' />}
+					</button>
 					<FileCode2 className='h-4 w-4 text-indigo-400' />
 					<h3 className='text-sm font-semibold text-text-heading'>Claude 槽位映射</h3>
 					<span className='rounded-lg border border-border-subtle bg-surface-muted px-2 py-0.5 text-[11px] text-text-muted'>
@@ -760,35 +767,37 @@ function SlotMappingPanel({
 					</span>
 				</div>
 			</div>
-			<div className='space-y-1 px-2 py-2'>
-				{DEFAULT_CLAUDE_SLOTS.map((slotId, slotIndex) => {
-					const currentKey = slotAssignments.get(slotId) ?? ""
-					const shortSlot = slotId.replace("anthropic/", "")
+			{!collapsed && (
+				<div className='space-y-1 px-2 py-2'>
+					{DEFAULT_CLAUDE_SLOTS.map((slotId, slotIndex) => {
+						const currentKey = slotAssignments.get(slotId) ?? ""
+						const shortSlot = slotId.replace("anthropic/", "")
 
-					return (
-						<div key={slotId} className='flex items-center gap-1.5'>
-							<div className='flex h-7 w-5 shrink-0 items-center justify-center rounded border border-gray-700 bg-gray-950 text-[10px] font-medium text-gray-500'>
-								{slotIndex + 1}
+						return (
+							<div key={slotId} className='flex items-center gap-1.5'>
+								<div className='flex h-7 w-5 shrink-0 items-center justify-center rounded border border-gray-700 bg-gray-950 text-[10px] font-medium text-gray-500'>
+									{slotIndex + 1}
+								</div>
+								<div className='flex h-7 min-w-0 flex-1 items-center rounded border border-gray-800 bg-gray-950 px-2 font-mono text-[11px] text-indigo-300'>
+									<span className='truncate'>{shortSlot}</span>
+								</div>
+								<span className='shrink-0 text-gray-600 text-xs'>→</span>
+								<select
+									value={currentKey}
+									onChange={(e) => onSlotAssign(slotIndex, e.target.value || "")}
+									className={`${FIELD_SELECT_CLASS} h-7 !w-auto flex-1 text-xs`}>
+									<option value=''>--</option>
+									{slottedModelOptions.map((opt) => (
+										<option key={opt.key} value={opt.key}>
+											{opt.label}
+										</option>
+									))}
+								</select>
 							</div>
-							<div className='flex h-7 min-w-0 flex-1 items-center rounded border border-gray-800 bg-gray-950 px-2 font-mono text-[11px] text-indigo-300'>
-								<span className='truncate'>{shortSlot}</span>
-							</div>
-							<span className='shrink-0 text-gray-600 text-xs'>→</span>
-							<select
-								value={currentKey}
-								onChange={(e) => onSlotAssign(slotIndex, e.target.value || "")}
-								className={`${FIELD_SELECT_CLASS} h-7 !w-auto flex-1 text-xs`}>
-								<option value=''>--</option>
-								{slottedModelOptions.map((opt) => (
-									<option key={opt.key} value={opt.key}>
-										{opt.label}
-									</option>
-								))}
-							</select>
-						</div>
-					)
-				})}
-			</div>
+						)
+					})}
+				</div>
+			)}
 		</Card>
 	)
 }
@@ -1094,15 +1103,17 @@ function ModelMappingRow({
 	const compactSelectClass = `${FIELD_SELECT_CLASS} ${compactFieldClass}`
 	const compactToggleClass = "inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap px-1 text-xs"
 
+	const isEnabled = Boolean(model.enabled)
+
 	return (
-		<div className='rounded-md border border-gray-800 bg-gray-950/60 p-1.5'>
+		<div className={`rounded-md border p-1.5 transition-colors ${isEnabled ? "border-emerald-500/30 bg-emerald-500/5" : "border-gray-800 bg-gray-950/60"}`}>
 			<div className='overflow-x-auto'>
 				<div className='flex min-w-[800px] items-center gap-1.5'>
 					<input
 						value={model.name}
 						list={`mapping-preset-${providerIndex}-${modelIndex}`}
 						onChange={(event) => onUpdateModel(modelIndex, { name: event.target.value })}
-						className={`${compactInputClass} min-w-[220px]`}
+						className={`${compactInputClass} min-w-[220px] ${isEnabled ? "border-emerald-500/40 bg-gray-900 text-emerald-200" : ""}`}
 						placeholder='真实模型名'
 					/>
 					{presetModels.length > 0 && (
