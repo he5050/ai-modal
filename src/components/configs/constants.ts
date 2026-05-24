@@ -19,6 +19,16 @@ export type SnowRequestMethod = "chat" | "responses" | "gemini" | "anthropic";
 
 export const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
 export const MODEL_CONFIGS_DB_KEY = "model_configs";
+export const CUSTOM_PROVIDERS_KEY = "ai-modal-custom-providers";
+export const CUSTOM_PROVIDERS_DB_KEY = "custom_providers";
+
+export interface CustomProviderRecord {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
 
 export const CLAUDE_ENV_MODEL_FIELDS: ClaudeEnvModelField[] = [
   "ANTHROPIC_MODEL",

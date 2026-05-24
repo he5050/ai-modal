@@ -145,8 +145,10 @@ export function useApplyShortcut({
         selectedAvailableModel.baseUrl,
       );
       currentEnv.ANTHROPIC_AUTH_TOKEN = selectedAvailableModel.apiKey;
-      for (const field of CLAUDE_ENV_MODEL_FIELDS) {
-        currentEnv[field] = claudeEnvSelection[field];
+      if (selectedAvailableModel.model) {
+        for (const field of CLAUDE_ENV_MODEL_FIELDS) {
+          currentEnv[field] = claudeEnvSelection[field];
+        }
       }
       root.env = currentEnv;
       const formatted = await formatConfigContent(
@@ -196,9 +198,9 @@ export function useApplyShortcut({
       ) {
         throw new Error("当前 config.toml 顶层不是对象");
       }
-      const nextConfig = {
+      const primaryModel = selectedAvailableProvider.models[0]?.model ?? "";
+      const nextConfig: Record<string, unknown> = {
         ...(parsedConfig as Record<string, unknown>),
-        model: selectedCodexApplyModel,
         model_provider: "codex",
         model_providers: {
           ...(((parsedConfig as Record<string, unknown>).model_providers as
@@ -216,6 +218,9 @@ export function useApplyShortcut({
           },
         },
       };
+      if (primaryModel) {
+        nextConfig.model = selectedCodexApplyModel;
+      }
       const formattedToml = await formatConfigContent(
         tomlModule.stringify(nextConfig),
         "toml",
@@ -285,14 +290,16 @@ export function useApplyShortcut({
       const settingsRoot = {
         ...(parsedSettings as Record<string, unknown>),
       } as Record<string, unknown>;
-      settingsRoot.model = {
+      if (selectedGeminiApplyModel) {
+        settingsRoot.model = {
         ...(settingsRoot.model &&
         typeof settingsRoot.model === "object" &&
         !Array.isArray(settingsRoot.model)
           ? (settingsRoot.model as Record<string, unknown>)
           : {}),
         name: selectedGeminiApplyModel,
-      };
+        };
+      }
       settingsRoot.general = {
         ...(settingsRoot.general &&
         typeof settingsRoot.general === "object" &&
@@ -392,9 +399,13 @@ export function useApplyShortcut({
                 ),
         apiKey: selectedAvailableProvider.models[0]?.apiKey ?? "",
         requestMethod: selectedSnowRequestMethod,
-        advancedModel: selectedSnowAdvancedModel,
-        basicModel: selectedSnowBasicModel,
       };
+      if (selectedSnowAdvancedModel) {
+        (root.snowcfg as Record<string, unknown>).advancedModel = selectedSnowAdvancedModel;
+      }
+      if (selectedSnowBasicModel) {
+        (root.snowcfg as Record<string, unknown>).basicModel = selectedSnowBasicModel;
+      }
       const formatted = await formatConfigContent(JSON.stringify(root), "json");
       updateDraftState(configFile.id, {
         contentDraft: formatted.formatted,
@@ -455,10 +466,12 @@ export function useApplyShortcut({
           ),
           apiKey: selectedAvailableProvider.models[0]?.apiKey ?? "",
         },
-        models: Object.fromEntries(
-          selectedOpenCodeModels.map((model) => [model, { name: model }]),
-        ),
       };
+      if (selectedOpenCodeModels.length > 0) {
+        (currentProviders[selectedAvailableProvider.providerName] as Record<string, unknown>).models = Object.fromEntries(
+          selectedOpenCodeModels.map((model) => [model, { name: model }]),
+        );
+      }
       root.provider = currentProviders;
       const formatted = await formatConfigContent(
         JSON.stringify(root),

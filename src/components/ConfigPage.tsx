@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { logger } from "@/lib/devlog";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, Trash2, Play, Database } from "lucide-react";
 import {
   buildConfigGroups,
   inferConfigFormatFromPath,
@@ -25,7 +25,9 @@ import type { ConfigGroupId, ConfigPath, Provider } from "@/types";
 import { HintTooltip } from "./HintTooltip";
 
 import { SNOW_REQUEST_METHOD_OPTIONS } from "./configs/constants";
+import type { CustomProviderRecord, ModelConfigRecord } from "./configs/constants";
 import { toDisplayPath, getModelConfigLabel, getModelConfigResultText } from "./configs/utils";
+import { createEmptyModelConfig } from "./configs/utils";
 import { ConfirmModal } from "./ui";
 import {
   ClaudeApplyModal,
@@ -37,9 +39,11 @@ import {
 import { useConfigDraft } from "./configs/useConfigDraft";
 import { useModelConfig } from "./configs/useModelConfig";
 import { useApplyShortcut } from "./configs/useApplyShortcut";
+import { useCustomProviders } from "./configs/useCustomProviders";
 import { ConfigToolbar } from "./configs/components/ConfigToolbar";
 import { ConfigFileTabs } from "./configs/components/ConfigFileTabs";
 import { ConfigEditorPanel } from "./configs/components/ConfigEditorPanel";
+import CustomProviderDialog from "./configs/CustomProviderDialog";
 
 interface Props {
   providers: Provider[];
@@ -61,16 +65,20 @@ export function ConfigPage({
   onDeletePath,
   onDirtyChange,
 }: Props) {
-  const [selectedGroupId, setSelectedGroupId] = useState<ConfigGroupId>("claude");
-  const [selectedFileId, setSelectedFileId] = useState<string>("claude");
+  const [selectedGroupId, setSelectedGroupId] = useState<ConfigGroupId>("codex");
+  const [selectedFileId, setSelectedFileId] = useState<string>("codex");
   const [pendingSwitchTarget, setPendingSwitchTarget] = useState<PendingSwitchTarget | null>(null);
   const [showAddFileForm, setShowAddFileForm] = useState(false);
   const [newRelativePath, setNewRelativePath] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedAvailableProviderId, setSelectedAvailableProviderId] = useState<string>("");
+  const [shortcutTab, setShortcutTab] = useState<"shortcut" | "custom">("shortcut");
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const [editingCustomProvider, setEditingCustomProvider] = useState<null | { id: string; name: string }>(null);
 
   const {
     modelConfigs,
+    setModelConfigs,
     selectedModelConfig,
     setSelectedModelConfigId,
     modelConfigDirty,
@@ -82,6 +90,15 @@ export function ConfigPage({
     handleTestCurrentModelConfig,
     updateSelectedModelConfig,
   } = useModelConfig();
+
+  const {
+    providers: customProviders,
+    selected: selectedCustomProvider,
+    handleSaveAll: handleSaveCustomProviders,
+    handleDelete: handleDeleteCustomProvider,
+    updateRecord: updateCustomProviderRecord,
+    addRecord: addCustomProviderRecord,
+  } = useCustomProviders();
 
   const {
     draftsByFileId,
@@ -321,6 +338,51 @@ export function ConfigPage({
     handleImportSelectedAvailableModelFromHook(selectedAvailableModel, selectedAvailableProvider);
   }
 
+  function handleOpenCustomDialog(provider?: { id: string; name: string }) {
+    setEditingCustomProvider(provider ?? null);
+    setCustomDialogOpen(true);
+  }
+
+  function handleSaveCustomProvider(record: { id: string; name: string; baseUrl: string; apiKey: string; model: string }) {
+    updateCustomProviderRecord(record, record.id);
+    handleSaveCustomProviders();
+  }
+
+  function handleApplyCustomShortcut(customId: string) {
+    const target = customProviders.find((p) => p.id === customId);
+    if (!target) return;
+    const fakeProvider = {
+      id: target.id,
+      providerName: target.name,
+      availableCount: target.model ? 1 : 0,
+      models: [{
+        id: `${target.id}::0`,
+        model: target.model,
+        baseUrl: target.baseUrl,
+        apiKey: target.apiKey,
+        supportedProtocols: [],
+      }],
+    };
+    setSelectedAvailableProvider(fakeProvider as typeof selectedAvailableProvider);
+    setShortcutTab("shortcut");
+    setTimeout(() => handleApplyShortcut(), 0);
+  }
+
+  function handleImportCustomToModelList(customId: string) {
+    const target = customProviders.find((p) => p.id === customId);
+    if (!target) return;
+    const next = createEmptyModelConfig();
+    const record: ModelConfigRecord = {
+      ...next,
+      baseUrl: target.baseUrl,
+      apiKey: target.apiKey,
+      model: target.model,
+    };
+    setModelConfigs((prev) => [...prev, record]);
+    setSelectedModelConfigId(record.id);
+    toast(`已将「${target.name}」导入模型列表`, "success");
+  }
+
   // ─── Render ───
 
   return (
@@ -367,31 +429,119 @@ export function ConfigPage({
                 resolveGroupAbsolutePath={resolveGroupAbsolutePath}
               />
 
-              {/* Quick model selector */}
+              {/* Shortcut / Custom Provider Tabs */}
               <div className="rounded-xl border border-gray-800/80 bg-gray-950/30 px-4 py-4">
-                {availableProviderOptions.length > 0 && selectedAvailableModel ? (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-200">快捷模型</p>
-                      <HintTooltip content="这里只选 Provider；具体模型映射在弹窗里完成。" />
+                <div className="flex items-center gap-1 border-b border-gray-800 pb-3 mb-4">
+                  {(["shortcut", "custom"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setShortcutTab(tab)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        shortcutTab === tab
+                          ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                          : "text-gray-500 hover:text-gray-300 border border-transparent hover:border-gray-700"
+                      }`}
+                    >
+                      {tab === "shortcut" ? "快捷模型" : "自定义"}
+                    </button>
+                  ))}
+                  <HintTooltip content={shortcutTab === "shortcut"
+                    ? "从本地 Provider 选择可用模型快速应用"
+                    : "手动添加自定义 API 端点，不走本地 Provider"} />
+                </div>
+
+                {shortcutTab === "shortcut" && (
+                  availableProviderOptions.length > 0 && selectedAvailableModel ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-sm font-medium text-gray-200">选择 Provider</p>
+                      <div className="w-[240px]">
+                        <select value={selectedAvailableProvider?.id ?? ""} onChange={(event) => setSelectedAvailableProviderId(event.target.value)} className={FIELD_SELECT_CLASS} aria-label="选择快捷模型 Provider">
+                          {availableProviderOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.providerName} ({option.availableCount} 个可用)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {(isClaudeSettingsShortcutTarget || isCodexShortcutTarget || isGeminiShortcutTarget || isSnowShortcutTarget || isOpenCodeShortcutTarget) && (
+                        <button onClick={handleApplyShortcut} className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>
+                          应用
+                        </button>
+                      )}
                     </div>
-                    <div className="w-[240px]">
-                      <select value={selectedAvailableProvider?.id ?? ""} onChange={(event) => setSelectedAvailableProviderId(event.target.value)} className={FIELD_SELECT_CLASS} aria-label="选择快捷模型 Provider">
-                        {availableProviderOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.providerName} ({option.availableCount} 个可用)
-                          </option>
+                  ) : (
+                    <div className="text-sm text-gray-500">当前还没有可用模型。请先去模型列表或详情页完成检测。</div>
+                  )
+                )}
+
+                {shortcutTab === "custom" && (
+                  <div className="space-y-3">
+                    {customProviders.length === 0 ? (
+                      <div className="text-sm text-gray-500">还没有自定义 Provider。点击下方按钮添加。</div>
+                    ) : (
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                        {customProviders.map((cp) => (
+                          <div
+                            key={cp.id}
+                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                              selectedCustomProvider?.id === cp.id
+                                ? "border-indigo-500/30 bg-indigo-500/8"
+                                : "border-gray-800 bg-gray-900/60 hover:border-gray-700"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-gray-200 truncate">{cp.name}</span>
+                                {cp.model && (
+                                  <span className="shrink-0 rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] text-gray-400">{cp.model}</span>
+                                )}
+                              </div>
+                              <span className="truncate font-mono text-[11px] text-gray-500">{cp.baseUrl}</span>
+                            </div>
+                            {(isClaudeSettingsShortcutTarget || isCodexShortcutTarget || isGeminiShortcutTarget || isSnowShortcutTarget || isOpenCodeShortcutTarget) && (
+                              <button
+                                onClick={() => handleApplyCustomShortcut(cp.id)}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-700 text-gray-400 transition-colors hover:bg-surface-hover hover:text-indigo-400"
+                                title="应用此配置"
+                              >
+                                <Play className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleImportCustomToModelList(cp.id)}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-700 text-gray-400 transition-colors hover:bg-indigo-500/10 hover:text-indigo-400"
+                              title="存入模型列表"
+                            >
+                              <Database className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenCustomDialog({ id: cp.id, name: cp.name })}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-700 text-gray-400 transition-colors hover:bg-surface-hover hover:text-gray-200"
+                              title="编辑"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`确定删除「${cp.name}」吗？`)) handleDeleteCustomProvider(cp.id);
+                              }}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-700 text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                              title="删除"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         ))}
-                      </select>
-                    </div>
-                    {(isClaudeSettingsShortcutTarget || isCodexShortcutTarget || isGeminiShortcutTarget || isSnowShortcutTarget || isOpenCodeShortcutTarget) && (
-                      <button onClick={handleApplyShortcut} className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>
-                        应用
-                      </button>
+                      </div>
                     )}
+                    <button
+                      onClick={() => handleOpenCustomDialog()}
+                      className={`${BUTTON_ACCENT_OUTLINE_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      新增
+                    </button>
                   </div>
-                ) : (
-                  <div className="text-sm text-gray-500">当前还没有可用模型。请先去模型列表或详情页完成检测。</div>
                 )}
               </div>
 
@@ -497,6 +647,34 @@ export function ConfigPage({
           onToggle={handleToggleOpenCodeModel}
           onConfirm={() => void handleApplyOpenCodeShortcutToDraft()}
           onCancel={() => setOpenCodeApplyModalOpen(false)}
+        />
+      )}
+
+      {customDialogOpen && (
+        <CustomProviderDialog
+          open={customDialogOpen}
+          record={
+            editingCustomProvider
+              ? customProviders.find((p) => p.id === editingCustomProvider.id) ?? null
+              : null
+          }
+          onClose={() => setCustomDialogOpen(false)}
+          onSave={(record) => {
+            if (editingCustomProvider) {
+              updateCustomProviderRecord(record, record.id);
+              handleSaveCustomProviders();
+            } else {
+              const newRecord = addCustomProviderRecord({
+                name: record.name,
+                baseUrl: record.baseUrl,
+                apiKey: record.apiKey,
+                model: record.model,
+              });
+              const updatedList = [...customProviders, newRecord];
+              handleSaveCustomProviders(updatedList);
+            }
+            setCustomDialogOpen(false);
+          }}
         />
       )}
     </div>
