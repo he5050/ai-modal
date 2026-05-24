@@ -34,7 +34,7 @@ interface UseRuleFileOptions {
 }
 
 export function useRuleFile({ storedPaths, onPathChange }: UseRuleFileOptions) {
-  const [selectedId, setSelectedId] = useState<string>("codex");
+  const [selectedId, setSelectedId] = useState<string>("claude-code");
   const [pathDraft, setPathDraft] = useState("");
   const [contentDraft, setContentDraft] = useState("");
   const [savedContent, setSavedContent] = useState("");

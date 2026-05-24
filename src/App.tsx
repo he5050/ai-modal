@@ -72,6 +72,7 @@ export default function App() {
     deleteProvider,
     saveResult,
     importProviders,
+    findProviderByUrlAndKey,
   } = useProviders();
 
   const {
@@ -336,6 +337,9 @@ export default function App() {
               onUpsertPath={handleUpsertConfigPath}
               onDeletePath={handleDeleteConfigPath}
               onDirtyChange={setEditingDirty}
+              onAddProvider={addProvider}
+              onEditProvider={editProvider}
+              onFindProviderByUrlAndKey={findProviderByUrlAndKey}
             />
           </Suspense>
         )}

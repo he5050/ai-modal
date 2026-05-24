@@ -1,147 +1,179 @@
-import { useState, useEffect } from "react";
-import { X } from "lucide-react";
-import {
-  BUTTON_PRIMARY_CLASS,
-  BUTTON_SECONDARY_CLASS,
-  BUTTON_SIZE_SM_CLASS,
-} from "@/lib/buttonStyles";
-import { FIELD_INPUT_CLASS } from "@/lib/formStyles";
-import type { CustomProviderRecord } from "./constants";
+import { useState, useEffect } from "react"
+import { X, Save, Trash2 } from "lucide-react"
+import type { ModelConfigRecord } from "./constants"
 
 interface CustomProviderDialogProps {
-  open: boolean;
-  record: CustomProviderRecord | null;
-  onClose: () => void;
-  onSave: (record: CustomProviderRecord) => void;
+	isOpen: boolean
+	config: ModelConfigRecord | null
+	onClose: () => void
+	onSave: (config: {
+		id?: string
+		name: string
+		baseUrl: string
+		apiKey: string
+		model: string
+	}) => Promise<{ success: boolean; action?: "created" | "updated" | "cancelled" }>
+	onDelete?: (id: string) => Promise<boolean>
 }
 
-export default function CustomProviderDialog({
-  open,
-  record,
-  onClose,
-  onSave,
-}: CustomProviderDialogProps) {
-  const [name, setName] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
+export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete }: CustomProviderDialogProps) {
+	const [name, setName] = useState("")
+	const [baseUrl, setBaseUrl] = useState("")
+	const [apiKey, setApiKey] = useState("")
+	const [model, setModel] = useState("")
+	const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (open) {
-      if (record) {
-        setName(record.name);
-        setBaseUrl(record.baseUrl);
-        setApiKey(record.apiKey);
-        setModel(record.model);
-      } else {
-        setName("");
-        setBaseUrl("");
-        setApiKey("");
-        setModel("");
-      }
-    }
-  }, [open, record]);
+	const isEditing = !!config
+	const canSave = name.trim() && baseUrl.trim() && apiKey.trim()
 
-  if (!open) return null;
+	useEffect(() => {
+		if (isOpen) {
+			setName(config?.name || "")
+			setBaseUrl(config?.baseUrl || "")
+			setApiKey(config?.apiKey || "")
+			setModel(config?.model || "")
+		}
+	}, [isOpen, config])
 
-  function handleSubmit() {
-    onSave({
-      id: record?.id ?? "",
-      name: name.trim(),
-      baseUrl: baseUrl.trim(),
-      apiKey: apiKey.trim(),
-      model: model.trim(),
-    });
-    onClose();
-  }
+	async function handleSave() {
+		if (!canSave) return
+		setSaving(true)
+		try {
+			const result = await onSave({
+				id: config?.id ?? `custom-provider-${Date.now()}`,
+				name: name.trim(),
+				baseUrl: baseUrl.trim(),
+				apiKey: apiKey.trim(),
+				model: model.trim(),
+			})
+			if (result.success) {
+				onClose()
+			}
+		} finally {
+			setSaving(false)
+		}
+	}
 
-  const valid = name.trim() && baseUrl.trim() && apiKey.trim();
-  const isEdit = !!record && !!record.name;
+	async function handleDelete() {
+		if (!config?.id || !onDelete) return
+		const success = await onDelete(config.id)
+		if (success) {
+			onClose()
+		}
+	}
 
-  return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-white">
-            {isEdit ? "编辑自定义 Provider" : "新增自定义 Provider"}
-          </h3>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-gray-500 hover:bg-gray-800/70 hover:text-gray-200"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+	if (!isOpen) return null
 
-        <div className="mt-4 space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-400">
-              名称 <span className="text-red-400">*</span>
-            </label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="例如：我的 API"
-              className={FIELD_INPUT_CLASS}
-              autoFocus
-            />
-          </div>
+	return (
+		<div className='fixed inset-0 z-[95] flex items-center justify-center bg-black/60 px-4'>
+			<div className='w-full max-w-lg rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-2xl'>
+				{/* Header */}
+				<div className='flex items-center justify-between'>
+					<h3 className='text-base font-semibold tracking-tight text-white'>
+						{isEditing ? "编辑自定义 Provider" : "新增自定义 Provider"}
+					</h3>
+					<button
+						onClick={onClose}
+						className='flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200'>
+						<X className='h-4 w-4' />
+					</button>
+				</div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-400">
-              URL <span className="text-red-400">*</span>
-            </label>
-            <input
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.example.com/v1"
-              className={`${FIELD_INPUT_CLASS} font-mono`}
-            />
-          </div>
+				{/* Body */}
+				<div className='mt-5 space-y-4'>
+					{/* 名称 */}
+					<div className='space-y-1.5'>
+						<label className='flex items-center gap-1 text-sm font-medium text-gray-200'>
+							名称
+							<span className='text-red-400'>*</span>
+						</label>
+						<input
+							type='text'
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder='My Provider'
+							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+						/>
+					</div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-400">
-              API Key <span className="text-red-400">*</span>
-            </label>
-            <input
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className={`${FIELD_INPUT_CLASS} font-mono`}
-              type="password"
-            />
-          </div>
+					{/* URL */}
+					<div className='space-y-1.5'>
+						<label className='flex items-center gap-1 text-sm font-medium text-gray-200'>
+							API URL
+							<span className='text-red-400'>*</span>
+						</label>
+						<input
+							type='text'
+							value={baseUrl}
+							onChange={(e) => setBaseUrl(e.target.value)}
+							placeholder='https://api.example.com/v1'
+							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+						/>
+					</div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-400">
-              模型{" "}
-              <span className="text-gray-600">(选填，为空时不调整模型字段)</span>
-            </label>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="gpt-4o"
-              className={`${FIELD_INPUT_CLASS} font-mono`}
-            />
-          </div>
-        </div>
+					{/* API Key */}
+					<div className='space-y-1.5'>
+						<label className='flex items-center gap-1 text-sm font-medium text-gray-200'>
+							API Key
+							<span className='text-red-400'>*</span>
+						</label>
+						<input
+							type='password'
+							value={apiKey}
+							onChange={(e) => setApiKey(e.target.value)}
+							placeholder='sk-...'
+							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+						/>
+					</div>
 
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!valid}
-            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_SM_CLASS}`}
-          >
-            保存
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+					{/* Model */}
+					<div className='space-y-1.5'>
+						<label className='flex items-center gap-1 text-sm font-medium text-gray-200'>
+							模型
+							<span className='text-xs text-gray-500'>（选填）</span>
+						</label>
+						<input
+							type='text'
+							value={model}
+							onChange={(e) => setModel(e.target.value)}
+							placeholder='gpt-4o'
+							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+						/>
+						<p className='text-xs text-gray-500'>留空时，应用到配置将只修改 URL 和 Key，不修改模型字段</p>
+					</div>
+				</div>
+
+				{/* Footer */}
+				<div className='mt-6 flex items-center justify-between'>
+					{isEditing && onDelete ? (
+						<button
+							onClick={handleDelete}
+							disabled={saving}
+							className='flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50'>
+							<Trash2 className='h-4 w-4' />
+							删除
+						</button>
+					) : (
+						<div />
+					)}
+
+					<div className='flex items-center gap-2'>
+						<button
+							onClick={onClose}
+							disabled={saving}
+							className='rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700 disabled:opacity-50'>
+							取消
+						</button>
+						<button
+							onClick={handleSave}
+							disabled={!canSave || saving}
+							className='flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-500 disabled:opacity-50'>
+							<Save className='h-4 w-4' />
+							{saving ? "保存中..." : "保存"}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
 }

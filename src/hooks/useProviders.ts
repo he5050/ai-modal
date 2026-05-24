@@ -85,6 +85,16 @@ export function useProviders() {
     });
   }, []);
 
+  /**
+   * 根据 baseUrl 和 apiKey 查找 Provider
+   */
+  const findProviderByUrlAndKey = useCallback(
+    (baseUrl: string, apiKey: string) => {
+      return providers.find((p) => p.baseUrl === baseUrl && p.apiKey === apiKey);
+    },
+    [providers],
+  );
+
   return {
     providers,
     storageReady,
@@ -93,5 +103,6 @@ export function useProviders() {
     deleteProvider,
     saveResult,
     importProviders,
+    findProviderByUrlAndKey,
   };
 }

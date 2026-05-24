@@ -1,67 +1,55 @@
-import type { ModelResult } from "@/types";
+import type { ModelResult } from "@/types"
 
 export interface ModelConfigRecord {
-  id: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  lastTestResult?: ModelResult | null;
-  lastTestAt?: number | null;
+	id: string
+	name: string // 显示名称
+	baseUrl: string
+	apiKey: string
+	model: string
+	lastTestResult?: ModelResult | null
+	lastTestAt?: number | null
+	isCustom?: boolean // 标记是否为自定义Provider
+	syncedToModels?: boolean // 标记是否已同步到模型列表
 }
 
 export type ClaudeEnvModelField =
-  | "ANTHROPIC_MODEL"
-  | "ANTHROPIC_DEFAULT_HAIKU_MODEL"
-  | "ANTHROPIC_DEFAULT_SONNET_MODEL"
-  | "ANTHROPIC_DEFAULT_OPUS_MODEL";
+	| "ANTHROPIC_MODEL"
+	| "ANTHROPIC_DEFAULT_HAIKU_MODEL"
+	| "ANTHROPIC_DEFAULT_SONNET_MODEL"
+	| "ANTHROPIC_DEFAULT_OPUS_MODEL"
 
-export type SnowRequestMethod = "chat" | "responses" | "gemini" | "anthropic";
+export type SnowRequestMethod = "chat" | "responses" | "gemini" | "anthropic"
 
-export const MODEL_CONFIGS_KEY = "ai-modal-model-configs";
-export const MODEL_CONFIGS_DB_KEY = "model_configs";
-export const CUSTOM_PROVIDERS_KEY = "ai-modal-custom-providers";
-export const CUSTOM_PROVIDERS_DB_KEY = "custom_providers";
-
-export interface CustomProviderRecord {
-  id: string;
-  name: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-}
+export const MODEL_CONFIGS_KEY = "ai-modal-model-configs"
+export const MODEL_CONFIGS_DB_KEY = "model_configs"
 
 export const CLAUDE_ENV_MODEL_FIELDS: ClaudeEnvModelField[] = [
-  "ANTHROPIC_MODEL",
-  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-  "ANTHROPIC_DEFAULT_SONNET_MODEL",
-  "ANTHROPIC_DEFAULT_OPUS_MODEL",
-];
+	"ANTHROPIC_MODEL",
+	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+	"ANTHROPIC_DEFAULT_SONNET_MODEL",
+	"ANTHROPIC_DEFAULT_OPUS_MODEL",
+]
 
 export const CLAUDE_ENV_MODEL_FIELD_LABELS: Record<ClaudeEnvModelField, string> = {
-  ANTHROPIC_MODEL: "主模型",
-  ANTHROPIC_DEFAULT_HAIKU_MODEL: "Haiku 默认模型",
-  ANTHROPIC_DEFAULT_SONNET_MODEL: "Sonnet 默认模型",
-  ANTHROPIC_DEFAULT_OPUS_MODEL: "Opus 默认模型",
-};
+	ANTHROPIC_MODEL: "主模型",
+	ANTHROPIC_DEFAULT_HAIKU_MODEL: "Haiku 默认模型",
+	ANTHROPIC_DEFAULT_SONNET_MODEL: "Sonnet 默认模型",
+	ANTHROPIC_DEFAULT_OPUS_MODEL: "Opus 默认模型",
+}
 
-export const SNOW_REQUEST_METHOD_OPTIONS: SnowRequestMethod[] = [
-  "chat",
-  "responses",
-  "gemini",
-  "anthropic",
-];
+export const SNOW_REQUEST_METHOD_OPTIONS: SnowRequestMethod[] = ["chat", "responses", "gemini", "anthropic"]
 
 export const SNOW_REQUEST_METHOD_LABELS: Record<SnowRequestMethod, string> = {
-  chat: "OpenAI Chat Completion",
-  responses: "OpenAI Responses",
-  gemini: "Gemini",
-  anthropic: "Anthropic",
-};
+	chat: "OpenAI Chat Completion",
+	responses: "OpenAI Responses",
+	gemini: "Gemini",
+	anthropic: "Anthropic",
+}
 
 export interface FileDraftState {
-  contentDraft: string;
-  savedContent: string;
-  fileExists: boolean;
-  loading: boolean;
-  loadedPath: string;
+	contentDraft: string
+	savedContent: string
+	fileExists: boolean
+	loading: boolean
+	loadedPath: string
 }

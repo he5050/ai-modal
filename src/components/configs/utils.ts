@@ -19,6 +19,7 @@ export const detectExists = fsDetectExists;
 export function createEmptyModelConfig(): ModelConfigRecord {
   return {
     id: `model-config-${Date.now()}`,
+    name: "",
     baseUrl: "",
     apiKey: "",
     model: "",
