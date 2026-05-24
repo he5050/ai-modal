@@ -126,7 +126,7 @@ pub async fn start_cli_proxy_service(
     let id_for_cleanup = tool_id.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(err) =
-            run_cli_gateway_until_shutdown(manager_arc.clone(), tool_config, port, shutdown_receiver)
+            run_cli_gateway_until_shutdown(tool_config, port, shutdown_receiver)
                 .await
         {
             eprintln!("[cli-proxy] gateway {} stopped: {}", id_for_cleanup, err);

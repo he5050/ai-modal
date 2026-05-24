@@ -31,14 +31,6 @@ impl CliToolType {
             CliToolType::GeminiCli => "gemini",
         }
     }
-
-    pub fn default_base_path(&self) -> &'static str {
-        match self {
-            CliToolType::ClaudeCode => "",
-            CliToolType::Codex | CliToolType::Opencode | CliToolType::Aider => "/v1",
-            CliToolType::GeminiCli => "/v1beta",
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -71,15 +63,6 @@ impl CliToolConfig {
             self.tool_type.default_protocol()
         } else {
             p
-        }
-    }
-
-    pub fn effective_base_path(&self) -> &str {
-        let bp = self.base_path.trim();
-        if bp.is_empty() {
-            self.tool_type.default_base_path()
-        } else {
-            bp
         }
     }
 }
@@ -126,7 +109,6 @@ impl Default for CliProxyManager {
 
 pub(crate) struct CliGatewayState {
     pub(crate) client: reqwest::Client,
-    pub(crate) manager: std::sync::Arc<CliProxyManager>,
     pub(crate) tool_config: CliToolConfig,
     pub(crate) port: u16,
 }

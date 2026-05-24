@@ -105,7 +105,7 @@ pub(crate) fn resolve_model(model: &str, config: &ModelMappingConfig) -> Result<
 }
 
 use crate::commands::model_mapping::config::{
-    effective_slot, effective_slots, legacy_slot, parse_mapping_protocol, resolve_effective_upstream_protocol,
+    effective_slots, legacy_slot, parse_mapping_protocol, resolve_effective_upstream_protocol,
 };
 
 #[derive(Debug)]

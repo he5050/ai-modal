@@ -11,7 +11,7 @@ use axum::{
 use reqwest::Client;
 use tokio::net::TcpListener;
 
-use crate::commands::cli_proxy::types::{CliGatewayState, CliProxyManager, CliToolConfig};
+use crate::commands::cli_proxy::types::{CliGatewayState, CliToolConfig};
 
 async fn cli_gateway_root_handler(
     State(state): State<Arc<CliGatewayState>>,
@@ -222,7 +222,6 @@ fn apply_auth_header(
 }
 
 pub async fn run_cli_gateway_until_shutdown(
-    manager: Arc<CliProxyManager>,
     tool_config: CliToolConfig,
     port: u16,
     shutdown: tokio::sync::oneshot::Receiver<()>,
@@ -235,7 +234,6 @@ pub async fn run_cli_gateway_until_shutdown(
 
     let state = Arc::new(CliGatewayState {
         client,
-        manager,
         tool_config,
         port,
     });

@@ -214,14 +214,6 @@ fn normalize_explicit_slot(slot: &str) -> String {
     }
 }
 
-fn normalize_slot(slot: &str, name: &str, next_auto_slot: &mut dyn FnMut() -> String) -> String {
-    let trimmed = slot.trim();
-    if trimmed.is_empty() || is_auto_generated_slot(trimmed, name) {
-        return next_auto_slot();
-    }
-    normalize_explicit_slot(trimmed)
-}
-
 pub fn effective_slot(model: &ModelMappingEntry) -> String {
     model.slot.trim().to_string()
 }
