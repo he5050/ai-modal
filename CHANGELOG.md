@@ -1,5 +1,13 @@
 # Changelog
 
+# [0.10.0](https://github.com/he5050/ai-modal/compare/v0.9.0...v0.10.0) (2026-05-25)
+
+
+### Features
+
+* add cURL task management feature ([cb00847](https://github.com/he5050/ai-modal/commit/cb00847eaa82563dfde3b7395e08c20b98c98abb))
+* 添加自定义AI提供商支持并优化默认模型配置 ([eb98dbf](https://github.com/he5050/ai-modal/commit/eb98dbf9e3b47a86a1f80c049ff1b7175d7abac5))
+
 # [0.9.0](https://github.com/he5050/ai-modal/compare/v0.8.0...v0.9.0) (2026-05-20)
 
 
