@@ -217,11 +217,18 @@ export interface CurlTask {
   updatedAt: number;
 }
 
+export interface RequestDebugInfo {
+  url: string;
+  method: string;
+  headers: Array<[string, string]>;
+}
+
 export interface CurlTaskExecuteResult {
   ok: boolean;
   status: number;
   data: Record<string, unknown> | null;
   error?: string | null;
+  request_debug?: RequestDebugInfo | null;
 }
 
 export interface McpServerConfigInput {

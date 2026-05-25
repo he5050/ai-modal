@@ -32,7 +32,8 @@ use commands::skill_enrichment_job::{
     SkillEnrichmentJobManager,
 };
 use commands::curl_task::{
-    delete_curl_task, execute_curl_task, load_curl_tasks, parse_curl_command, save_curl_task,
+    delete_curl_task, execute_curl_direct, execute_curl_raw, execute_curl_task, load_curl_tasks,
+    parse_curl_command, save_curl_task,
 };
 use commands::skills::{
     inspect_online_skill, inspect_skill_targets, run_skills_command, scan_local_skills,
@@ -180,6 +181,8 @@ pub fn run() {
             save_curl_task,
             delete_curl_task,
             execute_curl_task,
+            execute_curl_direct,
+            execute_curl_raw,
             parse_curl_command,
         ])
         .run(tauri::generate_context!())

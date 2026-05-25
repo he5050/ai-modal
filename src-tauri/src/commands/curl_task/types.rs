@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ParsedCurl {
     pub url: String,
     pub method: String,
@@ -11,6 +12,7 @@ pub struct ParsedCurl {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct CurlTask {
     pub id: String,
     pub label: String,
@@ -27,10 +29,21 @@ pub struct CurlTask {
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct CurlTaskExecuteResult {
     pub ok: bool,
     pub status: u16,
     pub data: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_debug: Option<RequestDebugInfo>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestDebugInfo {
+    pub url: String,
+    pub method: String,
+    pub headers: Vec<(String, String)>,
 }

@@ -245,6 +245,14 @@ export async function executeCurlTask(id: string): Promise<CurlTaskExecuteResult
   return invoke("execute_curl_task", { id });
 }
 
+export async function executeCurlDirect(parsed: ParsedCurl): Promise<CurlTaskExecuteResult> {
+  return invoke("execute_curl_direct", { parsed });
+}
+
+export async function executeCurlRaw(curl: string): Promise<CurlTaskExecuteResult> {
+  return invoke("execute_curl_raw", { curl });
+}
+
 export async function parseCurlCommand(curl: string): Promise<ParsedCurl> {
   return invoke("parse_curl_command", { curl });
 }

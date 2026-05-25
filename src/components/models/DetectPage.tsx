@@ -194,6 +194,8 @@ export function DetectPage({
       onOpenDetail(newProvider);
     }
     form.setSaving(false);
+    // 另存为新接口后重置 dirty 状态
+    onDirtyChange(false);
   }
 
   function handleSave() {
@@ -261,6 +263,8 @@ export function DetectPage({
       }
     }
     form.setSaving(false);
+    // 保存成功后重置 dirty 状态，避免切换页面时弹出确认对话框
+    onDirtyChange(false);
   }
 
   return (
