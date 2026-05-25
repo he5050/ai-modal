@@ -8,12 +8,17 @@ pub const DEFAULT_CLAUDE_SLOTS: &[&str] = &[
     "anthropic/claude-opus-current",
     "anthropic/claude-sonnet-current",
     "anthropic/claude-haiku-current",
+    "anthropic/claude-opus-4-7",
+    "anthropic/claude-opus-4-6",
+    "anthropic/claude-opus-4-5",
     "anthropic/claude-opus-4-1",
     "anthropic/claude-opus-4",
+    "anthropic/claude-sonnet-4-6",
+    "anthropic/claude-sonnet-4-5-20250929",
     "anthropic/claude-sonnet-4",
     "anthropic/claude-sonnet-3-7",
-    "anthropic/claude-haiku-3-5",
     "anthropic/claude-haiku-4-5-20251001",
+    "anthropic/claude-haiku-3-5",
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

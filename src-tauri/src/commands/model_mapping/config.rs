@@ -189,6 +189,9 @@ fn is_auto_generated_slot(slot: &str, name: &str) -> bool {
         || lower == format!("claude-{}", safe_name)
         || lower == format!("anthropic/claude-claude-{}", safe_name)
         || lower == format!("claude-claude-{}", safe_name)
+        // 识别自动生成的 custom 槽位
+        || lower.starts_with("anthropic/claude-custom-")
+        || lower.starts_with("claude-custom-")
 }
 
 fn normalize_explicit_slot(slot: &str) -> String {

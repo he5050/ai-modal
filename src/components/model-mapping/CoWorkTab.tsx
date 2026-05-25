@@ -141,22 +141,69 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 	}, [status?.running, selectedTab])
 
 	const totalModels = countMappingModels(config)
-	const mappedRows = useMemo(
+	// 统计已启用的模型数量
+	const enabledModelsCount = useMemo(
 		() =>
-			getActiveMappingModels(config).flatMap(({ provider, model }) =>
-				getModelSlots(model).map((slot) => ({
+			config.providers.reduce(
+				(count, provider) => count + provider.models.filter((m) => Boolean(m.enabled)).length,
+				0,
+			),
+		[config],
+	)
+	// 统计实际映射的槽位数量（只统计实际分配了模型的槽位）
+	const mappedSlotsCount = useMemo(() => {
+		const assignedSlots = new Set<string>()
+		config.providers.forEach((provider) => {
+			provider.models.forEach((model) => {
+				if (model.enabled) {
+					getModelSlots(model).forEach((slot) => {
+						if (slot) assignedSlots.add(slot)
+					})
+				}
+			})
+		})
+		return assignedSlots.size
+	}, [config])
+	const mappedRows = useMemo(() => {
+		// 只显示实际被槽位映射引用的模型，每个模型只显示一次
+		const assignedModelKeys = new Set<string>()
+		const rows: Array<{
+			provider: string
+			source: string
+			target: string
+			displayName: string
+			sourceProtocol: string
+			targetProtocol: string
+			supports1m: boolean
+			thinking: string
+		}> = []
+
+		config.providers.forEach((provider, pi) => {
+			provider.models.forEach((model, mi) => {
+				if (!model.enabled || !model.name.trim()) return
+
+				const slots = getModelSlots(model)
+				if (slots.length === 0) return
+
+				const modelKey = `${pi}:${mi}`
+				if (assignedModelKeys.has(modelKey)) return
+				assignedModelKeys.add(modelKey)
+
+				rows.push({
 					provider: provider.name || "未命名服务商",
-					source: slot,
+					source: slots.join(", "),
 					target: model.name,
 					displayName: model.display_name?.trim() || `${provider.name || "provider"}-${model.name}`,
 					sourceProtocol: model.source_protocol || "claude",
 					targetProtocol: model.target_protocol || "claude",
 					supports1m: Boolean(model.to_1m),
 					thinking: provider.thinking_effort || "",
-				})),
-			),
-		[config],
-	)
+				})
+			})
+		})
+
+		return rows
+	}, [config])
 
 	function updateConfig(next: ModelMappingConfig) {
 		setConfig(normalizeModelMappingConfig(next))
@@ -565,7 +612,8 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>
 								端口 {status?.port ?? 5678}
 							</span>
-							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>{totalModels} 模型</span>
+							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>{enabledModelsCount} 模型已启用</span>
+							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>{mappedSlotsCount} 槽位已映射</span>
 						</div>
 					</div>
 					<div className='flex flex-wrap justify-end gap-2'>
@@ -646,7 +694,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 			<div className='min-h-0 flex-1 overflow-y-auto px-5 pb-5'>
 				{selectedTab === "mapping" && (
 					<div className='space-y-4'>
-						<SlotMappingPanel config={config} onSlotAssign={handleSlotAssignment} />
+						<SlotMappingPanel config={config} onSlotAssign={handleSlotAssignment} mappedSlotsCount={mappedSlotsCount} />
 						<SourceActions providers={providers} onImportProvider={openImportProviderDialog} />
 
 						{config.providers.length === 0 ? (
@@ -707,9 +755,11 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 function SlotMappingPanel({
 	config,
 	onSlotAssign,
+	mappedSlotsCount,
 }: {
 	config: ModelMappingConfig
 	onSlotAssign: (slotIndex: number, modelKey: string | "") => void
+	mappedSlotsCount: number
 }) {
 	const [collapsed, setCollapsed] = useState(false)
 	const slottedModelOptions = useMemo(() => {
@@ -748,8 +798,6 @@ function SlotMappingPanel({
 		return map
 	}, [config])
 
-	const filledCount = DEFAULT_CLAUDE_SLOTS.filter((slot) => slotAssignments.has(slot)).length
-
 	return (
 		<Card>
 			<div className='flex items-center justify-between border-b border-border-subtle pb-3 mb-3'>
@@ -763,7 +811,7 @@ function SlotMappingPanel({
 					<FileCode2 className='h-4 w-4 text-indigo-400' />
 					<h3 className='text-sm font-semibold text-text-heading'>Claude 槽位映射</h3>
 					<span className='rounded-lg border border-border-subtle bg-surface-muted px-2 py-0.5 text-[11px] text-text-muted'>
-						{filledCount}/{DEFAULT_CLAUDE_SLOTS.length} 已填充
+						{mappedSlotsCount} 个槽位已映射
 					</span>
 				</div>
 			</div>
