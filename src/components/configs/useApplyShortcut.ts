@@ -1,7 +1,7 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { logger } from "@/lib/devlog"
 import { formatConfigContent } from "@/lib/configFormatter"
-import { listModels } from "@/api"
+import { listModels, getCodexApiKey, setCodexApiKey as saveCodexApiKey, removeCodexApiKey } from "@/api"
 import {
 	buildClaudeWritebackUrl,
 	buildGeminiWritebackUrl,
@@ -70,6 +70,57 @@ export function useApplyShortcut({
 	const [snowApplyModalOpen, setSnowApplyModalOpen] = useState(false)
 	const [openCodeApplyModalOpen, setOpenCodeApplyModalOpen] = useState(false)
 	const [selectedCodexApplyModel, setSelectedCodexApplyModel] = useState<string>("")
+
+	// Codex API Key 管理
+	const [codexApiKey, setCodexApiKey] = useState<string>("")
+	const [isSavingCodexKey, setIsSavingCodexKey] = useState(false)
+
+	// 加载已保存的 Codex API Key
+	useEffect(() => {
+		if (codexApplyModalOpen) {
+			getCodexApiKey()
+				.then((key) => {
+					setCodexApiKey(key ?? "")
+				})
+				.catch(() => {
+					setCodexApiKey("")
+				})
+		}
+	}, [codexApplyModalOpen])
+
+	async function handleSaveCodexApiKey() {
+		if (!codexApiKey.trim()) return
+		setIsSavingCodexKey(true)
+		try {
+			const result = await saveCodexApiKey(codexApiKey.trim())
+			if (result.success) {
+				toast(result.message, "success")
+			} else {
+				toast(result.message, "error")
+			}
+		} catch (e) {
+			toast("保存失败: " + String(e), "error")
+		} finally {
+			setIsSavingCodexKey(false)
+		}
+	}
+
+	async function handleRemoveCodexApiKey() {
+		setIsSavingCodexKey(true)
+		try {
+			const result = await removeCodexApiKey()
+			if (result.success) {
+				setCodexApiKey("")
+				toast(result.message, "success")
+			} else {
+				toast(result.message, "error")
+			}
+		} catch (e) {
+			toast("删除失败: " + String(e), "error")
+		} finally {
+			setIsSavingCodexKey(false)
+		}
+	}
 	const [selectedGeminiApplyModel, setSelectedGeminiApplyModel] = useState<string>("")
 	const [selectedSnowRequestMethod, setSelectedSnowRequestMethod] = useState<SnowRequestMethod>("responses")
 	const [selectedSnowAdvancedModel, setSelectedSnowAdvancedModel] = useState<string>("")
@@ -512,6 +563,12 @@ export function useApplyShortcut({
 		// Fetched models from API (for custom provider with empty model)
 		fetchedModelsFromApi,
 		isFetchingModels,
+		// Codex API Key management
+		codexApiKey,
+		setCodexApiKey,
+		isSavingCodexKey,
+		handleSaveCodexApiKey,
+		handleRemoveCodexApiKey,
 		// Handlers
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,

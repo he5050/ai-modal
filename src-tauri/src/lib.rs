@@ -35,6 +35,7 @@ use commands::curl_task::{
     delete_curl_task, execute_curl_direct, execute_curl_raw, execute_curl_task, load_curl_tasks,
     parse_curl_command, save_curl_task,
 };
+use commands::env_config::{get_codex_api_key, set_codex_api_key, remove_codex_api_key};
 use commands::skills::{
     inspect_online_skill, inspect_skill_targets, run_skills_command, scan_local_skills,
     search_online_skills, sync_skill_targets,
@@ -184,6 +185,9 @@ pub fn run() {
             execute_curl_direct,
             execute_curl_raw,
             parse_curl_command,
+            get_codex_api_key,
+            set_codex_api_key,
+            remove_codex_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
