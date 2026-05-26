@@ -9,6 +9,9 @@ import {
 	ArrowRightLeft,
 	FileSpreadsheet,
 	FileJson,
+	ChevronDown,
+	ChevronUp,
+	Upload,
 } from "lucide-react"
 import {
 	buildConfigGroups,
@@ -107,6 +110,7 @@ export function ConfigPage({
 	const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
 	const [pendingSyncConfig, setPendingSyncConfig] = useState<ModelConfigRecord | null>(null)
 	const [existingSyncProvider, setExistingSyncProvider] = useState<Provider | null>(null)
+	const [customSectionExpanded, setCustomSectionExpanded] = useState(true)
 
 	const {
 		modelConfigs,
@@ -223,7 +227,7 @@ export function ConfigPage({
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,
 		handleApplyCodexShortcutToDraft,
-		handleApplyCodexShortcutAndSave,
+		handleApplyCodexShortcutDirectSave,
 		handleApplyGeminiShortcutToDraft,
 		handleApplySnowShortcutToDraft,
 		handleApplyOpenCodeShortcutToDraft,
@@ -255,6 +259,7 @@ export function ConfigPage({
 		isOpenCodeShortcutTarget,
 		updateDraftState,
 		ensureFileDraftState,
+		saveFileContent: async (file, content) => saveFileContent(file, content, onUpsertPath),
 	})
 
 	async function handleFormat() {
@@ -423,7 +428,7 @@ export function ConfigPage({
 		return handleDeleteCustomProvider(id)
 	}
 
-	// 导出自定义 Provider 列表
+	// 导出自定义 Provider 列表（真实文件下载）
 	async function handleExportCustomProviders(format: "csv" | "json") {
 		const customProviders = modelConfigs.filter((c) => c.isCustom)
 		if (customProviders.length === 0) {
@@ -432,6 +437,11 @@ export function ConfigPage({
 		}
 
 		try {
+			const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+			let content = ""
+			let filename = ""
+			let mimeType = ""
+
 			if (format === "csv") {
 				// CSV 格式：name,baseUrl,apiKey,model,syncedToModels
 				const headers = ["名称", "API URL", "API Key", "模型", "已同步"]
@@ -445,9 +455,9 @@ export function ConfigPage({
 						return str
 					}),
 				)
-				const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
-				await navigator.clipboard.writeText(csv)
-				toast("已复制到剪贴板 (CSV)", "success")
+				content = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
+				filename = `custom-providers-${timestamp}.csv`
+				mimeType = "text/csv;charset=utf-8;"
 			} else {
 				// JSON 格式
 				const data = customProviders.map((p) => ({
@@ -459,12 +469,120 @@ export function ConfigPage({
 					syncedToModels: p.syncedToModels,
 					lastTestResult: p.lastTestResult,
 				}))
-				const json = JSON.stringify(data, null, 2)
-				await navigator.clipboard.writeText(json)
-				toast("已复制到剪贴板 (JSON)", "success")
+				content = JSON.stringify(data, null, 2)
+				filename = `custom-providers-${timestamp}.json`
+				mimeType = "application/json;charset=utf-8;"
 			}
+
+			// 创建下载链接
+			const blob = new Blob([content], { type: mimeType })
+			const url = URL.createObjectURL(blob)
+			const link = document.createElement("a")
+			link.href = url
+			link.download = filename
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+			URL.revokeObjectURL(url)
+
+			toast(`已导出 ${customProviders.length} 个 Provider`, "success")
 		} catch (e) {
 			toast("导出失败: " + String(e), "error")
+		}
+	}
+
+	// 导入自定义 Provider
+	async function handleImportCustomProviders(event: React.ChangeEvent<HTMLInputElement>) {
+		const file = event.target.files?.[0]
+		if (!file) return
+
+		try {
+			const content = await file.text()
+			let imported: Array<{
+				id?: string
+				name?: string
+				baseUrl?: string
+				apiKey?: string
+				model?: string
+				syncedToModels?: boolean
+				lastTestResult?: unknown
+			}> = []
+
+			if (file.name.endsWith(".csv")) {
+				// 解析 CSV
+				const lines = content.split("\n").filter((line) => line.trim())
+				if (lines.length < 2) {
+					toast("CSV 文件格式不正确", "error")
+					return
+				}
+				// 跳过表头
+				for (let i = 1; i < lines.length; i++) {
+					const line = lines[i]
+					// 简单 CSV 解析（处理引号）
+					const values: string[] = []
+					let current = ""
+					let inQuotes = false
+					for (let j = 0; j < line.length; j++) {
+						const char = line[j]
+						if (char === '"') {
+							if (inQuotes && line[j + 1] === '"') {
+								current += '"'
+								j++
+							} else {
+								inQuotes = !inQuotes
+							}
+						} else if (char === "," && !inQuotes) {
+							values.push(current)
+							current = ""
+						} else {
+							current += char
+						}
+					}
+					values.push(current)
+
+					imported.push({
+						name: values[0] || "",
+						baseUrl: values[1] || "",
+						apiKey: values[2] || "",
+						model: values[3] || "",
+						syncedToModels: values[4] === "是",
+					})
+				}
+			} else if (file.name.endsWith(".json")) {
+				// 解析 JSON
+				imported = JSON.parse(content)
+				if (!Array.isArray(imported)) {
+					toast("JSON 文件格式不正确，应为数组", "error")
+					return
+				}
+			} else {
+				toast("不支持的文件格式，请使用 .csv 或 .json", "error")
+				return
+			}
+
+			// 验证并导入
+			let successCount = 0
+			for (const item of imported) {
+				if (!item.baseUrl || !item.apiKey) {
+					continue
+				}
+				const result = await handleSaveCustomProvider({
+					name: item.name || "",
+					baseUrl: item.baseUrl,
+					apiKey: item.apiKey,
+					model: item.model || "",
+				})
+				if (result.success) {
+					successCount++
+				}
+			}
+
+			toast(`成功导入 ${successCount} 个 Provider`, "success")
+		} catch (e) {
+			toast("导入失败: " + String(e), "error")
+		} finally {
+			// 清空 input 值，允许重复选择同一文件
+			event.target.value = ""
 		}
 	}
 
@@ -680,104 +798,137 @@ export function ConfigPage({
 								) : (
 									/* 自定义 Tab */
 									<div className='space-y-3'>
-										{modelConfigs.filter((c) => c.isCustom).length === 0 ? (
-											<div className='text-sm text-gray-500'>暂无自定义 Provider，点击下方按钮添加。</div>
-										) : (
-											<div className='space-y-2'>
+										{/* 折叠标题栏 */}
+										<button
+											onClick={() => setCustomSectionExpanded(!customSectionExpanded)}
+											className='flex w-full items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2 transition-colors hover:bg-gray-800/50'>
+											<div className='flex items-center gap-2'>
+												<span className='text-sm font-medium text-gray-200'>自定义 Provider</span>
+												<span className='rounded bg-gray-700 px-1.5 py-0.5 text-[10px] text-gray-400'>
+													{modelConfigs.filter((c) => c.isCustom).length}
+												</span>
+											</div>
+											<div className='flex items-center gap-2'>
+												{/* 导入按钮 */}
+												<label className='flex cursor-pointer items-center gap-1 rounded-md bg-gray-800/50 px-2 py-1 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200'>
+													<Upload className='h-3.5 w-3.5' />
+													导入
+													<input
+														type='file'
+														accept='.json,.csv'
+														onChange={handleImportCustomProviders}
+														className='hidden'
+													/>
+												</label>
 												{/* 导出按钮 */}
-												<div className='flex items-center justify-end gap-2'>
-													<ExportButton
-														icon={<FileSpreadsheet className='h-3.5 w-3.5' />}
-														label='导出 CSV'
-														onClick={() => handleExportCustomProviders("csv")}
-													/>
-													<ExportButton
-														icon={<FileJson className='h-3.5 w-3.5' />}
-														label='导出 JSON'
-														onClick={() => handleExportCustomProviders("json")}
-													/>
-												</div>
-												{modelConfigs
-													.filter((c) => c.isCustom)
-													.map((config) => (
-														<div
-															key={config.id}
-															className='flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2'>
-															<div className='min-w-0 flex-1'>
-																<div className='flex items-center gap-2'>
-																	<span className='truncate text-sm font-medium text-gray-200'>
-																		{config.name || config.model || "未命名"}
-																	</span>
-																	{config.syncedToModels && (
-																		<span className='shrink-0 rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] text-green-400'>
-																			已同步
+												<ExportButton
+													icon={<FileSpreadsheet className='h-3.5 w-3.5' />}
+													label='导出 CSV'
+													onClick={() => handleExportCustomProviders("csv")}
+												/>
+												<ExportButton
+													icon={<FileJson className='h-3.5 w-3.5' />}
+													label='导出 JSON'
+													onClick={() => handleExportCustomProviders("json")}
+												/>
+												{/* 新增按钮 */}
+												<button
+													onClick={() => handleOpenCustomProviderDialog()}
+													className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>
+													<Plus className='mr-1 h-3.5 w-3.5' />
+													新增
+												</button>
+												{/* 折叠图标 */}
+												{customSectionExpanded ? (
+													<ChevronUp className='h-4 w-4 text-gray-500' />
+												) : (
+													<ChevronDown className='h-4 w-4 text-gray-500' />
+												)}
+											</div>
+										</button>
+
+										{/* 可折叠内容 */}
+										{customSectionExpanded && (
+											<div className='space-y-2'>
+												{modelConfigs.filter((c) => c.isCustom).length === 0 ? (
+													<div className='text-sm text-gray-500'>暂无自定义 Provider，点击上方"新增"按钮添加。</div>
+												) : (
+													modelConfigs
+														.filter((c) => c.isCustom)
+														.map((config) => (
+															<div
+																key={config.id}
+																className='flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2'>
+																<div className='min-w-0 flex-1'>
+																	<div className='flex items-center gap-2'>
+																		<span className='truncate text-sm font-medium text-gray-200'>
+																			{config.name || config.model || "未命名"}
 																		</span>
-																	)}
-																	{config.lastTestResult?.available && (
-																		<CheckCircle2 className='h-3.5 w-3.5 text-green-400' />
-																	)}
+																		{config.syncedToModels && (
+																			<span className='shrink-0 rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] text-green-400'>
+																				已同步
+																			</span>
+																		)}
+																		{config.lastTestResult?.available && (
+																			<CheckCircle2 className='h-3.5 w-3.5 text-green-400' />
+																		)}
+																	</div>
+																	<div className='mt-0.5 flex items-center gap-2 text-xs text-gray-500'>
+																		<a
+																			href={config.baseUrl}
+																			target='_blank'
+																			rel='noopener noreferrer'
+																			className='truncate font-mono text-indigo-400 hover:text-indigo-300 hover:underline'
+																			onClick={(e) => e.stopPropagation()}>
+																			{config.baseUrl}
+																		</a>
+																		{config.model && <span className='text-gray-600'>| {config.model}</span>}
+																	</div>
 																</div>
-																<div className='mt-0.5 flex items-center gap-2 text-xs text-gray-500'>
+																<div className='ml-3 flex items-center gap-1'>
 																	<a
 																		href={config.baseUrl}
 																		target='_blank'
 																		rel='noopener noreferrer'
-																		className='truncate font-mono text-indigo-400 hover:text-indigo-300 hover:underline'
-																		onClick={(e) => e.stopPropagation()}>
-																		{config.baseUrl}
+																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-indigo-400'
+																		title='访问 URL'>
+																		<ExternalLink className='h-3.5 w-3.5' />
 																	</a>
-																	{config.model && <span className='text-gray-600'>| {config.model}</span>}
+																	<button
+																		onClick={() => handleOpenCustomProviderDialog(config)}
+																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200'
+																		title='编辑'>
+																		<Pencil className='h-3.5 w-3.5' />
+																	</button>
+																	<button
+																		onClick={() => handleDeleteCustomProviderFromDialog(config.id)}
+																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400'
+																		title='删除'>
+																		<Trash2 className='h-3.5 w-3.5' />
+																	</button>
+																	<button
+																		onClick={() => handleSyncCustomProvider(config)}
+																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-green-400'
+																		title='同步到模型列表'>
+																		<ArrowRightLeft className='h-3.5 w-3.5' />
+																	</button>
+																	{(isClaudeSettingsShortcutTarget ||
+																		isCodexShortcutTarget ||
+																		isGeminiShortcutTarget ||
+																		isSnowShortcutTarget ||
+																		isOpenCodeShortcutTarget) && (
+																		<button
+																			onClick={() => handleApplyCustomProvider(config)}
+																			className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} ml-1`}>
+																			应用
+																		</button>
+																	)}
 																</div>
 															</div>
-															<div className='ml-3 flex items-center gap-1'>
-																<a
-																	href={config.baseUrl}
-																	target='_blank'
-																	rel='noopener noreferrer'
-																	className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-indigo-400'
-																	title='访问 URL'>
-																	<ExternalLink className='h-3.5 w-3.5' />
-																</a>
-																<button
-																	onClick={() => handleOpenCustomProviderDialog(config)}
-																	className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200'
-																	title='编辑'>
-																	<Pencil className='h-3.5 w-3.5' />
-																</button>
-																<button
-																	onClick={() => handleDeleteCustomProviderFromDialog(config.id)}
-																	className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400'
-																	title='删除'>
-																	<Trash2 className='h-3.5 w-3.5' />
-																</button>
-																<button
-																	onClick={() => handleSyncCustomProvider(config)}
-																	className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-green-400'
-																	title='同步到模型列表'>
-																	<ArrowRightLeft className='h-3.5 w-3.5' />
-																</button>
-																{(isClaudeSettingsShortcutTarget ||
-																	isCodexShortcutTarget ||
-																	isGeminiShortcutTarget ||
-																	isSnowShortcutTarget ||
-																	isOpenCodeShortcutTarget) && (
-																	<button
-																		onClick={() => handleApplyCustomProvider(config)}
-																		className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} ml-1`}>
-																		应用
-																	</button>
-																)}
-															</div>
-														</div>
-													))}
+														))
+												)}
 											</div>
 										)}
-										<button
-											onClick={() => handleOpenCustomProviderDialog()}
-											className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}>
-											<Plus className='mr-1 h-3.5 w-3.5' />
-											新增
-										</button>
 									</div>
 								)}
 							</div>
@@ -866,19 +1017,8 @@ export function ConfigPage({
 					onChange={setSelectedCodexApplyModel}
 					onConfirm={() => void handleApplyCodexShortcutToDraft()}
 					onConfirmAndSave={async () => {
-						// 1. 应用配置到草稿并保存 API Key 到 zshrc
-						await handleApplyCodexShortcutAndSave()
-						// 2. 自动保存配置文件到磁盘（使用最新的草稿内容）
-						const configTomlFile = selectedGroup?.files.find((file) => file.id === "codex")
-						const authJsonFile = selectedGroup?.files.find((file) => file.id === "codex::auth.json")
-						// 延迟一点确保草稿已更新
-						await new Promise((resolve) => setTimeout(resolve, 100))
-						if (configTomlFile) {
-							await saveFileContent(configTomlFile, draftsByFileId[configTomlFile.id]?.contentDraft ?? "", onUpsertPath)
-						}
-						if (authJsonFile) {
-							await saveFileContent(authJsonFile, draftsByFileId[authJsonFile.id]?.contentDraft ?? "", onUpsertPath)
-						}
+						// 直接应用并保存到磁盘（跳过草稿）
+						await handleApplyCodexShortcutDirectSave()
 					}}
 					onCancel={() => setCodexApplyModalOpen(false)}
 					apiKey={codexApiKey}

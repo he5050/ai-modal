@@ -48,6 +48,7 @@ interface UseApplyShortcutOptions {
 	isOpenCodeShortcutTarget: boolean
 	updateDraftState: (fileId: string, patch: Partial<FileDraftState>) => void
 	ensureFileDraftState: (file: ConfigGroupFileView | null) => Promise<FileDraftState | null>
+	saveFileContent?: (file: ConfigGroupFileView, content: string) => Promise<boolean>
 }
 
 export function useApplyShortcut({
@@ -63,6 +64,7 @@ export function useApplyShortcut({
 	isOpenCodeShortcutTarget,
 	updateDraftState,
 	ensureFileDraftState,
+	saveFileContent,
 }: UseApplyShortcutOptions) {
 	const [claudeApplyModalOpen, setClaudeApplyModalOpen] = useState(false)
 	const [codexApplyModalOpen, setCodexApplyModalOpen] = useState(false)
@@ -251,7 +253,7 @@ export function useApplyShortcut({
 		}
 	}
 
-	// 应用 Codex 配置并保存 API Key 到 ~/.zshrc
+	// 应用 Codex 配置并保存 API Key 到 ~/.zshrc（仅应用到草稿）
 	async function handleApplyCodexShortcutAndSave() {
 		if (!codexApiKey.trim()) {
 			toast("请先输入 API Key", "warning")
@@ -271,6 +273,105 @@ export function useApplyShortcut({
 			toast("已应用配置并保存 API Key", "success")
 		} catch (e) {
 			toast("保存失败: " + String(e), "error")
+		} finally {
+			setIsSavingCodexKey(false)
+		}
+	}
+
+	// 应用 Codex 配置并直接保存到磁盘（跳过草稿）
+	async function handleApplyCodexShortcutDirectSave() {
+		if (!codexApiKey.trim()) {
+			toast("请先输入 API Key", "warning")
+			return
+		}
+		if (!saveFileContent) {
+			toast("保存功能未初始化", "error")
+			return
+		}
+		setIsSavingCodexKey(true)
+		try {
+			// 1. 先保存 API Key 到 ~/.zshrc
+			const saveResult = await saveCodexApiKey(codexApiKey.trim())
+			if (!saveResult.success) {
+				toast(saveResult.message, "error")
+				setIsSavingCodexKey(false)
+				return
+			}
+
+			// 2. 直接生成配置并保存到磁盘
+			const providerToUse = activeApplyProvider ?? selectedAvailableProvider
+			if (!providerToUse || !selectedGroup) {
+				setIsSavingCodexKey(false)
+				return
+			}
+			const configTomlFile = selectedGroup.files.find((file) => file.id === "codex") ?? null
+			const authJsonFile = selectedGroup.files.find((file) => file.id === "codex::auth.json") ?? null
+			if (!configTomlFile || !authJsonFile) {
+				toast("未找到 Codex 配置文件入口", "error")
+				setIsSavingCodexKey(false)
+				return
+			}
+
+			// 读取现有配置（如果存在）
+			const [configDraft, authDraft] = await Promise.all([
+				ensureFileDraftState(configTomlFile),
+				ensureFileDraftState(authJsonFile),
+			])
+
+			// 生成新的配置内容
+			const tomlModule = await import("smol-toml")
+			const parsedConfig = configDraft?.contentDraft.trim() ? tomlModule.parse(configDraft.contentDraft) : {}
+			if (parsedConfig == null || Array.isArray(parsedConfig) || typeof parsedConfig !== "object") {
+				throw new Error("当前 config.toml 顶层不是对象")
+			}
+			const nextConfig = {
+				...(parsedConfig as Record<string, unknown>),
+				model: selectedCodexApplyModel,
+				model_provider: "codex",
+				model_providers: {
+					...(((parsedConfig as Record<string, unknown>).model_providers as Record<string, unknown> | undefined) ?? {}),
+					codex: {
+						...((((parsedConfig as Record<string, unknown>).model_providers as Record<string, unknown> | undefined)
+							?.codex as Record<string, unknown> | undefined) ?? {}),
+						base_url: buildOpenAiCompatibleWritebackUrl(providerToUse.models[0]?.baseUrl ?? ""),
+						name: "codex",
+						wire_api: "responses",
+					},
+				},
+			}
+			const formattedToml = await formatConfigContent(tomlModule.stringify(nextConfig), "toml")
+
+			const parsedAuth = authDraft?.contentDraft.trim() ? JSON.parse(authDraft.contentDraft) : {}
+			if (parsedAuth == null || Array.isArray(parsedAuth) || typeof parsedAuth !== "object") {
+				throw new Error("当前 auth.json 顶层不是对象")
+			}
+			const nextAuth = {
+				...(parsedAuth as Record<string, unknown>),
+				OPENAI_API_KEY: providerToUse.models[0]?.apiKey ?? "",
+			}
+			const formattedAuth = await formatConfigContent(JSON.stringify(nextAuth), "json")
+
+			// 3. 直接保存到磁盘
+			await Promise.all([
+				saveFileContent(configTomlFile, formattedToml.formatted),
+				saveFileContent(authJsonFile, formattedAuth.formatted),
+			])
+
+			// 4. 更新草稿状态以保持一致
+			updateDraftState(configTomlFile.id, {
+				contentDraft: formattedToml.formatted,
+				savedContent: formattedToml.formatted,
+			})
+			updateDraftState(authJsonFile.id, {
+				contentDraft: formattedAuth.formatted,
+				savedContent: formattedAuth.formatted,
+			})
+
+			setCodexApplyModalOpen(false)
+			toast("已应用配置并保存到磁盘", "success")
+		} catch (error) {
+			logger.error("Failed to apply and save Codex config", error)
+			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
 		} finally {
 			setIsSavingCodexKey(false)
 		}
@@ -596,6 +697,7 @@ export function useApplyShortcut({
 		handleApplyClaudeShortcutToDraft,
 		handleApplyCodexShortcutToDraft,
 		handleApplyCodexShortcutAndSave,
+		handleApplyCodexShortcutDirectSave,
 		handleApplyGeminiShortcutToDraft,
 		handleApplySnowShortcutToDraft,
 		handleApplyOpenCodeShortcutToDraft,
