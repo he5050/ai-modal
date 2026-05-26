@@ -114,6 +114,9 @@ export function ClaudeApplyModal({
                   placeholder="手动输入模型名称"
                   className="w-full rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-2 text-sm text-gray-200 outline-none focus:border-indigo-500/50"
                   aria-label={`输入 ${field}`}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               )}
             </div>
@@ -152,6 +155,7 @@ export function CodexApplyModal({
   selectedModel,
   onChange,
   onConfirm,
+  onConfirmAndSave,
   onCancel,
   apiKey,
   onApiKeyChange,
@@ -164,6 +168,7 @@ export function CodexApplyModal({
   selectedModel: string;
   onChange: (value: string) => void;
   onConfirm: () => void;
+  onConfirmAndSave: () => void;
   onCancel: () => void;
   apiKey: string;
   onApiKeyChange: (value: string) => void;
@@ -224,6 +229,9 @@ export function CodexApplyModal({
                 placeholder="手动输入模型名称，如: gpt-4o"
                 className="w-full rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-2 text-sm text-gray-200 outline-none focus:border-cyan-500/50"
                 aria-label="输入 Codex 模型"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             )}
           </div>
@@ -294,9 +302,16 @@ export function CodexApplyModal({
           </button>
           <button
             onClick={onConfirm}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+          >
+            仅应用到草稿
+          </button>
+          <button
+            onClick={onConfirmAndSave}
+            disabled={isSavingKey || !apiKey.trim()}
             className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
-            应用到草稿
+            {isSavingKey ? "保存中..." : "应用并保存"}
           </button>
         </div>
       </div>
@@ -372,6 +387,9 @@ export function GeminiApplyModal({
                 placeholder="手动输入模型名称，如: gemini-1.5-pro"
                 className="w-full rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-2 text-sm text-gray-200 outline-none focus:border-fuchsia-500/50"
                 aria-label="输入 Gemini 模型"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             )}
           </div>
@@ -496,6 +514,9 @@ export function SnowApplyModal({
                 placeholder="手动输入模型名称"
                 className="w-full rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-2 text-sm text-gray-200 outline-none focus:border-sky-500/50"
                 aria-label="输入 Snow advancedModel"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             )}
           </div>
@@ -523,6 +544,9 @@ export function SnowApplyModal({
                 placeholder="手动输入模型名称"
                 className="w-full rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-2 text-sm text-gray-200 outline-none focus:border-sky-500/50"
                 aria-label="输入 Snow basicModel"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             )}
           </div>

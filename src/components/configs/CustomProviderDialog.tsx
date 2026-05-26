@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { X, Save, Trash2 } from "lucide-react"
+import { X, Save, Trash2, Eye, EyeOff, Copy, Check } from "lucide-react"
 import type { ModelConfigRecord } from "./constants"
 
 interface CustomProviderDialogProps {
@@ -22,9 +22,32 @@ export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete
 	const [apiKey, setApiKey] = useState("")
 	const [model, setModel] = useState("")
 	const [saving, setSaving] = useState(false)
+	const [showApiKey, setShowApiKey] = useState(false)
+	const [copiedApiKey, setCopiedApiKey] = useState(false)
+	const [copiedBaseUrl, setCopiedBaseUrl] = useState(false)
 
 	const isEditing = !!config
 	const canSave = name.trim() && baseUrl.trim() && apiKey.trim()
+
+	async function handleCopyApiKey() {
+		try {
+			await navigator.clipboard.writeText(apiKey)
+			setCopiedApiKey(true)
+			setTimeout(() => setCopiedApiKey(false), 2000)
+		} catch {
+			// 复制失败
+		}
+	}
+
+	async function handleCopyBaseUrl() {
+		try {
+			await navigator.clipboard.writeText(baseUrl)
+			setCopiedBaseUrl(true)
+			setTimeout(() => setCopiedBaseUrl(false), 2000)
+		} catch {
+			// 复制失败
+		}
+	}
 
 	useEffect(() => {
 		if (isOpen) {
@@ -93,6 +116,9 @@ export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete
 							onChange={(e) => setName(e.target.value)}
 							placeholder='My Provider'
 							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+							autoCapitalize='off'
+							autoCorrect='off'
+							spellCheck={false}
 						/>
 					</div>
 
@@ -102,13 +128,27 @@ export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete
 							API URL
 							<span className='text-red-400'>*</span>
 						</label>
-						<input
-							type='text'
-							value={baseUrl}
-							onChange={(e) => setBaseUrl(e.target.value)}
-							placeholder='https://api.example.com/v1'
-							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
-						/>
+						<div className='relative'>
+							<input
+								type='text'
+								value={baseUrl}
+								onChange={(e) => setBaseUrl(e.target.value)}
+								placeholder='https://api.example.com/v1'
+								className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 pr-10 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+								autoCapitalize='off'
+								autoCorrect='off'
+								spellCheck={false}
+							/>
+							{baseUrl && (
+								<button
+									type='button'
+									onClick={handleCopyBaseUrl}
+									className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors'
+									title='复制 URL'>
+									{copiedBaseUrl ? <Check className='h-4 w-4 text-green-500' /> : <Copy className='h-4 w-4' />}
+								</button>
+							)}
+						</div>
 					</div>
 
 					{/* API Key */}
@@ -117,13 +157,33 @@ export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete
 							API Key
 							<span className='text-red-400'>*</span>
 						</label>
-						<input
-							type='password'
-							value={apiKey}
-							onChange={(e) => setApiKey(e.target.value)}
-							placeholder='sk-...'
-							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
-						/>
+						<div className='relative'>
+							<input
+								type={showApiKey ? "text" : "password"}
+								value={apiKey}
+								onChange={(e) => setApiKey(e.target.value)}
+								placeholder='sk-...'
+								className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 pr-20 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+							/>
+							<div className='absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1'>
+								<button
+									type='button'
+									onClick={() => setShowApiKey(!showApiKey)}
+									className='p-1 text-gray-500 hover:text-gray-300 transition-colors'
+									title={showApiKey ? "隐藏" : "显示"}>
+									{showApiKey ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
+								</button>
+								{apiKey && (
+									<button
+										type='button'
+										onClick={handleCopyApiKey}
+										className='p-1 text-gray-500 hover:text-gray-300 transition-colors'
+										title='复制 API Key'>
+										{copiedApiKey ? <Check className='h-4 w-4 text-green-500' /> : <Copy className='h-4 w-4' />}
+									</button>
+								)}
+							</div>
+						</div>
 					</div>
 
 					{/* Model */}
@@ -138,6 +198,9 @@ export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete
 							onChange={(e) => setModel(e.target.value)}
 							placeholder='gpt-4o'
 							className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+							autoCapitalize='off'
+							autoCorrect='off'
+							spellCheck={false}
 						/>
 						<p className='text-xs text-gray-500'>留空时，应用到配置将只修改 URL 和 Key，不修改模型字段</p>
 					</div>

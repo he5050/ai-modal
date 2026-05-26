@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { logger } from "@/lib/devlog"
-import { Plus, ExternalLink, Pencil, Trash2, CheckCircle2, ArrowRightLeft } from "lucide-react"
+import {
+	Plus,
+	ExternalLink,
+	Pencil,
+	Trash2,
+	CheckCircle2,
+	ArrowRightLeft,
+	FileSpreadsheet,
+	FileJson,
+} from "lucide-react"
 import {
 	buildConfigGroups,
 	inferConfigFormatFromPath,
@@ -53,6 +62,24 @@ interface Props {
 interface PendingSwitchTarget {
 	groupId: ConfigGroupId
 	fileId: string
+}
+
+// 导出按钮组件
+interface ExportButtonProps {
+	icon: React.ReactNode
+	label: string
+	onClick: () => void
+}
+
+function ExportButton({ icon, label, onClick }: ExportButtonProps) {
+	return (
+		<button
+			onClick={onClick}
+			className='flex items-center gap-1.5 rounded-md bg-gray-800/50 px-2.5 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200'>
+			{icon}
+			{label}
+		</button>
+	)
 }
 
 export function ConfigPage({
@@ -196,6 +223,7 @@ export function ConfigPage({
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,
 		handleApplyCodexShortcutToDraft,
+		handleApplyCodexShortcutAndSave,
 		handleApplyGeminiShortcutToDraft,
 		handleApplySnowShortcutToDraft,
 		handleApplyOpenCodeShortcutToDraft,
@@ -393,6 +421,51 @@ export function ConfigPage({
 
 	async function handleDeleteCustomProviderFromDialog(id: string) {
 		return handleDeleteCustomProvider(id)
+	}
+
+	// 导出自定义 Provider 列表
+	async function handleExportCustomProviders(format: "csv" | "json") {
+		const customProviders = modelConfigs.filter((c) => c.isCustom)
+		if (customProviders.length === 0) {
+			toast("暂无自定义 Provider 可导出", "warning")
+			return
+		}
+
+		try {
+			if (format === "csv") {
+				// CSV 格式：name,baseUrl,apiKey,model,syncedToModels
+				const headers = ["名称", "API URL", "API Key", "模型", "已同步"]
+				const rows = customProviders.map((p) =>
+					[p.name || "", p.baseUrl || "", p.apiKey || "", p.model || "", p.syncedToModels ? "是" : "否"].map((v) => {
+						// 处理包含逗号或引号的值
+						const str = String(v)
+						if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+							return `"${str.replace(/"/g, '""')}"`
+						}
+						return str
+					}),
+				)
+				const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
+				await navigator.clipboard.writeText(csv)
+				toast("已复制到剪贴板 (CSV)", "success")
+			} else {
+				// JSON 格式
+				const data = customProviders.map((p) => ({
+					id: p.id,
+					name: p.name,
+					baseUrl: p.baseUrl,
+					apiKey: p.apiKey,
+					model: p.model,
+					syncedToModels: p.syncedToModels,
+					lastTestResult: p.lastTestResult,
+				}))
+				const json = JSON.stringify(data, null, 2)
+				await navigator.clipboard.writeText(json)
+				toast("已复制到剪贴板 (JSON)", "success")
+			}
+		} catch (e) {
+			toast("导出失败: " + String(e), "error")
+		}
 	}
 
 	// 应用自定义 Provider 到配置
@@ -611,6 +684,19 @@ export function ConfigPage({
 											<div className='text-sm text-gray-500'>暂无自定义 Provider，点击下方按钮添加。</div>
 										) : (
 											<div className='space-y-2'>
+												{/* 导出按钮 */}
+												<div className='flex items-center justify-end gap-2'>
+													<ExportButton
+														icon={<FileSpreadsheet className='h-3.5 w-3.5' />}
+														label='导出 CSV'
+														onClick={() => handleExportCustomProviders("csv")}
+													/>
+													<ExportButton
+														icon={<FileJson className='h-3.5 w-3.5' />}
+														label='导出 JSON'
+														onClick={() => handleExportCustomProviders("json")}
+													/>
+												</div>
 												{modelConfigs
 													.filter((c) => c.isCustom)
 													.map((config) => (
@@ -767,13 +853,33 @@ export function ConfigPage({
 				<CodexApplyModal
 					providerName={activeApplyProvider.providerName}
 					availableModels={
-						fetchedModelsFromApi.length > 0
-							? fetchedModelsFromApi
-							: activeApplyProvider.models.map((item) => item.model)
+						// 优先使用从 API 获取的模型列表（过滤空值）
+						fetchedModelsFromApi.filter((m) => m && m.trim()).length > 0
+							? fetchedModelsFromApi.filter((m) => m && m.trim())
+							: // 如果 Provider 本身有模型（过滤空值），使用 Provider 的模型
+								activeApplyProvider.models.filter((item) => item.model && item.model.trim()).length > 0
+								? activeApplyProvider.models.filter((item) => item.model && item.model.trim()).map((item) => item.model)
+								: // 否则返回空数组，触发手动输入模式
+									[]
 					}
 					selectedModel={selectedCodexApplyModel}
 					onChange={setSelectedCodexApplyModel}
 					onConfirm={() => void handleApplyCodexShortcutToDraft()}
+					onConfirmAndSave={async () => {
+						// 1. 应用配置到草稿并保存 API Key 到 zshrc
+						await handleApplyCodexShortcutAndSave()
+						// 2. 自动保存配置文件到磁盘（使用最新的草稿内容）
+						const configTomlFile = selectedGroup?.files.find((file) => file.id === "codex")
+						const authJsonFile = selectedGroup?.files.find((file) => file.id === "codex::auth.json")
+						// 延迟一点确保草稿已更新
+						await new Promise((resolve) => setTimeout(resolve, 100))
+						if (configTomlFile) {
+							await saveFileContent(configTomlFile, draftsByFileId[configTomlFile.id]?.contentDraft ?? "", onUpsertPath)
+						}
+						if (authJsonFile) {
+							await saveFileContent(authJsonFile, draftsByFileId[authJsonFile.id]?.contentDraft ?? "", onUpsertPath)
+						}
+					}}
 					onCancel={() => setCodexApplyModalOpen(false)}
 					apiKey={codexApiKey}
 					onApiKeyChange={setCodexApiKey}

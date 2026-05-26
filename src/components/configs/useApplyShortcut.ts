@@ -70,23 +70,37 @@ export function useApplyShortcut({
 	const [snowApplyModalOpen, setSnowApplyModalOpen] = useState(false)
 	const [openCodeApplyModalOpen, setOpenCodeApplyModalOpen] = useState(false)
 	const [selectedCodexApplyModel, setSelectedCodexApplyModel] = useState<string>("")
+	const [selectedGeminiApplyModel, setSelectedGeminiApplyModel] = useState<string>("")
+	const [selectedSnowRequestMethod, setSelectedSnowRequestMethod] = useState<SnowRequestMethod>("responses")
+	const [selectedSnowAdvancedModel, setSelectedSnowAdvancedModel] = useState<string>("")
+	const [selectedSnowBasicModel, setSelectedSnowBasicModel] = useState<string>("")
+	const [selectedOpenCodeModels, setSelectedOpenCodeModels] = useState<string[]>([])
+	const [claudeEnvSelection, setClaudeEnvSelection] = useState<Record<ClaudeEnvModelField, string>>({
+		ANTHROPIC_MODEL: "",
+		ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
+		ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+		ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+	})
+	// 保存当前应用的 Provider 和模型数据（用于自定义 Provider）
+	const [activeApplyProvider, setActiveApplyProvider] = useState<AvailableProvider | null>(null)
+	const [activeApplyModel, setActiveApplyModel] = useState<AvailableModel | null>(null)
+	// 从 v1/models 接口获取的模型列表（当自定义 Provider 模型为空时使用）
+	const [fetchedModelsFromApi, setFetchedModelsFromApi] = useState<string[]>([])
+	const [isFetchingModels, setIsFetchingModels] = useState(false)
 
-	// Codex API Key 管理
+	// Codex API Key 管理 - 从当前 Provider 自动填充
 	const [codexApiKey, setCodexApiKey] = useState<string>("")
 	const [isSavingCodexKey, setIsSavingCodexKey] = useState(false)
 
-	// 加载已保存的 Codex API Key
+	// 当弹窗打开时，从当前 Provider 获取 API Key
 	useEffect(() => {
 		if (codexApplyModalOpen) {
-			getCodexApiKey()
-				.then((key) => {
-					setCodexApiKey(key ?? "")
-				})
-				.catch(() => {
-					setCodexApiKey("")
-				})
+			// 优先从 activeApplyProvider（自定义 Provider）或 selectedAvailableProvider 获取 apiKey
+			const providerToUse = activeApplyProvider ?? selectedAvailableProvider
+			const apiKeyFromProvider = providerToUse?.models[0]?.apiKey ?? ""
+			setCodexApiKey(apiKeyFromProvider)
 		}
-	}, [codexApplyModalOpen])
+	}, [codexApplyModalOpen, activeApplyProvider, selectedAvailableProvider])
 
 	async function handleSaveCodexApiKey() {
 		if (!codexApiKey.trim()) return
@@ -121,23 +135,6 @@ export function useApplyShortcut({
 			setIsSavingCodexKey(false)
 		}
 	}
-	const [selectedGeminiApplyModel, setSelectedGeminiApplyModel] = useState<string>("")
-	const [selectedSnowRequestMethod, setSelectedSnowRequestMethod] = useState<SnowRequestMethod>("responses")
-	const [selectedSnowAdvancedModel, setSelectedSnowAdvancedModel] = useState<string>("")
-	const [selectedSnowBasicModel, setSelectedSnowBasicModel] = useState<string>("")
-	const [selectedOpenCodeModels, setSelectedOpenCodeModels] = useState<string[]>([])
-	const [claudeEnvSelection, setClaudeEnvSelection] = useState<Record<ClaudeEnvModelField, string>>({
-		ANTHROPIC_MODEL: "",
-		ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
-		ANTHROPIC_DEFAULT_SONNET_MODEL: "",
-		ANTHROPIC_DEFAULT_OPUS_MODEL: "",
-	})
-	// 保存当前应用的 Provider 和模型数据（用于自定义 Provider）
-	const [activeApplyProvider, setActiveApplyProvider] = useState<AvailableProvider | null>(null)
-	const [activeApplyModel, setActiveApplyModel] = useState<AvailableModel | null>(null)
-	// 从 v1/models 接口获取的模型列表（当自定义 Provider 模型为空时使用）
-	const [fetchedModelsFromApi, setFetchedModelsFromApi] = useState<string[]>([])
-	const [isFetchingModels, setIsFetchingModels] = useState(false)
 
 	function handleOpenClaudeApplyModal() {
 		if (!selectedAvailableModel || !selectedAvailableProvider || !isClaudeSettingsShortcutTarget) {
@@ -251,6 +248,31 @@ export function useApplyShortcut({
 		} catch (error) {
 			logger.error("Failed to apply Codex shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
+		}
+	}
+
+	// 应用 Codex 配置并保存 API Key 到 ~/.zshrc
+	async function handleApplyCodexShortcutAndSave() {
+		if (!codexApiKey.trim()) {
+			toast("请先输入 API Key", "warning")
+			return
+		}
+		setIsSavingCodexKey(true)
+		try {
+			// 先保存 API Key 到 ~/.zshrc
+			const saveResult = await saveCodexApiKey(codexApiKey.trim())
+			if (!saveResult.success) {
+				toast(saveResult.message, "error")
+				setIsSavingCodexKey(false)
+				return
+			}
+			// 再应用配置到草稿
+			await handleApplyCodexShortcutToDraft()
+			toast("已应用配置并保存 API Key", "success")
+		} catch (e) {
+			toast("保存失败: " + String(e), "error")
+		} finally {
+			setIsSavingCodexKey(false)
 		}
 	}
 
@@ -573,6 +595,7 @@ export function useApplyShortcut({
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,
 		handleApplyCodexShortcutToDraft,
+		handleApplyCodexShortcutAndSave,
 		handleApplyGeminiShortcutToDraft,
 		handleApplySnowShortcutToDraft,
 		handleApplyOpenCodeShortcutToDraft,
