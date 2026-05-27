@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { logger } from "@/lib/devlog"
 import { formatConfigContent } from "@/lib/configFormatter"
-import { listModels, getCodexApiKey, setCodexApiKey as saveCodexApiKey, removeCodexApiKey } from "@/api"
+import { listModels, setCodexApiKey as saveCodexApiKey, removeCodexApiKey } from "@/api"
 import {
 	buildClaudeWritebackUrl,
 	buildGeminiWritebackUrl,
@@ -49,6 +49,7 @@ interface UseApplyShortcutOptions {
 	updateDraftState: (fileId: string, patch: Partial<FileDraftState>) => void
 	ensureFileDraftState: (file: ConfigGroupFileView | null) => Promise<FileDraftState | null>
 	saveFileContent?: (file: ConfigGroupFileView, content: string) => Promise<boolean>
+	onApplySuccess?: () => void // 应用成功后的回调
 }
 
 export function useApplyShortcut({
@@ -65,6 +66,7 @@ export function useApplyShortcut({
 	updateDraftState,
 	ensureFileDraftState,
 	saveFileContent,
+	onApplySuccess,
 }: UseApplyShortcutOptions) {
 	const [claudeApplyModalOpen, setClaudeApplyModalOpen] = useState(false)
 	const [codexApplyModalOpen, setCodexApplyModalOpen] = useState(false)
@@ -184,17 +186,18 @@ export function useApplyShortcut({
 				contentDraft: formatted.formatted,
 			})
 			setClaudeApplyModalOpen(false)
-			toast("已将 Claude 模型映射应用到当前草稿", "success")
-		} catch (error) {
-			logger.error("Failed to apply Claude shortcut config", error)
-			toast(
-				error instanceof Error ? `应用失败：${error.message}` : "应用失败，请先确保当前 settings.json 是合法 JSON",
-				"error",
-			)
-		}
+		toast("已将 Claude 模型映射应用到当前草稿", "success")
+		onApplySuccess?.()
+	} catch (error) {
+		logger.error("Failed to apply Claude shortcut config", error)
+		toast(
+			error instanceof Error ? `应用失败：${error.message}` : "应用失败，请先确保当前 settings.json 是合法 JSON",
+			"error",
+		)
 	}
+}
 
-	// 应用 Claude 配置并直接保存到磁盘（跳过草稿）
+// 应用 Claude 配置并直接保存到磁盘（跳过草稿）
 	async function handleApplyClaudeShortcutDirectSave() {
 		if (!saveFileContent) {
 			toast("保存功能未初始化", "error")
@@ -232,15 +235,16 @@ export function useApplyShortcut({
 			})
 
 			setClaudeApplyModalOpen(false)
-			toast("已将 Claude 配置保存到磁盘", "success")
-		} catch (error) {
-			logger.error("Failed to apply and save Claude config", error)
-			toast(
-				error instanceof Error ? `保存失败：${error.message}` : "保存失败，请先确保当前 settings.json 是合法 JSON",
-				"error",
-			)
-		}
+		toast("已将 Claude 配置保存到磁盘", "success")
+		onApplySuccess?.()
+	} catch (error) {
+		logger.error("Failed to apply and save Claude config", error)
+		toast(
+			error instanceof Error ? `保存失败：${error.message}` : "保存失败，请先确保当前 settings.json 是合法 JSON",
+			"error",
+		)
 	}
+}
 
 	async function handleApplyCodexShortcutToDraft() {
 		// 优先使用 activeApplyProvider（自定义 Provider），否则使用 selectedAvailableProvider
@@ -262,9 +266,10 @@ export function useApplyShortcut({
 			if (parsedConfig == null || Array.isArray(parsedConfig) || typeof parsedConfig !== "object") {
 				throw new Error("当前 config.toml 顶层不是对象")
 			}
-			const nextConfig = {
+			// 只有当模型不为空时才应用到配置
+			const hasModel = selectedCodexApplyModel && selectedCodexApplyModel.trim() !== ""
+			const nextConfig: Record<string, unknown> = {
 				...(parsedConfig as Record<string, unknown>),
-				model: selectedCodexApplyModel,
 				model_provider: "codex",
 				model_providers: {
 					...(((parsedConfig as Record<string, unknown>).model_providers as Record<string, unknown> | undefined) ?? {}),
@@ -276,6 +281,10 @@ export function useApplyShortcut({
 						wire_api: "responses",
 					},
 				},
+			}
+			// 仅当模型不为空时才设置 model 字段
+			if (hasModel) {
+				nextConfig.model = selectedCodexApplyModel
 			}
 			const formattedToml = await formatConfigContent(tomlModule.stringify(nextConfig), "toml")
 			updateDraftState(configTomlFile.id, {
@@ -295,6 +304,7 @@ export function useApplyShortcut({
 			})
 			setCodexApplyModalOpen(false)
 			toast("已将 Codex 配置应用到当前草稿", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply Codex shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
@@ -372,9 +382,10 @@ export function useApplyShortcut({
 			if (parsedConfig == null || Array.isArray(parsedConfig) || typeof parsedConfig !== "object") {
 				throw new Error("当前 config.toml 顶层不是对象")
 			}
-			const nextConfig = {
+			// 只有当模型不为空时才应用到配置
+			const hasModel = selectedCodexApplyModel && selectedCodexApplyModel.trim() !== ""
+			const nextConfig: Record<string, unknown> = {
 				...(parsedConfig as Record<string, unknown>),
-				model: selectedCodexApplyModel,
 				model_provider: "codex",
 				model_providers: {
 					...(((parsedConfig as Record<string, unknown>).model_providers as Record<string, unknown> | undefined) ?? {}),
@@ -386,6 +397,10 @@ export function useApplyShortcut({
 						wire_api: "responses",
 					},
 				},
+			}
+			// 仅当模型不为空时才设置 model 字段
+			if (hasModel) {
+				nextConfig.model = selectedCodexApplyModel
 			}
 			const formattedToml = await formatConfigContent(tomlModule.stringify(nextConfig), "toml")
 
@@ -417,6 +432,7 @@ export function useApplyShortcut({
 
 			setCodexApplyModalOpen(false)
 			toast("已应用配置并保存到磁盘", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply and save Codex config", error)
 			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
@@ -489,6 +505,7 @@ export function useApplyShortcut({
 			})
 			setGeminiApplyModalOpen(false)
 			toast("已将 Gemini 配置应用到当前草稿", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply Gemini shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
@@ -571,6 +588,7 @@ export function useApplyShortcut({
 
 			setGeminiApplyModalOpen(false)
 			toast("已将 Gemini 配置保存到磁盘", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply and save Gemini config", error)
 			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
@@ -616,6 +634,7 @@ export function useApplyShortcut({
 			})
 			setSnowApplyModalOpen(false)
 			toast("已将 Snow 配置应用到当前草稿", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply Snow shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
@@ -672,6 +691,7 @@ export function useApplyShortcut({
 
 			setSnowApplyModalOpen(false)
 			toast("已将 Snow 配置保存到磁盘", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply and save Snow config", error)
 			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
@@ -726,6 +746,7 @@ export function useApplyShortcut({
 			})
 			setOpenCodeApplyModalOpen(false)
 			toast("已将 OpenCode 配置应用到当前草稿", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply OpenCode shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
@@ -785,6 +806,7 @@ export function useApplyShortcut({
 
 			setOpenCodeApplyModalOpen(false)
 			toast("已将 OpenCode 配置保存到磁盘", "success")
+			onApplySuccess?.()
 		} catch (error) {
 			logger.error("Failed to apply and save OpenCode config", error)
 			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")

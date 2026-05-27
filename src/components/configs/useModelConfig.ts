@@ -238,6 +238,20 @@ export function useModelConfig() {
 		return true
 	}
 
+	/**
+	 * 更新自定义 Provider 的字段并持久化
+	 */
+	async function updateCustomProvider(id: string, patch: Partial<ModelConfigRecord>): Promise<boolean> {
+		const config = modelConfigs.find((item) => item.id === id)
+		if (!config) return false
+
+		const next = modelConfigs.map((item) => (item.id === id ? { ...item, ...patch } : item))
+		setModelConfigs(next)
+		setSavedModelConfigs(next)
+		await savePersistedJson(MODEL_CONFIGS_DB_KEY, next, MODEL_CONFIGS_KEY)
+		return true
+	}
+
 	async function handleTestCurrentModelConfig() {
 		if (!selectedModelConfig?.baseUrl || !selectedModelConfig.apiKey || !selectedModelConfig.model) return
 		setTestingModelConfig(true)
@@ -288,5 +302,6 @@ export function useModelConfig() {
 		handleDeleteCustomProvider,
 		handleTestCurrentModelConfig,
 		updateSelectedModelConfig,
+		updateCustomProvider,
 	}
 }

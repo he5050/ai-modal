@@ -12,6 +12,7 @@ import {
 	ChevronDown,
 	ChevronUp,
 	Upload,
+	Play,
 } from "lucide-react"
 import {
 	buildConfigGroups,
@@ -28,7 +29,7 @@ import {
 	BUTTON_SIZE_MD_CLASS,
 	BUTTON_SIZE_XS_CLASS,
 } from "@/lib/buttonStyles"
-import { FIELD_SELECT_CLASS, FIELD_MONO_INPUT_CLASS } from "@/lib/formStyles"
+import { FIELD_SELECT_CLASS } from "@/lib/formStyles"
 import type { ConfigGroupId, ConfigPath, Provider } from "@/types"
 import { HintTooltip } from "./HintTooltip"
 
@@ -50,6 +51,9 @@ import { ConfigToolbar } from "./configs/components/ConfigToolbar"
 import { ConfigFileTabs } from "./configs/components/ConfigFileTabs"
 import { ConfigEditorPanel } from "./configs/components/ConfigEditorPanel"
 import type { ModelConfigRecord } from "./configs/constants"
+import { ModelSelectionDialog } from "./models/components/ModelSelectionDialog"
+import { listModelsByProvider, testSingleModelByProvider } from "@/api"
+import type { ModelResult } from "@/types"
 
 interface Props {
 	providers: Provider[]
@@ -112,6 +116,15 @@ export function ConfigPage({
 	const [existingSyncProvider, setExistingSyncProvider] = useState<Provider | null>(null)
 	const [customSectionExpanded, setCustomSectionExpanded] = useState(true)
 
+	// 测试相关状态
+	const [testDialogOpen, setTestDialogOpen] = useState(false)
+	const [testingConfig, setTestingConfig] = useState<ModelConfigRecord | null>(null)
+	const [testDialogModels, setTestDialogModels] = useState<string[]>([])
+	const [testDialogLoading, setTestDialogLoading] = useState(false)
+	const [testDialogError, setTestDialogError] = useState<string | null>(null)
+	const [testingModel, setTestingModel] = useState(false)
+	const [testResult, setTestResult] = useState<ModelResult | null>(null)
+
 	const {
 		modelConfigs,
 		selectedModelConfig,
@@ -126,6 +139,8 @@ export function ConfigPage({
 		handleDeleteCustomProvider,
 		handleTestCurrentModelConfig,
 		updateSelectedModelConfig,
+		setModelConfigs,
+		updateCustomProvider,
 	} = useModelConfig()
 
 	const {
@@ -264,6 +279,14 @@ export function ConfigPage({
 		updateDraftState,
 		ensureFileDraftState,
 		saveFileContent: async (file, content) => saveFileContent(file, content, onUpsertPath),
+		onApplySuccess: () => {
+			// 更新当前应用的 Provider 的 lastAppliedAt
+			if (pendingApplyConfig) {
+				void updateCustomProvider(pendingApplyConfig.id, { lastAppliedAt: Date.now() })
+				// 清空 pendingApplyConfig
+				setPendingApplyConfig(null)
+			}
+		},
 	})
 
 	async function handleFormat() {
@@ -617,9 +640,9 @@ export function ConfigPage({
 
 		// 关闭确认弹窗
 		setApplyConfirmOpen(false)
-		setPendingApplyConfig(null)
 
 		// 调用快捷模型应用逻辑（使用外部数据）
+		// 注意：这里不清空 pendingApplyConfig，因为 onApplySuccess 回调需要用到它
 		void handleApplyShortcutWithData(mockAvailableModel, mockAvailableProvider)
 	}
 
@@ -684,6 +707,95 @@ export function ConfigPage({
 		setSyncConfirmOpen(false)
 		setPendingSyncConfig(null)
 		setExistingSyncProvider(null)
+	}
+
+	// ─── 测试功能 ───
+
+	async function handleOpenTestDialog(config: ModelConfigRecord) {
+		setTestingConfig(config)
+		setTestDialogOpen(true)
+		setTestDialogLoading(true)
+		setTestDialogError(null)
+		setTestDialogModels([])
+
+		try {
+			const models = await listModelsByProvider(config.baseUrl, config.apiKey)
+			setTestDialogModels(models)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			setTestDialogError(message)
+			logger.error("Failed to fetch models for test", error)
+		} finally {
+			setTestDialogLoading(false)
+		}
+	}
+
+	function handleCloseTestDialog() {
+		setTestDialogOpen(false)
+		setTestingConfig(null)
+		setTestDialogModels([])
+		setTestDialogError(null)
+		setTestResult(null)
+	}
+
+	async function handleTestConfirm(selectedModels: string[], protocols: string[]) {
+		if (!testingConfig || selectedModels.length === 0) return
+
+		setTestingModel(true)
+		setTestResult(null)
+
+		try {
+			// 使用第一个选中的模型进行测试
+			const modelToTest = selectedModels[0]
+			const result = await testSingleModelByProvider(
+				testingConfig.baseUrl,
+				testingConfig.apiKey,
+				modelToTest,
+				protocols.length > 0 ? protocols : undefined
+			)
+
+			setTestResult(result)
+
+			// 更新配置中的测试结果
+			await updateCustomProvider(testingConfig.id, {
+				lastTestResult: result,
+				lastTestAt: Date.now(),
+				model: modelToTest,
+			})
+
+			toast(
+				result.available ? `测试通过：${modelToTest}` : `测试失败：${modelToTest}`,
+				result.available ? "success" : "warning"
+			)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			toast(`测试失败：${message}`, "error")
+			logger.error("Test failed", error)
+		} finally {
+			setTestingModel(false)
+		}
+	}
+
+	function formatLastTestAt(timestamp: number | null | undefined): string {
+		if (!timestamp) return "未测试"
+		const date = new Date(timestamp)
+		return date.toLocaleString("zh-CN", {
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		})
+	}
+
+	function formatLastAppliedAt(timestamp: number | null | undefined): string {
+		if (!timestamp) return "未应用"
+		const date = new Date(timestamp)
+		return date.toLocaleString("zh-CN", {
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		})
 	}
 
 	// ─── Render ───
@@ -858,78 +970,87 @@ export function ConfigPage({
 													<div className='text-sm text-gray-500'>暂无自定义 Provider，点击上方"新增"按钮添加。</div>
 												) : (
 													modelConfigs
-														.filter((c) => c.isCustom)
-														.map((config) => (
-															<div
-																key={config.id}
-																className='flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2'>
-																<div className='min-w-0 flex-1'>
-																	<div className='flex items-center gap-2'>
-																		<span className='truncate text-sm font-medium text-gray-200'>
-																			{config.name || config.model || "未命名"}
-																		</span>
-																		{config.syncedToModels && (
-																			<span className='shrink-0 rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] text-green-400'>
-																				已同步
+															.filter((c) => c.isCustom)
+															.map((config) => (
+																<div
+																	key={config.id}
+																	className='flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2'>
+																	<div className='min-w-0 flex-1'>
+																		<div className='flex items-center gap-2'>
+																			<span className='truncate text-sm font-medium text-gray-200'>
+																				{config.name || config.model || "未命名"}
 																			</span>
-																		)}
-																		{config.lastTestResult?.available && (
-																			<CheckCircle2 className='h-3.5 w-3.5 text-green-400' />
-																		)}
+																			{config.syncedToModels && (
+																				<span className='shrink-0 rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] text-green-400'>
+																					已同步
+																				</span>
+																			)}
+																			{config.lastTestResult?.available && (
+																				<CheckCircle2 className='h-3.5 w-3.5 text-green-400' />
+																			)}
+																		</div>
+																		<div className='mt-0.5 flex items-center gap-2 text-xs text-gray-500'>
+																			<a
+																				href={config.baseUrl}
+																				target='_blank'
+																				rel='noopener noreferrer'
+																				className='truncate font-mono text-indigo-400 hover:text-indigo-300 hover:underline'
+																				onClick={(e) => e.stopPropagation()}>
+																				{config.baseUrl}
+																			</a>
+																			{config.model && <span className='text-gray-600'>| {config.model}</span>}
+																				<span className='text-gray-600'>
+																					| 应用: {formatLastAppliedAt(config.lastAppliedAt)}
+																				</span>
+																		</div>
 																	</div>
-																	<div className='mt-0.5 flex items-center gap-2 text-xs text-gray-500'>
+																	<div className='ml-3 flex items-center gap-1'>
+																		<button
+																			onClick={() => handleOpenTestDialog(config)}
+																			className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-blue-400'
+																			title='测试'>
+																			<Play className='h-3.5 w-3.5' />
+																		</button>
 																		<a
 																			href={config.baseUrl}
 																			target='_blank'
 																			rel='noopener noreferrer'
-																			className='truncate font-mono text-indigo-400 hover:text-indigo-300 hover:underline'
-																			onClick={(e) => e.stopPropagation()}>
-																			{config.baseUrl}
+																			className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-indigo-400'
+																			title='访问 URL'>
+																			<ExternalLink className='h-3.5 w-3.5' />
 																		</a>
-																		{config.model && <span className='text-gray-600'>| {config.model}</span>}
+																		<button
+																			onClick={() => handleOpenCustomProviderDialog(config)}
+																			className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200'
+																			title='编辑'>
+																			<Pencil className='h-3.5 w-3.5' />
+																		</button>
+																		<button
+																			onClick={() => handleDeleteCustomProviderFromDialog(config.id)}
+																			className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400'
+																			title='删除'>
+																			<Trash2 className='h-3.5 w-3.5' />
+																		</button>
+																		<button
+																			onClick={() => handleSyncCustomProvider(config)}
+																			className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-green-400'
+																			title='同步到模型列表'>
+																			<ArrowRightLeft className='h-3.5 w-3.5' />
+																		</button>
+																		{(isClaudeSettingsShortcutTarget ||
+																			isCodexShortcutTarget ||
+																			isGeminiShortcutTarget ||
+																			isSnowShortcutTarget ||
+																			isOpenCodeShortcutTarget) && (
+																			<button
+																				onClick={() => handleApplyCustomProvider(config)}
+																				className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} ml-1`}>
+																				应用
+																			</button>
+																		)}
 																	</div>
 																</div>
-																<div className='ml-3 flex items-center gap-1'>
-																	<a
-																		href={config.baseUrl}
-																		target='_blank'
-																		rel='noopener noreferrer'
-																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-indigo-400'
-																		title='访问 URL'>
-																		<ExternalLink className='h-3.5 w-3.5' />
-																	</a>
-																	<button
-																		onClick={() => handleOpenCustomProviderDialog(config)}
-																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200'
-																		title='编辑'>
-																		<Pencil className='h-3.5 w-3.5' />
-																	</button>
-																	<button
-																		onClick={() => handleDeleteCustomProviderFromDialog(config.id)}
-																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400'
-																		title='删除'>
-																		<Trash2 className='h-3.5 w-3.5' />
-																	</button>
-																	<button
-																		onClick={() => handleSyncCustomProvider(config)}
-																		className='flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-green-400'
-																		title='同步到模型列表'>
-																		<ArrowRightLeft className='h-3.5 w-3.5' />
-																	</button>
-																	{(isClaudeSettingsShortcutTarget ||
-																		isCodexShortcutTarget ||
-																		isGeminiShortcutTarget ||
-																		isSnowShortcutTarget ||
-																		isOpenCodeShortcutTarget) && (
-																		<button
-																			onClick={() => handleApplyCustomProvider(config)}
-																			className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} ml-1`}>
-																			应用
-																		</button>
-																	)}
-																</div>
-															</div>
-														))
+															))
 												)}
 											</div>
 										)}
@@ -1127,6 +1248,19 @@ export function ConfigPage({
 					secondaryLabel='取消'
 					onPrimary={confirmSyncCustomProvider}
 					onSecondary={cancelSyncCustomProvider}
+				/>
+			)}
+
+			{/* 测试模型选择弹窗 */}
+			{testDialogOpen && (
+				<ModelSelectionDialog
+					models={testDialogModels}
+					loading={testDialogLoading}
+					fetchError={testDialogError}
+					onConfirm={handleTestConfirm}
+					onManualConfirm={(models, protocols) => handleTestConfirm(models, protocols)}
+					onClose={handleCloseTestDialog}
+					onRetry={() => testingConfig && void handleOpenTestDialog(testingConfig)}
 				/>
 			)}
 		</div>

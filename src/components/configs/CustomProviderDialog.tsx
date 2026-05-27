@@ -164,6 +164,9 @@ export function CustomProviderDialog({ isOpen, config, onClose, onSave, onDelete
 								onChange={(e) => setApiKey(e.target.value)}
 								placeholder='sk-...'
 								className='h-10 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 pr-20 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-indigo-500/80'
+								autoCapitalize='off'
+								autoCorrect='off'
+								spellCheck={false}
 							/>
 							<div className='absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1'>
 								<button

@@ -435,6 +435,9 @@ export function ModelSelectionDialog({
             placeholder={"gpt-4o\nclaude-3-5-sonnet\ngemini-2.0-flash"}
             rows={5}
             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-mono text-gray-200 placeholder-gray-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-none"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </div>
         <div className="flex items-center justify-end gap-2">

@@ -7,7 +7,8 @@ export interface ModelConfigRecord {
 	apiKey: string
 	model: string
 	lastTestResult?: ModelResult | null
-	lastTestAt?: number | null
+	lastTestAt?: number | null // 上次测试时间
+	lastAppliedAt?: number | null // 上次应用时间（应用到配置）
 	isCustom?: boolean // 标记是否为自定义Provider
 	syncedToModels?: boolean // 标记是否已同步到模型列表
 }
