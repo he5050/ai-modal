@@ -49,6 +49,7 @@ export function ClaudeApplyModal({
   selection,
   onChange,
   onConfirm,
+  onConfirmAndSave,
   onCancel,
 }: {
   providerName: string;
@@ -56,6 +57,7 @@ export function ClaudeApplyModal({
   selection: Record<ClaudeEnvModelField, string>;
   onChange: (field: ClaudeEnvModelField, value: string) => void;
   onConfirm: () => void;
+  onConfirmAndSave?: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -137,10 +139,18 @@ export function ClaudeApplyModal({
           </button>
           <button
             onClick={onConfirm}
-            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
-            应用到草稿
+            仅应用到草稿
           </button>
+          {onConfirmAndSave && (
+            <button
+              onClick={onConfirmAndSave}
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              应用并保存
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -327,6 +337,7 @@ export function GeminiApplyModal({
   selectedModel,
   onChange,
   onConfirm,
+  onConfirmAndSave,
   onCancel,
 }: {
   providerName: string;
@@ -334,6 +345,7 @@ export function GeminiApplyModal({
   selectedModel: string;
   onChange: (value: string) => void;
   onConfirm: () => void;
+  onConfirmAndSave?: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -409,10 +421,18 @@ export function GeminiApplyModal({
           </button>
           <button
             onClick={onConfirm}
-            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
-            应用到草稿
+            仅应用到草稿
           </button>
+          {onConfirmAndSave && (
+            <button
+              onClick={onConfirmAndSave}
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              应用并保存
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -432,6 +452,7 @@ export function SnowApplyModal({
   onAdvancedModelChange,
   onBasicModelChange,
   onConfirm,
+  onConfirmAndSave,
   onCancel,
 }: {
   providerName: string;
@@ -444,6 +465,7 @@ export function SnowApplyModal({
   onAdvancedModelChange: (value: string) => void;
   onBasicModelChange: (value: string) => void;
   onConfirm: () => void;
+  onConfirmAndSave?: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -566,10 +588,18 @@ export function SnowApplyModal({
           </button>
           <button
             onClick={onConfirm}
-            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
-            应用到草稿
+            仅应用到草稿
           </button>
+          {onConfirmAndSave && (
+            <button
+              onClick={onConfirmAndSave}
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              应用并保存
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -584,6 +614,7 @@ export function OpenCodeApplyModal({
   selectedModels,
   onToggle,
   onConfirm,
+  onConfirmAndSave,
   onCancel,
 }: {
   providerName: string;
@@ -591,6 +622,7 @@ export function OpenCodeApplyModal({
   selectedModels: string[];
   onToggle: (model: string) => void;
   onConfirm: () => void;
+  onConfirmAndSave?: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -648,10 +680,18 @@ export function OpenCodeApplyModal({
           </button>
           <button
             onClick={onConfirm}
-            className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
-            应用到草稿
+            仅应用到草稿
           </button>
+          {onConfirmAndSave && (
+            <button
+              onClick={onConfirmAndSave}
+              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
+            >
+              应用并保存
+            </button>
+          )}
         </div>
       </div>
     </div>

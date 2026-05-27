@@ -226,11 +226,15 @@ export function ConfigPage({
 		claudeEnvSelection,
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,
+		handleApplyClaudeShortcutDirectSave,
 		handleApplyCodexShortcutToDraft,
 		handleApplyCodexShortcutDirectSave,
 		handleApplyGeminiShortcutToDraft,
+		handleApplyGeminiShortcutDirectSave,
 		handleApplySnowShortcutToDraft,
+		handleApplySnowShortcutDirectSave,
 		handleApplyOpenCodeShortcutToDraft,
+		handleApplyOpenCodeShortcutDirectSave,
 		handleToggleOpenCodeModel,
 		handleApplyShortcut,
 		handleApplyShortcutWithData,
@@ -996,6 +1000,7 @@ export function ConfigPage({
 					selection={claudeEnvSelection}
 					onChange={handleClaudeEnvFieldChange}
 					onConfirm={() => void handleApplyClaudeShortcutToDraft()}
+					onConfirmAndSave={() => void handleApplyClaudeShortcutDirectSave()}
 					onCancel={() => setClaudeApplyModalOpen(false)}
 				/>
 			)}
@@ -1040,6 +1045,7 @@ export function ConfigPage({
 					selectedModel={selectedGeminiApplyModel}
 					onChange={setSelectedGeminiApplyModel}
 					onConfirm={() => void handleApplyGeminiShortcutToDraft()}
+					onConfirmAndSave={() => void handleApplyGeminiShortcutDirectSave()}
 					onCancel={() => setGeminiApplyModalOpen(false)}
 				/>
 			)}
@@ -1060,6 +1066,7 @@ export function ConfigPage({
 					onAdvancedModelChange={setSelectedSnowAdvancedModel}
 					onBasicModelChange={setSelectedSnowBasicModel}
 					onConfirm={() => void handleApplySnowShortcutToDraft()}
+					onConfirmAndSave={() => void handleApplySnowShortcutDirectSave()}
 					onCancel={() => setSnowApplyModalOpen(false)}
 				/>
 			)}
@@ -1075,6 +1082,7 @@ export function ConfigPage({
 					selectedModels={selectedOpenCodeModels}
 					onToggle={handleToggleOpenCodeModel}
 					onConfirm={() => void handleApplyOpenCodeShortcutToDraft()}
+					onConfirmAndSave={() => void handleApplyOpenCodeShortcutDirectSave()}
 					onCancel={() => setOpenCodeApplyModalOpen(false)}
 				/>
 			)}

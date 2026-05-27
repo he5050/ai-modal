@@ -194,6 +194,54 @@ export function useApplyShortcut({
 		}
 	}
 
+	// 应用 Claude 配置并直接保存到磁盘（跳过草稿）
+	async function handleApplyClaudeShortcutDirectSave() {
+		if (!saveFileContent) {
+			toast("保存功能未初始化", "error")
+			return
+		}
+		if (!selectedFile || !selectedAvailableModel || !selectedAvailableProvider || !isClaudeSettingsShortcutTarget) {
+			return
+		}
+		try {
+			const currentContent = activeContentDraft.trim()
+			const parsed = currentContent.length > 0 ? JSON.parse(currentContent) : {}
+			if (parsed == null || Array.isArray(parsed) || typeof parsed !== "object") {
+				throw new Error("当前 settings.json 顶层不是对象")
+			}
+			const root = { ...parsed } as Record<string, unknown>
+			const currentEnv =
+				root.env && typeof root.env === "object" && !Array.isArray(root.env)
+					? { ...(root.env as Record<string, unknown>) }
+					: {}
+			currentEnv.ANTHROPIC_BASE_URL = buildClaudeWritebackUrl(selectedAvailableModel.baseUrl)
+			currentEnv.ANTHROPIC_AUTH_TOKEN = selectedAvailableModel.apiKey
+			for (const field of CLAUDE_ENV_MODEL_FIELDS) {
+				currentEnv[field] = claudeEnvSelection[field]
+			}
+			root.env = currentEnv
+			const formatted = await formatConfigContent(JSON.stringify(root), "json")
+
+			// 直接保存到磁盘
+			await saveFileContent(selectedFile, formatted.formatted)
+
+			// 更新草稿状态以保持一致
+			updateDraftState(selectedFile.id, {
+				contentDraft: formatted.formatted,
+				savedContent: formatted.formatted,
+			})
+
+			setClaudeApplyModalOpen(false)
+			toast("已将 Claude 配置保存到磁盘", "success")
+		} catch (error) {
+			logger.error("Failed to apply and save Claude config", error)
+			toast(
+				error instanceof Error ? `保存失败：${error.message}` : "保存失败，请先确保当前 settings.json 是合法 JSON",
+				"error",
+			)
+		}
+	}
+
 	async function handleApplyCodexShortcutToDraft() {
 		// 优先使用 activeApplyProvider（自定义 Provider），否则使用 selectedAvailableProvider
 		const providerToUse = activeApplyProvider ?? selectedAvailableProvider
@@ -447,6 +495,88 @@ export function useApplyShortcut({
 		}
 	}
 
+	// 应用 Gemini 配置并直接保存到磁盘（跳过草稿）
+	async function handleApplyGeminiShortcutDirectSave() {
+		if (!saveFileContent) {
+			toast("保存功能未初始化", "error")
+			return
+		}
+		const providerToUse = activeApplyProvider ?? selectedAvailableProvider
+		if (!providerToUse || !selectedGroup) return
+		const settingsFile = selectedGroup.files.find((file) => file.id === "gemini") ?? null
+		const envFile = selectedGroup.files.find((file) => file.id === "gemini::.env") ?? null
+		if (!settingsFile || !envFile) {
+			toast("未找到 Gemini 配置文件入口", "error")
+			return
+		}
+		try {
+			const [settingsDraft, envDraft] = await Promise.all([
+				ensureFileDraftState(settingsFile),
+				ensureFileDraftState(envFile),
+			])
+			const parsedSettings = settingsDraft?.contentDraft.trim() ? JSON.parse(settingsDraft.contentDraft) : {}
+			if (parsedSettings == null || Array.isArray(parsedSettings) || typeof parsedSettings !== "object") {
+				throw new Error("当前 .settings.json 顶层不是对象")
+			}
+			const settingsRoot = {
+				...(parsedSettings as Record<string, unknown>),
+			} as Record<string, unknown>
+			settingsRoot.model = {
+				...(settingsRoot.model && typeof settingsRoot.model === "object" && !Array.isArray(settingsRoot.model)
+					? (settingsRoot.model as Record<string, unknown>)
+					: {}),
+				name: selectedGeminiApplyModel,
+			}
+			settingsRoot.general = {
+				...(settingsRoot.general && typeof settingsRoot.general === "object" && !Array.isArray(settingsRoot.general)
+					? (settingsRoot.general as Record<string, unknown>)
+					: {}),
+				previewFeatures: true,
+			}
+			settingsRoot.security = {
+				...(settingsRoot.security && typeof settingsRoot.security === "object" && !Array.isArray(settingsRoot.security)
+					? (settingsRoot.security as Record<string, unknown>)
+					: {}),
+				auth: {
+					...(((settingsRoot.security &&
+					typeof settingsRoot.security === "object" &&
+					!Array.isArray(settingsRoot.security)
+						? (settingsRoot.security as Record<string, unknown>).auth
+						: null) &&
+					typeof (settingsRoot.security as Record<string, unknown>).auth === "object" &&
+					!Array.isArray((settingsRoot.security as Record<string, unknown>).auth)
+						? ((settingsRoot.security as Record<string, unknown>).auth as Record<string, unknown>)
+						: {}) as Record<string, unknown>),
+					selectedType: "gemini-api-key",
+				},
+			}
+			const formattedSettings = await formatConfigContent(JSON.stringify(settingsRoot), "json")
+			const nextEnv = upsertEnvAssignments(envDraft?.contentDraft ?? "", {
+				GEMINI_API_KEY: providerToUse.models[0]?.apiKey ?? "",
+				GOOGLE_GEMINI_BASE_URL: buildGeminiWritebackUrl(providerToUse.models[0]?.baseUrl ?? ""),
+			})
+
+			// 直接保存到磁盘
+			await Promise.all([saveFileContent(settingsFile, formattedSettings.formatted), saveFileContent(envFile, nextEnv)])
+
+			// 更新草稿状态以保持一致
+			updateDraftState(settingsFile.id, {
+				contentDraft: formattedSettings.formatted,
+				savedContent: formattedSettings.formatted,
+			})
+			updateDraftState(envFile.id, {
+				contentDraft: nextEnv,
+				savedContent: nextEnv,
+			})
+
+			setGeminiApplyModalOpen(false)
+			toast("已将 Gemini 配置保存到磁盘", "success")
+		} catch (error) {
+			logger.error("Failed to apply and save Gemini config", error)
+			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
+		}
+	}
+
 	async function handleApplySnowShortcutToDraft() {
 		// 优先使用 activeApplyProvider（自定义 Provider），否则使用 selectedAvailableProvider
 		const providerToUse = activeApplyProvider ?? selectedAvailableProvider
@@ -489,6 +619,62 @@ export function useApplyShortcut({
 		} catch (error) {
 			logger.error("Failed to apply Snow shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
+		}
+	}
+
+	// 应用 Snow 配置并直接保存到磁盘（跳过草稿）
+	async function handleApplySnowShortcutDirectSave() {
+		if (!saveFileContent) {
+			toast("保存功能未初始化", "error")
+			return
+		}
+		const providerToUse = activeApplyProvider ?? selectedAvailableProvider
+		if (!providerToUse || !selectedGroup) return
+		const configFile = selectedGroup.files.find((file) => file.id === "snow::config.json") ?? null
+		if (!configFile) {
+			toast("未找到 Snow 配置文件入口", "error")
+			return
+		}
+		try {
+			const draft = await ensureFileDraftState(configFile)
+			const parsed = draft?.contentDraft.trim() ? JSON.parse(draft.contentDraft) : {}
+			if (parsed == null || Array.isArray(parsed) || typeof parsed !== "object") {
+				throw new Error("当前 config.json 顶层不是对象")
+			}
+			const root = { ...(parsed as Record<string, unknown>) }
+			const currentSnowcfg =
+				root.snowcfg && typeof root.snowcfg === "object" && !Array.isArray(root.snowcfg)
+					? { ...(root.snowcfg as Record<string, unknown>) }
+					: {}
+			root.snowcfg = {
+				...currentSnowcfg,
+				baseUrl:
+					selectedSnowRequestMethod === "anthropic"
+						? buildClaudeWritebackUrl(providerToUse.models[0]?.baseUrl ?? "")
+						: selectedSnowRequestMethod === "gemini"
+							? buildGeminiWritebackUrl(providerToUse.models[0]?.baseUrl ?? "")
+							: buildOpenAiCompatibleWritebackUrl(providerToUse.models[0]?.baseUrl ?? ""),
+				apiKey: providerToUse.models[0]?.apiKey ?? "",
+				requestMethod: selectedSnowRequestMethod,
+				advancedModel: selectedSnowAdvancedModel,
+				basicModel: selectedSnowBasicModel,
+			}
+			const formatted = await formatConfigContent(JSON.stringify(root), "json")
+
+			// 直接保存到磁盘
+			await saveFileContent(configFile, formatted.formatted)
+
+			// 更新草稿状态以保持一致
+			updateDraftState(configFile.id, {
+				contentDraft: formatted.formatted,
+				savedContent: formatted.formatted,
+			})
+
+			setSnowApplyModalOpen(false)
+			toast("已将 Snow 配置保存到磁盘", "success")
+		} catch (error) {
+			logger.error("Failed to apply and save Snow config", error)
+			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
 		}
 	}
 
@@ -543,6 +729,65 @@ export function useApplyShortcut({
 		} catch (error) {
 			logger.error("Failed to apply OpenCode shortcut config", error)
 			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
+		}
+	}
+
+	// 应用 OpenCode 配置并直接保存到磁盘（跳过草稿）
+	async function handleApplyOpenCodeShortcutDirectSave() {
+		if (!saveFileContent) {
+			toast("保存功能未初始化", "error")
+			return
+		}
+		const providerToUse = activeApplyProvider ?? selectedAvailableProvider
+		if (!providerToUse || !selectedGroup) return
+		const opencodeFile = selectedGroup.files.find((file) => file.id === "opencode") ?? null
+		if (!opencodeFile) {
+			toast("未找到 OpenCode 配置文件入口", "error")
+			return
+		}
+		try {
+			const draft = await ensureFileDraftState(opencodeFile)
+			const parsed = draft?.contentDraft.trim() ? JSON.parse(draft.contentDraft) : {}
+			if (parsed == null || Array.isArray(parsed) || typeof parsed !== "object") {
+				throw new Error("当前 opencode.json 顶层不是对象")
+			}
+			const root = { ...(parsed as Record<string, unknown>) }
+			const currentProviders =
+				root.provider && typeof root.provider === "object" && !Array.isArray(root.provider)
+					? { ...(root.provider as Record<string, unknown>) }
+					: {}
+			currentProviders[providerToUse.providerName] = {
+				npm: "@ai-sdk/openai-compatible",
+				name: providerToUse.providerName,
+				options: {
+					baseURL: buildWritebackUrl(
+						providerToUse.models[0]?.baseUrl ?? "",
+						inferWritebackKindFromModel(
+							providerToUse.models[0]?.model ?? "",
+							providerToUse.models[0]?.supportedProtocols,
+						),
+					),
+					apiKey: providerToUse.models[0]?.apiKey ?? "",
+				},
+				models: Object.fromEntries(selectedOpenCodeModels.map((model) => [model, { name: model }])),
+			}
+			root.provider = currentProviders
+			const formatted = await formatConfigContent(JSON.stringify(root), "json")
+
+			// 直接保存到磁盘
+			await saveFileContent(opencodeFile, formatted.formatted)
+
+			// 更新草稿状态以保持一致
+			updateDraftState(opencodeFile.id, {
+				contentDraft: formatted.formatted,
+				savedContent: formatted.formatted,
+			})
+
+			setOpenCodeApplyModalOpen(false)
+			toast("已将 OpenCode 配置保存到磁盘", "success")
+		} catch (error) {
+			logger.error("Failed to apply and save OpenCode config", error)
+			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
 		}
 	}
 
@@ -695,12 +940,16 @@ export function useApplyShortcut({
 		// Handlers
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,
+		handleApplyClaudeShortcutDirectSave,
 		handleApplyCodexShortcutToDraft,
 		handleApplyCodexShortcutAndSave,
 		handleApplyCodexShortcutDirectSave,
 		handleApplyGeminiShortcutToDraft,
+		handleApplyGeminiShortcutDirectSave,
 		handleApplySnowShortcutToDraft,
+		handleApplySnowShortcutDirectSave,
 		handleApplyOpenCodeShortcutToDraft,
+		handleApplyOpenCodeShortcutDirectSave,
 		handleToggleOpenCodeModel,
 		handleApplyShortcut,
 		handleApplyShortcutWithData,
