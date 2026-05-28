@@ -739,7 +739,11 @@ export function ConfigPage({
 	}
 
 	async function handleTestConfirm(selectedModels: string[], protocols: string[]) {
-		if (!testingConfig || selectedModels.length === 0) return
+		logger.info("[handleTestConfirm] 开始测试", { selectedModels, protocols, testingConfig: testingConfig?.id })
+		if (!testingConfig || selectedModels.length === 0) {
+			logger.warn("[handleTestConfirm] 参数无效", { testingConfig: !!testingConfig, selectedModelsCount: selectedModels.length })
+			return
+		}
 
 		setTestingModel(true)
 		setTestResult(null)
@@ -762,6 +766,33 @@ export function ConfigPage({
 				lastTestAt: Date.now(),
 				model: modelToTest,
 			})
+
+			// 如果测试失败，输出详细日志到 debug
+			if (!result.available) {
+				logger.error(
+					"[模型测试失败] " +
+						JSON.stringify(
+							{
+								model: result.model,
+								error: result.error,
+								responseText: result.response_text,
+								protocolResults: result.protocol_results?.map((pr) => ({
+									protocol: pr.protocol,
+									available: pr.available,
+									error: pr.error,
+									responseText: pr.response_text,
+									requestUrl: pr.request_url,
+									requestMethod: pr.request_method,
+									requestBody: pr.request_body,
+									responseStatus: pr.response_status,
+									responseHeaders: pr.response_headers,
+								})),
+							},
+							null,
+							2
+						)
+				)
+			}
 
 			toast(
 				result.available ? `测试通过：${modelToTest}` : `测试失败：${modelToTest}`,
