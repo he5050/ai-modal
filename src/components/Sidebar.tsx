@@ -1,10 +1,10 @@
 const APP_VERSION = "0.7.0";
-import { useRef } from "react";
-import { Zap } from "lucide-react";
+import { useRef, useState } from "react";
+import { Zap, ChevronDown, ChevronRight } from "lucide-react";
 import { animate, spring } from "animejs";
 import type { AppPage } from "@/types";
 import { Tooltip } from "./Tooltip";
-import { APP_NAV_ITEMS } from "@/lib/appNavigation";
+import { NAV_GROUPS, STANDALONE_NAV_ITEMS, type NavGroup } from "@/lib/appNavigation";
 
 interface Props {
   page: AppPage;
@@ -20,13 +20,31 @@ export function Sidebar({
   availableCount,
 }: Props) {
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    model: true,
+    config: true,
+  });
 
+  // 检查页面是否是模型列表（只有模型列表显示徽章）
+  const isModelListPage = (p: AppPage) => {
+    return p === 'model-list';
+  };
+
+  // 检查页面是否激活
   function isActive(key: AppPage) {
     return (
       page === key ||
-      (page === "provider-detail" && key === "models") ||
-      (page === "prompt-detail" && key === "prompts")
+      (page === "provider-detail" && key === "model-list") ||
+      (page === "prompt-detail" && key === "config-prompts")
     );
+  }
+
+  // 切换分组展开状态
+  function toggleGroup(groupKey: string) {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
   }
 
   function handleNav(key: AppPage) {
@@ -39,6 +57,81 @@ export function Sidebar({
       });
     }
     onPageChange(key);
+  }
+
+  // 渲染二级菜单项
+  function renderNavItem(item: { key: AppPage; label: string; Icon: React.ComponentType<{ className?: string }> }, isChild = false) {
+    const active = isActive(item.key);
+    const isModelListItem = isModelListPage(item.key);
+
+    return (
+      <button
+        key={item.key}
+        ref={(el) => {
+          btnRefs.current[item.key] = el;
+        }}
+        onClick={() => handleNav(item.key)}
+        className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
+          active
+            ? "border border-indigo-500/60 bg-indigo-600/90 text-white"
+            : "border border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800/85 hover:text-gray-200"
+        } ${isChild ? "ml-2 w-[calc(100%-8px)]" : ""}`}
+      >
+        <item.Icon className="h-4 w-4 flex-shrink-0" />
+        {item.label}
+        {isModelListItem && modelCount > 0 && (
+          <Tooltip
+            content={`${availableCount} 个接口有可用模型 / 共 ${modelCount} 个接口`}
+            placement="right"
+          >
+            <span
+              className={`ml-auto rounded-full px-1.5 py-0.5 text-xs ${
+                availableCount > 0
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : "bg-gray-700 text-gray-400"
+              }`}
+            >
+              {availableCount}/{modelCount}
+            </span>
+          </Tooltip>
+        )}
+      </button>
+    );
+  }
+
+  // 渲染一级菜单分组
+  function renderNavGroup(group: NavGroup) {
+    const isExpanded = expandedGroups[group.key];
+    const hasActiveChild = group.children.some(child => isActive(child.key));
+
+    return (
+      <div key={group.key} className="space-y-0.5">
+        {/* 一级菜单标题 */}
+        <button
+          onClick={() => toggleGroup(group.key)}
+          className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
+            hasActiveChild
+              ? "border border-indigo-500/30 bg-indigo-600/20 text-indigo-300"
+              : "border border-transparent text-gray-300 hover:border-gray-700 hover:bg-gray-800/85 hover:text-gray-200"
+          }`}
+        >
+          <group.Icon className="h-4 w-4 flex-shrink-0" />
+          <span className="font-medium">{group.label}</span>
+          {isExpanded ? (
+            <ChevronDown className="ml-auto h-4 w-4 text-gray-500" />
+          ) : (
+            <ChevronRight className="ml-auto h-4 w-4 text-gray-500" />
+          )}
+        </button>
+
+        {/* 二级菜单 */}
+        {isExpanded && (
+          <div className="space-y-0.5 py-1">
+            {group.children.map(child => renderNavItem(child, true))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -57,40 +150,14 @@ export function Sidebar({
       </div>
 
       {/* 导航 */}
-      <nav className="space-y-0.5 px-3 pb-2 pt-3">
-        {APP_NAV_ITEMS.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            ref={(el) => {
-              btnRefs.current[key] = el;
-            }}
-            onClick={() => handleNav(key)}
-            className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
-              isActive(key)
-                ? "border border-indigo-500/60 bg-indigo-600/90 text-white"
-                : "border border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800/85 hover:text-gray-200"
-            }`}
-          >
-            <Icon className="h-4 w-4 flex-shrink-0" />
-            {label}
-            {key === "models" && modelCount > 0 && (
-              <Tooltip
-                content={`${availableCount} 个接口有可用模型 / 共 ${modelCount} 个接口`}
-                placement="right"
-              >
-                <span
-                  className={`ml-auto rounded-full px-1.5 py-0.5 text-xs ${
-                    availableCount > 0
-                      ? "bg-emerald-500/20 text-emerald-400"
-                      : "bg-gray-700 text-gray-400"
-                  }`}
-                >
-                  {availableCount}/{modelCount}
-                </span>
-              </Tooltip>
-            )}
-          </button>
-        ))}
+      <nav className="space-y-1 px-3 pb-2 pt-3">
+        {/* 一级菜单分组 */}
+        {NAV_GROUPS.map(group => renderNavGroup(group))}
+
+        {/* 独立菜单项 */}
+        <div className="pt-2 border-t border-gray-800/50 mt-2">
+          {STANDALONE_NAV_ITEMS.map(item => renderNavItem(item))}
+        </div>
       </nav>
 
       <div className="mt-auto flex items-center gap-2 border-t border-gray-800 px-4 py-3">

@@ -1,14 +1,14 @@
+// 模型管理二级页面
+export type ModelPage = "model-detect" | "model-list" | "model-mapping"
+
+// 配置管理二级页面
+export type ConfigPageType = "config-mcp" | "config-skills" | "config-prompts" | "config-rules" | "config-settings"
+
 export type AppPage =
-	| "detect"
-	| "models"
-	| "model-mapping"
-	| "mcp"
-	| "skills"
-	| "prompts"
+	| ModelPage
+	| ConfigPageType
 	| "prompt-detail"
 	| "provider-detail"
-	| "rules"
-	| "configs"
 	| "settings"
 	| "curl-task"
 	| "curl-task-detail"

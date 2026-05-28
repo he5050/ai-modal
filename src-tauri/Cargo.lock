@@ -22,11 +22,14 @@ name = "ai-modal"
 version = "0.10.0"
 dependencies = [
  "axum",
+ "bytes",
+ "chrono",
  "cocoa",
  "dirs 5.0.1",
  "futures-util",
  "objc",
  "percent-encoding",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -37,8 +40,10 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-opener",
  "tauri-plugin-sql",
+ "tauri-plugin-store",
  "tempfile",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -563,8 +568,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -4958,6 +4965,22 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "tauri-plugin-store"
+version = "2.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c72dda16786eb4a3f903e43a17b64d8d78dc0f00fe2aa4b757c28f617a8630b"
+dependencies = [
+ "dunce",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

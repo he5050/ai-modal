@@ -19,6 +19,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs   = { version = "2", features = ["watch"] }
 tauri-plugin-opener = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-store = "2"
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
@@ -28,6 +29,10 @@ tokio      = { version = "1", features = ["full"] }
 axum = "0.7"
 futures-util = "0.3"
 dirs = "5"
+regex = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+bytes = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"

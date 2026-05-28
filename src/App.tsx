@@ -51,7 +51,7 @@ const SORT_DIR_KEY = "ai-modal-sort-dir";
 const EXPORT_DIR_KEY = "ai-modal-model-export-dir";
 
 export default function App() {
-  const [page, setPage] = useState<AppPage>("detect");
+  const [page, setPage] = useState<AppPage>("model-detect");
   const [editTarget, setEditTarget] = useState<Provider | null>(null);
   const [detailProviderId, setDetailProviderId] = useState<string | null>(null);
   const [detailPromptId, setDetailPromptId] = useState<string | null>(null);
@@ -131,7 +131,7 @@ export default function App() {
 
   function applyPageChange(p: AppPage) {
     setPage(p);
-    if (p !== "detect") setEditTarget(null);
+    if (p !== "model-detect") setEditTarget(null);
     // 切换页面时重置未保存状态，避免从需要保存的页面切换到其他页面后错误触发弹窗
     setEditingDirty(false);
   }
@@ -148,7 +148,7 @@ export default function App() {
 
   function handleEditFromList(provider: Provider) {
     setEditTarget(provider);
-    setPage("detect");
+    setPage("model-detect");
   }
 
   function handleOpenProviderDetail(provider: Provider) {
@@ -185,7 +185,7 @@ export default function App() {
     if (detailPromptId === promptId) {
       setDetailPromptId(null);
       setPromptDetailMode("detail");
-      setPage("prompts");
+      setPage("config-prompts");
     }
   }
 
@@ -193,7 +193,7 @@ export default function App() {
     deleteProvider(id);
     if (detailProviderId === id && page === "provider-detail") {
       setDetailProviderId(null);
-      setPage("models");
+      setPage("model-list");
     }
   }
 
@@ -237,7 +237,8 @@ export default function App() {
         availableCount={availableCount}
       />
       <main ref={mainRef} className="flex-1 min-h-0 overflow-hidden pt-7">
-        {page === "detect" && (
+        {/* 模型管理 - 模型检测 */}
+        {page === "model-detect" && (
           <DetectPage
             providers={providers}
             editTarget={editTarget}
@@ -247,48 +248,53 @@ export default function App() {
             onDeleteProvider={handleDeleteProvider}
             onSaveResult={saveResult}
             onDirtyChange={setEditingDirty}
-            onOpenModels={() => handlePageChange("models")}
+            onOpenModels={() => handlePageChange("model-list")}
             onOpenDetail={handleOpenProviderDetail}
           />
         )}
-        {page === "models" && (
+        {/* 模型管理 - 模型列表 */}
+        {page === "model-list" && (
           <ModelsPage
             providers={providers}
             onEdit={handleEditFromList}
             onDelete={handleDeleteProvider}
             onSaveResult={saveResult}
             onImport={importProviders}
-            onGoDetect={() => handlePageChange("detect")}
+            onGoDetect={() => handlePageChange("model-detect")}
             onOpenDetail={handleOpenProviderDetail}
           />
         )}
         {page === "provider-detail" && (
           <ProviderDetailPage
             provider={providers.find((item) => item.id === detailProviderId) ?? null}
-            onBack={() => handlePageChange("models")}
+            onBack={() => handlePageChange("model-list")}
             onEdit={handleEditFromList}
             onDelete={handleDeleteProvider}
             onSaveResult={saveResult}
           />
         )}
+        {/* 模型管理 - 模型映射 */}
         {page === "model-mapping" && (
           <ModelMappingPage
             providers={providers}
             onDirtyChange={setEditingDirty}
           />
         )}
-        {page === "skills" && (
+        {/* 配置管理 - MCP 管理 */}
+        {page === "config-mcp" && (
+          <McpPage
+            onDirtyChange={setEditingDirty}
+          />
+        )}
+        {/* 配置管理 - 技能管理 */}
+        {page === "config-skills" && (
           <SkillsPage
             providers={providers}
             onDirtyChange={setEditingDirty}
           />
         )}
-        {page === "mcp" && (
-          <McpPage
-            onDirtyChange={setEditingDirty}
-          />
-        )}
-        {page === "prompts" && (
+        {/* 配置管理 - 提示词管理 */}
+        {page === "config-prompts" && (
           <Suspense fallback={<PageFallback />}>
             <PromptsPage
               prompts={prompts}
@@ -304,21 +310,14 @@ export default function App() {
             prompt={detailPromptId == null ? null : prompts.find((item) => item.id === detailPromptId) ?? null}
             mode={promptDetailMode}
             availableTags={Array.from(new Set(prompts.flatMap((item) => item.tags))).filter(Boolean)}
-            onBack={() => handlePageChange("prompts")}
+            onBack={() => handlePageChange("config-prompts")}
             onSave={handleSavePrompt}
             onDelete={handleDeletePrompt}
             onDirtyChange={setEditingDirty}
           />
         )}
-        {page === "settings" && (
-          <SettingsPage
-            providers={providers}
-            debugEnabled={debugEnabled}
-            onDebugChange={setDebugEnabled}
-            onDirtyChange={setEditingDirty}
-          />
-        )}
-        {page === "rules" && (
+        {/* 配置管理 - 规则管理 */}
+        {page === "config-rules" && (
           <Suspense fallback={<PageFallback />}>
             <RulesPage
               storedPaths={rulePaths}
@@ -329,7 +328,8 @@ export default function App() {
             />
           </Suspense>
         )}
-        {page === "configs" && (
+        {/* 配置管理 - 配置管理 */}
+        {page === "config-settings" && (
           <Suspense fallback={<PageFallback />}>
             <ConfigPage
               providers={providers}
@@ -342,6 +342,15 @@ export default function App() {
               onFindProviderByUrlAndKey={findProviderByUrlAndKey}
             />
           </Suspense>
+        )}
+        {/* 系统配置 */}
+        {page === "settings" && (
+          <SettingsPage
+            providers={providers}
+            debugEnabled={debugEnabled}
+            onDebugChange={setDebugEnabled}
+            onDirtyChange={setEditingDirty}
+          />
         )}
         {page === "curl-task" && (
           <CurlTaskPage onOpenDetail={handleOpenCurlTaskDetail} />
