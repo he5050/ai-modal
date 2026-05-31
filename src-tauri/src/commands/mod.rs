@@ -1,4 +1,5 @@
 pub mod cli_proxy;
+pub mod codex_proxy;
 pub mod curl_task;
 pub mod env_config;
 pub mod mcp;

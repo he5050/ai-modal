@@ -623,3 +623,82 @@ export interface PromptImportSummary {
 	overwritten: number
 	skipped: number
 }
+
+// ─── Codex Proxy Types ───────────────────────────────────────────────
+
+export interface CodexModelEntry {
+	id?: string
+	name: string
+	slot?: string
+	slots?: string[]
+	display_name?: string
+	supported_protocols?: string[]
+	source_protocol?: string
+	target_protocol?: string
+	to_1m?: string
+	enabled?: boolean
+	protocol?: string
+}
+
+export interface CodexProvider {
+	id?: string
+	name: string
+	target_url: string
+	api_key: string
+	models: CodexModelEntry[]
+	thinking_effort?: string
+}
+
+export interface CodexProxyConfig {
+	providers: CodexProvider[]
+}
+
+export interface CodexProxySettings {
+	port: number
+}
+
+export interface CodexProxyStatus {
+	running: boolean
+	autostart: boolean
+	port: number
+	config_path: string
+	codex_dir?: string
+	model_count: number
+	mapped_models: CodexModelFlatEntry[]
+}
+
+export interface CodexModelFlatEntry {
+	slot: string
+	name: string
+	display_name: string
+	supported_protocols: string[]
+	source_protocol: string
+	target_protocol: string
+	provider_name: string
+	target_url: string
+	supports_1m: boolean
+	thinking_effort: string
+	protocol: string
+}
+
+export interface CodexProxyTestResult {
+	ok: boolean
+	status?: number
+	message: string
+}
+
+export interface CodexProxyLogEntry {
+	time: string
+	model: string
+	target_model: string
+	status: number
+	thinking: string
+	source_protocol?: string
+	target_protocol?: string
+	request_url?: string
+	request_method?: string
+	request_body?: string
+	response_body?: string
+	converted_response_body?: string
+	error_message?: string
+}

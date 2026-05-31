@@ -11,6 +11,12 @@ use commands::cli_proxy::{
     get_cli_proxy_status, load_cli_proxy_config, save_cli_proxy_config,
     start_cli_proxy_service, stop_cli_proxy_service, test_cli_proxy_connection, CliProxyManager,
 };
+use commands::codex_proxy::{
+    load_codex_proxy_config, save_codex_proxy_config, load_codex_proxy_settings,
+    save_codex_proxy_settings, get_codex_proxy_status, start_codex_proxy_gateway,
+    stop_codex_proxy_gateway, test_codex_proxy_provider, get_codex_proxy_logs,
+    set_codex_proxy_autostart, apply_codex_proxy_to_codex,
+};
 use commands::model::{list_models, test_models};
 use commands::model_mapping::{
     apply_model_mapping_to_claude, ensure_model_mapping_claude_gateway,
@@ -189,6 +195,17 @@ pub fn run() {
             get_codex_api_key,
             set_codex_api_key,
             remove_codex_api_key,
+            load_codex_proxy_config,
+            save_codex_proxy_config,
+            load_codex_proxy_settings,
+            save_codex_proxy_settings,
+            get_codex_proxy_status,
+            start_codex_proxy_gateway,
+            stop_codex_proxy_gateway,
+            test_codex_proxy_provider,
+            get_codex_proxy_logs,
+            set_codex_proxy_autostart,
+            apply_codex_proxy_to_codex,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
