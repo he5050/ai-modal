@@ -74,8 +74,9 @@ pub(crate) fn resolve_model(model: &str, config: &ModelMappingConfig) -> Result<
             if !entry.enabled || entry.target_protocol.trim() != "claude" {
                 continue;
             }
-            let matched = effective_slots(entry).iter().any(|s| base_model == s.as_str())
-                || base_model == legacy_slot(entry.name.trim());
+            // 只匹配用户手动设置的槽位（effective_slots），不再通过模型名回退匹配
+            let slots = effective_slots(entry);
+            let matched = slots.iter().any(|s| base_model == s.as_str());
             if matched {
                 let target_model = if wants_1m && !entry.to_1m.trim().is_empty() {
                     format!("{}[1m]", entry.name.trim())

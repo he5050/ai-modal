@@ -245,29 +245,6 @@ fn effective_display_name(model: &ModelMappingEntry, provider_name: &str) -> Str
 }
 
 pub fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
-    let mut reserved_slots = HashSet::new();
-    for provider in &config.providers {
-        for model in &provider.models {
-            for s in effective_slots(model) {
-                if s.is_empty() || is_auto_generated_slot(&s, model.name.trim()) {
-                    continue;
-                }
-                reserved_slots.insert(normalize_explicit_slot(&s));
-            }
-        }
-    }
-
-    let mut next_auto_index = 1usize;
-    let mut allocate_auto_slot = || {
-        while reserved_slots.contains(&make_slot(next_auto_index)) {
-            next_auto_index += 1;
-        }
-        let slot = make_slot(next_auto_index);
-        reserved_slots.insert(slot.clone());
-        next_auto_index += 1;
-        slot
-    };
-
     ModelMappingConfig {
         providers: config
             .providers
@@ -289,21 +266,19 @@ pub fn normalize_config(config: ModelMappingConfig) -> ModelMappingConfig {
                             let target_protocol = resolve_target_protocol(&model);
                             let source_protocol =
                                 resolve_source_protocol(&model, &target_url, &target_protocol);
+                            // 只保留用户手动设置的槽位，取消自动分配
                             let raw_slots = effective_slots(&model);
-                            let normalized_slots: Vec<String> = if raw_slots.is_empty() {
-                                vec![allocate_auto_slot()]
-                            } else {
-                                raw_slots
-                                    .into_iter()
-                                    .map(|s| {
-                                        if s.is_empty() || is_auto_generated_slot(&s, model.name.trim()) {
-                                            allocate_auto_slot()
-                                        } else {
-                                            normalize_explicit_slot(&s)
-                                        }
-                                    })
-                                    .collect()
-                            };
+                            let normalized_slots: Vec<String> = raw_slots
+                                .into_iter()
+                                .map(|s| {
+                                    if s.is_empty() || is_auto_generated_slot(&s, model.name.trim()) {
+                                        String::new()
+                                    } else {
+                                        normalize_explicit_slot(&s)
+                                    }
+                                })
+                                .filter(|s| !s.is_empty())
+                                .collect();
                             let legacy_slot = normalized_slots.first().cloned().unwrap_or_default();
                             ModelMappingEntry {
                                 slot: legacy_slot,
@@ -460,16 +435,10 @@ pub fn flatten_config(config: &ModelMappingConfig) -> Vec<ModelMappingFlatEntry>
             {
                 continue;
             }
+            // 只输出用户手动设置的槽位，没有槽位的模型不参与映射
             let all_slots = effective_slots(model);
-            let slots_to_emit: Vec<String> = if all_slots.is_empty() {
-                vec![effective_slot(model)]
-            } else {
-                all_slots
-            };
+            let slots_to_emit: Vec<String> = all_slots.into_iter().filter(|s| !s.is_empty()).collect();
             for slot in slots_to_emit {
-                if slot.is_empty() {
-                    continue;
-                }
                 result.push(ModelMappingFlatEntry {
                     slot,
                     name: model.name.trim().to_string(),
@@ -666,13 +635,14 @@ mod tests {
     fn slot_naming_matches_canonical_defaults_and_custom_fallback() {
         assert_eq!(make_slot(1), "anthropic/claude-opus-current");
         assert_eq!(make_slot(2), "anthropic/claude-sonnet-current");
-        assert_eq!(make_slot(8), "anthropic/claude-haiku-3-5");
-        assert_eq!(make_slot(12), "anthropic/claude-custom-12");
+        assert_eq!(make_slot(14), "anthropic/claude-haiku-3-5");
+        assert_eq!(make_slot(15), "anthropic/claude-custom-15");
     }
 
     #[test]
-    fn flatten_config_keeps_all_models() {
-        let models = (0..10)
+    fn flatten_config_keeps_only_manual_slots() {
+        // 没有手动设置槽位的模型不参与映射
+        let models = (0..3)
             .map(|index| ModelMappingEntry {
                 name: format!("model-{index}"),
                 supported_protocols: vec!["openai-chat".to_string()],
@@ -689,10 +659,39 @@ mod tests {
 
         let flat = flatten_config(&config);
 
-        assert_eq!(flat.len(), 10);
+        // 没有手动设置槽位，应该为空
+        assert_eq!(flat.len(), 0);
+    }
+
+    #[test]
+    fn flatten_config_keeps_models_with_manual_slots() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![
+                ModelMappingEntry {
+                    name: "model-with-slot".to_string(),
+                    slot: "anthropic/claude-opus-current".to_string(),
+                    supported_protocols: vec!["claude".to_string()],
+                    source_protocol: "claude".to_string(),
+                    target_protocol: "claude".to_string(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                ModelMappingEntry {
+                    name: "model-without-slot".to_string(),
+                    supported_protocols: vec!["claude".to_string()],
+                    source_protocol: "claude".to_string(),
+                    target_protocol: "claude".to_string(),
+                    enabled: true,
+                    ..Default::default()
+                },
+            ])],
+        };
+
+        let flat = flatten_config(&config);
+
+        assert_eq!(flat.len(), 1);
         assert_eq!(flat[0].slot, "anthropic/claude-opus-current");
-        assert_eq!(flat[7].slot, "anthropic/claude-haiku-3-5");
-        assert_eq!(flat[9].slot, "anthropic/claude-custom-10");
+        assert_eq!(flat[0].name, "model-with-slot");
     }
 
     #[test]
@@ -713,7 +712,8 @@ mod tests {
     }
 
     #[test]
-    fn normalize_config_upgrades_old_auto_slot_to_canonical_default() {
+    fn normalize_config_clears_old_auto_slots() {
+        // 旧的自动生成的槽位应该被清空，不再自动分配新槽位
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![
                 ModelMappingEntry {
@@ -737,18 +737,16 @@ mod tests {
 
         let normalized = normalize_config(config);
 
-        assert_eq!(
-            normalized.providers[0].models[0].slot,
-            "anthropic/claude-opus-current"
-        );
-        assert_eq!(
-            normalized.providers[0].models[1].slot,
-            "anthropic/claude-sonnet-current"
-        );
+        // 自动生成的槽位被清空，不再自动分配
+        assert_eq!(normalized.providers[0].models[0].slot, "");
+        assert_eq!(normalized.providers[0].models[1].slot, "");
+        assert!(normalized.providers[0].models[0].slots.is_empty());
+        assert!(normalized.providers[0].models[1].slots.is_empty());
     }
 
     #[test]
-    fn normalize_config_assigns_canonical_slots_globally_across_providers() {
+    fn normalize_config_does_not_auto_assign_slots() {
+        // 取消自动分配槽位，没有手动设置的模型槽位为空
         let config = ModelMappingConfig {
             providers: vec![
                 ModelMappingProvider {
@@ -773,18 +771,13 @@ mod tests {
 
         let normalized = normalize_config(config);
 
-        assert_eq!(
-            normalized.providers[0].models[0].slot,
-            "anthropic/claude-opus-current"
-        );
-        assert_eq!(
-            normalized.providers[0].models[1].slot,
-            "anthropic/claude-sonnet-current"
-        );
-        assert_eq!(
-            normalized.providers[1].models[0].slot,
-            "anthropic/claude-haiku-current"
-        );
+        // 没有手动设置槽位，全部为空
+        assert_eq!(normalized.providers[0].models[0].slot, "");
+        assert_eq!(normalized.providers[0].models[1].slot, "");
+        assert_eq!(normalized.providers[1].models[0].slot, "");
+        assert!(normalized.providers[0].models[0].slots.is_empty());
+        assert!(normalized.providers[0].models[1].slots.is_empty());
+        assert!(normalized.providers[1].models[0].slots.is_empty());
     }
 
     #[test]
@@ -884,15 +877,44 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_matches_legacy_slot_when_model_name_already_has_claude_prefix() {
+    fn resolve_model_requires_explicit_slot() {
+        // 没有设置槽位的模型不应该被匹配到
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![test_entry("claude-haiku-4-5-20251001")])],
         };
 
-        let resolved = resolve_model("claude-haiku-4-5-20251001", &config)
-            .expect("claude-prefixed model name should resolve via legacy alias");
+        let error = resolve_model("claude-haiku-4-5-20251001", &config)
+            .expect_err("model without slot should not resolve");
 
-        assert_eq!(resolved.target_model, "claude-haiku-4-5-20251001");
+        assert!(error.contains("未命中模型映射槽位"));
+    }
+
+    #[test]
+    fn resolve_model_supports_multiple_slots_per_model() {
+        // 一个模型可以对应多个槽位
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "deepseek-v4".to_string(),
+                slots: vec![
+                    "anthropic/claude-opus-current".to_string(),
+                    "anthropic/claude-sonnet-current".to_string(),
+                ],
+                slot: "anthropic/claude-opus-current".to_string(),
+                supported_protocols: vec!["claude".to_string()],
+                source_protocol: "claude".to_string(),
+                target_protocol: "claude".to_string(),
+                enabled: true,
+                ..Default::default()
+            }])],
+        };
+
+        let resolved1 = resolve_model("anthropic/claude-opus-current", &config)
+            .expect("first slot should resolve");
+        assert_eq!(resolved1.target_model, "deepseek-v4");
+
+        let resolved2 = resolve_model("anthropic/claude-sonnet-current", &config)
+            .expect("second slot should resolve");
+        assert_eq!(resolved2.target_model, "deepseek-v4");
     }
 
     #[test]
