@@ -526,8 +526,8 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 	}
 
 	function handleSlotAssignment(slotIndex: number, modelKey: string | "") {
+		const slotId = DEFAULT_CLAUDE_SLOTS[slotIndex]
 		if (!modelKey) {
-			const slotId = DEFAULT_CLAUDE_SLOTS[slotIndex]
 			const nextProviders = config.providers.map((provider) => ({
 				...provider,
 				models: provider.models.map((model) => {
@@ -538,7 +538,6 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 							...model,
 							slot: updatedSlots[0] ?? "",
 							slots: updatedSlots,
-							// 移除 slot 时不改变 enabled 状态，由用户手动控制
 						}
 					}
 					return model
@@ -555,28 +554,24 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 		const targetModel = targetProvider.models[mi]
 		if (!targetModel) return
 
-		const slotId = DEFAULT_CLAUDE_SLOTS[slotIndex]
-
 		const nextProviders = config.providers.map((provider, pIdx) => ({
 			...provider,
 			models: provider.models.map((model, mIdx) => {
+				if (pIdx === pi && mIdx === mi) {
+					return {
+						...model,
+						slot: slotId,
+						slots: [slotId],
+						enabled: true,
+					}
+				}
 				const currentSlots = getModelSlots(model)
-				if (currentSlots.includes(slotId) && !(pIdx === pi && mIdx === mi)) {
+				if (currentSlots.includes(slotId)) {
 					const updatedSlots = currentSlots.filter((s) => s !== slotId)
 					return {
 						...model,
 						slot: updatedSlots[0] ?? "",
 						slots: updatedSlots,
-						// 移除 slot 时不改变 enabled 状态，由用户手动控制
-					}
-				}
-				if (pIdx === pi && mIdx === mi) {
-					const updatedSlots = [...currentSlots.filter((s) => s !== slotId), slotId]
-					return {
-						...model,
-						slot: updatedSlots[0] ?? "",
-						slots: updatedSlots,
-						enabled: true,
 					}
 				}
 				return model

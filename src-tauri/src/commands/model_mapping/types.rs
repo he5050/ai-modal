@@ -14,7 +14,7 @@ pub const DEFAULT_CLAUDE_SLOTS: &[&str] = &[
     "anthropic/claude-opus-4-1",
     "anthropic/claude-opus-4",
     "anthropic/claude-sonnet-4-6",
-    "anthropic/claude-sonnet-4-5-20250929",
+    "anthropic/claude-sonnet-4-5",
     "anthropic/claude-sonnet-4",
     "anthropic/claude-sonnet-3-7",
     "anthropic/claude-haiku-4-5-20251001",
