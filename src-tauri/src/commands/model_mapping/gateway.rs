@@ -74,9 +74,16 @@ pub(crate) fn resolve_model(model: &str, config: &ModelMappingConfig) -> Result<
             if !entry.enabled || entry.target_protocol.trim() != "claude" {
                 continue;
             }
-            // 只匹配用户手动设置的槽位（effective_slots），不再通过模型名回退匹配
             let slots = effective_slots(entry);
-            let matched = slots.iter().any(|s| base_model == s.as_str());
+            let matched = slots.iter().any(|s| {
+                base_model == s.as_str()
+                    || s.strip_prefix("anthropic/")
+                        .map(|rest| rest == base_model)
+                        .unwrap_or(false)
+                    || base_model.strip_prefix("anthropic/")
+                        .map(|rest| rest == s.as_str())
+                        .unwrap_or(false)
+            });
             if matched {
                 let target_model = if wants_1m && !entry.to_1m.trim().is_empty() {
                     format!("{}[1m]", entry.name.trim())

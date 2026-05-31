@@ -878,7 +878,6 @@ mod tests {
 
     #[test]
     fn resolve_model_requires_explicit_slot() {
-        // 没有设置槽位的模型不应该被匹配到
         let config = ModelMappingConfig {
             providers: vec![provider_with_models(vec![test_entry("claude-haiku-4-5-20251001")])],
         };
@@ -887,6 +886,55 @@ mod tests {
             .expect_err("model without slot should not resolve");
 
         assert!(error.contains("未命中模型映射槽位"));
+    }
+
+    #[test]
+    fn resolve_model_matches_slot_without_anthropic_prefix() {
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "glm-5-turbo".to_string(),
+                slot: "anthropic/claude-haiku-4-5-20251001".to_string(),
+                slots: vec!["anthropic/claude-haiku-4-5-20251001".to_string()],
+                supported_protocols: vec!["claude".to_string()],
+                source_protocol: "claude".to_string(),
+                target_protocol: "claude".to_string(),
+                enabled: true,
+                ..Default::default()
+            }])],
+        };
+
+        let resolved = resolve_model("claude-haiku-4-5-20251001", &config)
+            .expect("slot without anthropic/ prefix should still match");
+        assert_eq!(resolved.target_model, "glm-5-turbo");
+
+        let resolved2 = resolve_model("anthropic/claude-haiku-4-5-20251001", &config)
+            .expect("slot with anthropic/ prefix should match");
+        assert_eq!(resolved2.target_model, "glm-5-turbo");
+    }
+
+    #[test]
+    fn resolve_model_matches_slot_reverse_prefix_scenario() {
+        // base_model 带前缀、slots 不带前缀的反向场景（防御性匹配）
+        let config = ModelMappingConfig {
+            providers: vec![provider_with_models(vec![ModelMappingEntry {
+                name: "test-model".to_string(),
+                slot: "claude-opus-current".to_string(),
+                slots: vec!["claude-opus-current".to_string()],
+                supported_protocols: vec!["claude".to_string()],
+                source_protocol: "claude".to_string(),
+                target_protocol: "claude".to_string(),
+                enabled: true,
+                ..Default::default()
+            }])],
+        };
+
+        let resolved = resolve_model("anthropic/claude-opus-current", &config)
+            .expect("base_model with prefix should match slot without prefix");
+        assert_eq!(resolved.target_model, "test-model");
+
+        let resolved2 = resolve_model("claude-opus-current", &config)
+            .expect("exact match should still work");
+        assert_eq!(resolved2.target_model, "test-model");
     }
 
     #[test]
