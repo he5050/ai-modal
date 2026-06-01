@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.11.0](https://github.com/he5050/ai-modal/compare/v0.10.0...v0.11.0) (2026-06-01)
+
+
+### Bug Fixes
+
+* **model-mapping:** 支持跨anthropic/前缀匹配模型槽位 ([59b5d5f](https://github.com/he5050/ai-modal/commit/59b5d5f844cb35d286cd1a31fa2a4e7c5f506222))
+
+
+### Features
+
+* add model test and apply timestamp tracking ([4790eaa](https://github.com/he5050/ai-modal/commit/4790eaaef843bfa7d2165e3af43aea521d88540a))
+* **ConfigPage:** add detailed logging for model test flow ([99b34e7](https://github.com/he5050/ai-modal/commit/99b34e723f98c348c18f10a05b90fcd35a331472))
+* **configs:** 新增Codex配置直接保存到磁盘的快捷方式，跳过草稿状态 ([0267ac9](https://github.com/he5050/ai-modal/commit/0267ac96358428b6a871b2c29d44af10720767b1))
+* 为各配置弹窗添加应用并直接保存的功能 ([aac5696](https://github.com/he5050/ai-modal/commit/aac56965f34f90b16b882520109bfaa30562718f))
+* 新增多项功能并优化现有交互 ([07f1a74](https://github.com/he5050/ai-modal/commit/07f1a742ea0470cee6f7a640b8973e647ad4e08f))
+* 添加 Codex API Key 配置管理功能 ([f5a3b68](https://github.com/he5050/ai-modal/commit/f5a3b68c5d7e509f557f4cfa819a721a1057691e))
+* 添加cURL直接执行能力与调试信息，优化任务流程 ([223cc7a](https://github.com/he5050/ai-modal/commit/223cc7a767bc25f0bc47856c37830a60126223b1))
+
 # [0.10.0](https://github.com/he5050/ai-modal/compare/v0.9.0...v0.10.0) (2026-05-25)
 
 
