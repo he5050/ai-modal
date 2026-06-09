@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.11.1](https://github.com/he5050/ai-modal/compare/v0.11.0...v0.11.1) (2026-06-09)
+
 # [0.11.0](https://github.com/he5050/ai-modal/compare/v0.10.0...v0.11.0) (2026-06-01)
 
 
