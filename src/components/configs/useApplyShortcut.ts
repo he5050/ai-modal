@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { logger } from "@/lib/devlog"
 import { formatConfigContent } from "@/lib/configFormatter"
-import { listModels, setCodexApiKey as saveCodexApiKey, removeCodexApiKey } from "@/api"
+import { listModels } from "@/api"
 import {
 	buildClaudeWritebackUrl,
 	buildGeminiWritebackUrl,
@@ -92,53 +92,15 @@ export function useApplyShortcut({
 	const [fetchedModelsFromApi, setFetchedModelsFromApi] = useState<string[]>([])
 	const [isFetchingModels, setIsFetchingModels] = useState(false)
 
-	// Codex API Key 管理 - 从当前 Provider 自动填充
-	const [codexApiKey, setCodexApiKey] = useState<string>("")
-	const [isSavingCodexKey, setIsSavingCodexKey] = useState(false)
-
 	// 当弹窗打开时，从当前 Provider 获取 API Key
 	useEffect(() => {
 		if (codexApplyModalOpen) {
 			// 优先从 activeApplyProvider（自定义 Provider）或 selectedAvailableProvider 获取 apiKey
 			const providerToUse = activeApplyProvider ?? selectedAvailableProvider
 			const apiKeyFromProvider = providerToUse?.models[0]?.apiKey ?? ""
-			setCodexApiKey(apiKeyFromProvider)
+			setSelectedCodexApplyModel(apiKeyFromProvider ? providerToUse.models[0].name : "")
 		}
 	}, [codexApplyModalOpen, activeApplyProvider, selectedAvailableProvider])
-
-	async function handleSaveCodexApiKey() {
-		if (!codexApiKey.trim()) return
-		setIsSavingCodexKey(true)
-		try {
-			const result = await saveCodexApiKey(codexApiKey.trim())
-			if (result.success) {
-				toast(result.message, "success")
-			} else {
-				toast(result.message, "error")
-			}
-		} catch (e) {
-			toast("保存失败: " + String(e), "error")
-		} finally {
-			setIsSavingCodexKey(false)
-		}
-	}
-
-	async function handleRemoveCodexApiKey() {
-		setIsSavingCodexKey(true)
-		try {
-			const result = await removeCodexApiKey()
-			if (result.success) {
-				setCodexApiKey("")
-				toast(result.message, "success")
-			} else {
-				toast(result.message, "error")
-			}
-		} catch (e) {
-			toast("删除失败: " + String(e), "error")
-		} finally {
-			setIsSavingCodexKey(false)
-		}
-	}
 
 	function handleOpenClaudeApplyModal() {
 		if (!selectedAvailableModel || !selectedAvailableProvider || !isClaudeSettingsShortcutTarget) {
@@ -311,62 +273,32 @@ export function useApplyShortcut({
 		}
 	}
 
-	// 应用 Codex 配置并保存 API Key 到 ~/.zshrc（仅应用到草稿）
+	// 应用 Codex 配置并保存到草稿
 	async function handleApplyCodexShortcutAndSave() {
-		if (!codexApiKey.trim()) {
-			toast("请先输入 API Key", "warning")
-			return
-		}
-		setIsSavingCodexKey(true)
 		try {
-			// 先保存 API Key 到 ~/.zshrc
-			const saveResult = await saveCodexApiKey(codexApiKey.trim())
-			if (!saveResult.success) {
-				toast(saveResult.message, "error")
-				setIsSavingCodexKey(false)
-				return
-			}
-			// 再应用配置到草稿
 			await handleApplyCodexShortcutToDraft()
-			toast("已应用配置并保存 API Key", "success")
-		} catch (e) {
-			toast("保存失败: " + String(e), "error")
-		} finally {
-			setIsSavingCodexKey(false)
+			toast("已将 Codex 配置应用到当前草稿", "success")
+		} catch (error) {
+			logger.error("Failed to apply Codex shortcut config", error)
+			toast(error instanceof Error ? `应用失败：${error.message}` : "应用失败，请检查当前配置文件内容", "error")
 		}
 	}
 
 	// 应用 Codex 配置并直接保存到磁盘（跳过草稿）
 	async function handleApplyCodexShortcutDirectSave() {
-		if (!codexApiKey.trim()) {
-			toast("请先输入 API Key", "warning")
-			return
-		}
 		if (!saveFileContent) {
 			toast("保存功能未初始化", "error")
 			return
 		}
-		setIsSavingCodexKey(true)
 		try {
-			// 1. 先保存 API Key 到 ~/.zshrc
-			const saveResult = await saveCodexApiKey(codexApiKey.trim())
-			if (!saveResult.success) {
-				toast(saveResult.message, "error")
-				setIsSavingCodexKey(false)
-				return
-			}
-
-			// 2. 直接生成配置并保存到磁盘
 			const providerToUse = activeApplyProvider ?? selectedAvailableProvider
 			if (!providerToUse || !selectedGroup) {
-				setIsSavingCodexKey(false)
 				return
 			}
 			const configTomlFile = selectedGroup.files.find((file) => file.id === "codex") ?? null
 			const authJsonFile = selectedGroup.files.find((file) => file.id === "codex::auth.json") ?? null
 			if (!configTomlFile || !authJsonFile) {
 				toast("未找到 Codex 配置文件入口", "error")
-				setIsSavingCodexKey(false)
 				return
 			}
 
@@ -436,8 +368,6 @@ export function useApplyShortcut({
 		} catch (error) {
 			logger.error("Failed to apply and save Codex config", error)
 			toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请检查配置文件", "error")
-		} finally {
-			setIsSavingCodexKey(false)
 		}
 	}
 
@@ -953,12 +883,6 @@ export function useApplyShortcut({
 		// Fetched models from API (for custom provider with empty model)
 		fetchedModelsFromApi,
 		isFetchingModels,
-		// Codex API Key management
-		codexApiKey,
-		setCodexApiKey,
-		isSavingCodexKey,
-		handleSaveCodexApiKey,
-		handleRemoveCodexApiKey,
 		// Handlers
 		handleClaudeEnvFieldChange,
 		handleApplyClaudeShortcutToDraft,

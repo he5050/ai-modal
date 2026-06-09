@@ -259,12 +259,6 @@ export function ConfigPage({
 		// Fetched models from API (for custom provider with empty model)
 		fetchedModelsFromApi,
 		isFetchingModels,
-		// Codex API Key management
-		codexApiKey,
-		setCodexApiKey,
-		isSavingCodexKey,
-		handleSaveCodexApiKey,
-		handleRemoveCodexApiKey,
 	} = useApplyShortcut({
 		selectedGroup,
 		selectedFile,
@@ -1177,11 +1171,6 @@ export function ConfigPage({
 						await handleApplyCodexShortcutDirectSave()
 					}}
 					onCancel={() => setCodexApplyModalOpen(false)}
-					apiKey={codexApiKey}
-					onApiKeyChange={setCodexApiKey}
-					onSaveApiKey={handleSaveCodexApiKey}
-					onRemoveApiKey={handleRemoveCodexApiKey}
-					isSavingKey={isSavingCodexKey}
 				/>
 			)}
 

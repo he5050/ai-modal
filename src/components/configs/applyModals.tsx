@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, WandSparkles, Key, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Check, WandSparkles } from "lucide-react";
 import { FIELD_SELECT_CLASS } from "@/lib/formStyles";
 import {
   BUTTON_PRIMARY_CLASS,
@@ -167,11 +167,6 @@ export function CodexApplyModal({
   onConfirm,
   onConfirmAndSave,
   onCancel,
-  apiKey,
-  onApiKeyChange,
-  onSaveApiKey,
-  onRemoveApiKey,
-  isSavingKey,
 }: {
   providerName: string;
   availableModels: string[];
@@ -180,15 +175,7 @@ export function CodexApplyModal({
   onConfirm: () => void;
   onConfirmAndSave: () => void;
   onCancel: () => void;
-  apiKey: string;
-  onApiKeyChange: (value: string) => void;
-  onSaveApiKey: () => void;
-  onRemoveApiKey: () => void;
-  isSavingKey: boolean;
 }) {
-  const [showKey, setShowKey] = useState(false);
-  const hasExistingKey = apiKey.startsWith("sk-") && apiKey.length > 20;
-
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
       <div className="flex h-[min(720px,88vh)] w-full max-w-xl flex-col rounded-3xl border border-gray-800/90 bg-gray-950/95 p-6 shadow-[0_32px_80px_rgba(0,0,0,0.45)]">
@@ -252,60 +239,6 @@ export function CodexApplyModal({
           )}
         </div>
 
-        {/* CODEX_API_KEY 配置 */}
-        <div className="mt-5 rounded-2xl border border-gray-800 bg-black/15 px-4 py-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Key className="h-4 w-4 text-cyan-400" />
-            <p className="text-sm font-medium text-gray-200">CODEX_API_KEY</p>
-            {hasExistingKey && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
-                已配置
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-500 mb-3">
-            将 API Key 写入 ~/.zshrc，Codex CLI 启动时会自动读取
-          </p>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => onApiKeyChange(e.target.value)}
-                placeholder="sk-..."
-                className="w-full rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-2 pr-10 text-sm text-gray-200 outline-none focus:border-cyan-500/50"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-              >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <button
-              onClick={onSaveApiKey}
-              disabled={isSavingKey || !apiKey.trim()}
-              className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS} whitespace-nowrap`}
-            >
-              {isSavingKey ? "保存中..." : hasExistingKey ? "更新" : "保存"}
-            </button>
-            {hasExistingKey && (
-              <button
-                onClick={onRemoveApiKey}
-                disabled={isSavingKey}
-                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_XS_CLASS} px-2`}
-                title="删除"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
         <div className="mt-6 flex items-center justify-end gap-2">
           <button
             onClick={onCancel}
@@ -321,10 +254,9 @@ export function CodexApplyModal({
           </button>
           <button
             onClick={onConfirmAndSave}
-            disabled={isSavingKey || !apiKey.trim()}
             className={`${BUTTON_PRIMARY_CLASS} ${BUTTON_SIZE_XS_CLASS}`}
           >
-            {isSavingKey ? "保存中..." : "应用并保存"}
+            应用并保存
           </button>
         </div>
       </div>

@@ -260,18 +260,6 @@ export interface EnvConfigResult {
   currentValue?: string | null;
 }
 
-export async function getCodexApiKey(): Promise<string | null> {
-  return invoke("get_codex_api_key");
-}
-
-export async function setCodexApiKey(apiKey: string): Promise<EnvConfigResult> {
-  return invoke("set_codex_api_key", { apiKey });
-}
-
-export async function removeCodexApiKey(): Promise<EnvConfigResult> {
-  return invoke("remove_codex_api_key");
-}
-
 export async function parseCurlCommand(curl: string): Promise<ParsedCurl> {
   return invoke("parse_curl_command", { curl });
 }
