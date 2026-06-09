@@ -140,9 +140,8 @@ export function PromptDetailPage({
   }, [mode, prompt]);
 
   useEffect(() => {
-    onDirtyChange(viewMode === "edit" ? dirty : false);
-    return () => onDirtyChange(false);
-  }, [dirty, onDirtyChange, viewMode]);
+		onDirtyChange(viewMode === "edit" ? dirty : false);
+	}, [dirty, onDirtyChange, viewMode]);
 
   async function copyPromptContent(content: string) {
     try {

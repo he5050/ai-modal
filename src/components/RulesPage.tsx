@@ -114,10 +114,9 @@ export function RulesPage({
   );
 
   // ── dirty reporting ──
-  useEffect(() => {
-    onDirtyChange(dirty);
-    return () => onDirtyChange(false);
-  }, [dirty, onDirtyChange]);
+	useEffect(() => {
+		onDirtyChange(dirty);
+	}, [dirty, onDirtyChange]);
 
   // ── custom path handlers ──
   function handleAddCustomPath() {

@@ -35,7 +35,7 @@ interface Props {
   onSaveResult: (id: string, result: ProviderLastResult) => void;
   onDirtyChange: (dirty: boolean) => void;
   onOpenModels: () => void;
-  onOpenDetail: (provider: Provider) => void;
+  onOpenDetail: (provider: Provider, force?: boolean) => void;
 }
 
 export function DetectPage({
@@ -188,14 +188,13 @@ export function DetectPage({
     toast("已另存为新接口，返回详情页", "success");
     // 切换到新创建的 Provider 并返回详情页
     form.setEditingId(newId);
+    form.setSaving(false);
     const newProvider = providers.find((p) => p.id === newId);
     if (newProvider) {
       onClearEditTarget();
-      onOpenDetail(newProvider);
+      onDirtyChange(false);
+      onOpenDetail(newProvider, true);
     }
-    form.setSaving(false);
-    // 另存为新接口后重置 dirty 状态
-    onDirtyChange(false);
   }
 
   function handleSave() {
@@ -239,11 +238,13 @@ export function DetectPage({
         `[更新] 「${data.name}」已更新，含 ${visibleResults.length} 条当前检测结果`,
       );
       toast("已更新，返回详情页", "success");
+      form.setSaving(false);
       // 返回详情页
       const updatedProvider = providers.find((p) => p.id === form.editingId);
       if (updatedProvider) {
         onClearEditTarget();
-        onOpenDetail(updatedProvider);
+        onDirtyChange(false);
+        onOpenDetail(updatedProvider, true);
       }
     } else {
       const newId = onAddProvider(data);
@@ -256,15 +257,14 @@ export function DetectPage({
       toast("已保存，返回详情页", "success");
       // 切换到新创建的 Provider 并返回详情页
       form.setEditingId(newId);
+      form.setSaving(false);
       const newProvider = providers.find((p) => p.id === newId);
       if (newProvider) {
         onClearEditTarget();
-        onOpenDetail(newProvider);
+        onDirtyChange(false);
+        onOpenDetail(newProvider, true);
       }
     }
-    form.setSaving(false);
-    // 保存成功后重置 dirty 状态，避免切换页面时弹出确认对话框
-    onDirtyChange(false);
   }
 
   return (

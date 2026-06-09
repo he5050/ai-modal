@@ -151,8 +151,8 @@ export default function App() {
     setPage("model-detect");
   }
 
-  function handleOpenProviderDetail(provider: Provider) {
-    if (editingDirty) {
+  function handleOpenProviderDetail(provider: Provider, force?: boolean) {
+    if (!force && editingDirty) {
       setPendingPage("provider-detail");
       setDetailProviderId(provider.id);
       return;

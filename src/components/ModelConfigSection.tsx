@@ -492,7 +492,6 @@ export function ModelConfigSection({
 
   useEffect(() => {
     onDirtyChange(dirty);
-    return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
 
   useEffect(() => {

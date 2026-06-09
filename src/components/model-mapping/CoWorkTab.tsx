@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import {
 	Activity,
@@ -94,6 +94,7 @@ function modelTestKey(providerIndex: number, modelId: string) {
 
 export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 	const [config, setConfig] = useState<ModelMappingConfig>(EMPTY_CONFIG)
+	const initialized = useRef(false)
 	const [status, setStatus] = useState<ModelMappingStatus | null>(null)
 	const [logs, setLogs] = useState<ModelMappingLogEntry[]>([])
 	const [testResults, setTestResults] = useState<Record<string, ModelMappingTestResult>>({})
@@ -117,6 +118,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 				setConfig(loadedConfig.providers ? normalizeModelMappingConfig(loadedConfig) : EMPTY_CONFIG)
 				setStatus(loadedStatus)
 				setLogs(loadedLogs)
+				initialized.current = true
 				logger.success(`[模型映射] 加载完成：provider=${loadedConfig.providers?.length ?? 0}，log=${loadedLogs.length}`)
 			} catch (error) {
 				logger.error(`[模型映射] 加载失败：${error instanceof Error ? error.message : String(error)}`)
@@ -144,10 +146,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 	// 统计已启用的模型数量
 	const enabledModelsCount = useMemo(
 		() =>
-			config.providers.reduce(
-				(count, provider) => count + provider.models.filter((m) => Boolean(m.enabled)).length,
-				0,
-			),
+			config.providers.reduce((count, provider) => count + provider.models.filter((m) => Boolean(m.enabled)).length, 0),
 		[config],
 	)
 	// 统计实际映射的槽位数量（只统计实际分配了模型的槽位）
@@ -207,7 +206,9 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 
 	function updateConfig(next: ModelMappingConfig) {
 		setConfig(normalizeModelMappingConfig(next))
-		onDirtyChange?.(true)
+		if (initialized.current) {
+			onDirtyChange?.(true)
+		}
 	}
 
 	function updateProvider(index: number, patch: Partial<ModelMappingProvider>) {
@@ -528,6 +529,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 	function handleSlotAssignment(slotIndex: number, modelKey: string | "") {
 		const slotId = DEFAULT_CLAUDE_SLOTS[slotIndex]
 		if (!modelKey) {
+			// 取消选择：从持有该 slot 的模型中移除
 			const nextProviders = config.providers.map((provider) => ({
 				...provider,
 				models: provider.models.map((model) => {
@@ -554,17 +556,21 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 		const targetModel = targetProvider.models[mi]
 		if (!targetModel) return
 
+		// 选择模型：将该 slot 追加到目标模型的 slots 数组（支持一模型多插槽）
 		const nextProviders = config.providers.map((provider, pIdx) => ({
 			...provider,
 			models: provider.models.map((model, mIdx) => {
 				if (pIdx === pi && mIdx === mi) {
+					const currentSlots = getModelSlots(model)
+					const updatedSlots = currentSlots.includes(slotId) ? currentSlots : [...currentSlots, slotId]
 					return {
 						...model,
-						slot: slotId,
-						slots: [slotId],
+						slot: updatedSlots[0] ?? slotId,
+						slots: updatedSlots,
 						enabled: true,
 					}
 				}
+				// 从其他模型中移除该 slot（一个槽位同一时间只能归属一个模型）
 				const currentSlots = getModelSlots(model)
 				if (currentSlots.includes(slotId)) {
 					const updatedSlots = currentSlots.filter((s) => s !== slotId)
@@ -578,7 +584,7 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 			}),
 		}))
 		updateConfig({ providers: nextProviders })
-		toast(`已将 ${targetModel.name} 分配到槽位 ${slotId}`, "success")
+		toast(`已将 ${targetModel.name} 映射到 ${slotId.replace("anthropic/", "")}`, "success")
 	}
 
 	if (loading) {
@@ -607,8 +613,12 @@ export function CoWorkTab({ providers, onDirtyChange }: CoWorkTabProps) {
 							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>
 								端口 {status?.port ?? 5678}
 							</span>
-							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>{enabledModelsCount} 模型已启用</span>
-							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>{mappedSlotsCount} 槽位已映射</span>
+							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>
+								{enabledModelsCount} 模型已启用
+							</span>
+							<span className='rounded-lg border border-gray-800 bg-gray-900 px-2.5 py-1'>
+								{mappedSlotsCount} 槽位已映射
+							</span>
 						</div>
 					</div>
 					<div className='flex flex-wrap justify-end gap-2'>
@@ -1149,7 +1159,8 @@ function ModelMappingRow({
 	const isEnabled = Boolean(model.enabled)
 
 	return (
-		<div className={`rounded-md border p-1.5 transition-colors ${isEnabled ? "border-emerald-500/30 bg-emerald-500/5" : "border-gray-800 bg-gray-950/60"}`}>
+		<div
+			className={`rounded-md border p-1.5 transition-colors ${isEnabled ? "border-emerald-500/30 bg-emerald-500/5" : "border-gray-800 bg-gray-950/60"}`}>
 			<div className='overflow-x-auto'>
 				<div className='flex min-w-[800px] items-center gap-1.5'>
 					<input

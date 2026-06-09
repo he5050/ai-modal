@@ -112,10 +112,9 @@ export function SkillsPage({
   });
 
   // ─── Dirty tracking ────────────────────────────────────────────
-  useEffect(() => {
-    onDirtyChange(false);
-    return () => onDirtyChange(false);
-  }, [onDirtyChange]);
+	useEffect(() => {
+		onDirtyChange(false);
+	}, [onDirtyChange]);
 
   // ─── Remove skill handler ──────────────────────────────────────
   async function executeRemoveSkill(skillName: string) {
