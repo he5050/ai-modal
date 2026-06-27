@@ -1,12 +1,10 @@
 use std::{
-    collections::HashSet,
     path::PathBuf,
 };
 
 use crate::commands::model_mapping::types::{
     MappingProtocol, ModelMappingConfig, ModelMappingEntry, ModelMappingFlatEntry,
     ModelMappingLogEntry, ModelMappingManager, ModelMappingProvider, ModelMappingSettings,
-    DEFAULT_CLAUDE_SLOTS,
 };
 
 // Re-export for tests and other modules
@@ -152,13 +150,30 @@ fn make_model_display_name(provider_name: &str, model_name: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn make_slot(order: usize) -> String {
-    DEFAULT_CLAUDE_SLOTS
+    const SLOTS: &[&str] = &[
+        "anthropic/claude-opus-current",
+        "anthropic/claude-sonnet-current",
+        "anthropic/claude-haiku-current",
+        "anthropic/claude-opus-4-7",
+        "anthropic/claude-opus-4-6",
+        "anthropic/claude-opus-4-5",
+        "anthropic/claude-opus-4-1",
+        "anthropic/claude-opus-4",
+        "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-sonnet-4-5",
+        "anthropic/claude-sonnet-4",
+        "anthropic/claude-sonnet-3-7",
+        "anthropic/claude-haiku-4-5-20251001",
+    ];
+    SLOTS
         .get(order.saturating_sub(1))
         .map(|slot| (*slot).to_string())
         .unwrap_or_else(|| format!("anthropic/claude-custom-{}", order))
 }
 
+#[allow(dead_code)]
 pub fn legacy_slot(name: &str) -> String {
     let safe = sanitize_model_name(name);
     if safe.starts_with("claude-") {
@@ -217,6 +232,7 @@ fn normalize_explicit_slot(slot: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn effective_slot(model: &ModelMappingEntry) -> String {
     model.slot.trim().to_string()
 }

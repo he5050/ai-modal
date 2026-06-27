@@ -10,3 +10,4 @@ pub mod provider;
 pub mod skill_enrichment;
 pub mod skill_enrichment_job;
 pub mod skills;
+pub mod system_config;

@@ -402,3 +402,18 @@ export async function setCodexProxyAutostart(enabled: boolean): Promise<boolean>
 export async function applyCodexProxyToCodex(config: CodexProxyConfig): Promise<string> {
   return invoke("apply_codex_proxy_to_codex", { config });
 }
+
+// ─── 系统配置迁移 ───────────────────────────────────────────────────
+
+import type {
+  AppFilesExport,
+  AppFilesImport,
+} from "./types";
+
+export async function exportAppFiles(): Promise<AppFilesExport> {
+  return invoke("export_app_files");
+}
+
+export async function importAppFiles(payload: AppFilesImport): Promise<void> {
+  return invoke("import_app_files", { payload });
+}

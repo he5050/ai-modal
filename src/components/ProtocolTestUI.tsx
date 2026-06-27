@@ -43,24 +43,23 @@ function formatDebugMap(value?: Record<string, string> | null) {
  * 批量测试时只有 openApi 一项，单模型多协议测试时会显示多项。
  */
 export function TestedProtocolBadges({ result }: { result: ModelResult }) {
-  const supportedResults = (result.protocol_results ?? []).filter(
-    (pr) => pr.available,
-  );
-  if (supportedResults.length === 0) return null;
+  const allResults = result.protocol_results ?? [];
+  if (allResults.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {supportedResults.map((pr) => {
+      {allResults.map((pr) => {
         const normalized = normalizeSupportedProtocolTag(pr.protocol) as ModelTestProtocol;
+        const status = pr.available ? "supported" : ("unsupported" as const);
         return (
           <span
             key={pr.protocol}
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${getProtocolSupportChipClass(
               normalized,
-              "supported",
+              status,
             )}`}
           >
             <span>{getModelProtocolLabel(pr.protocol)}</span>
-            <span>支持</span>
+            <span>{pr.available ? "支持" : "不支持"}</span>
           </span>
         );
       })}

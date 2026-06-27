@@ -1,6 +1,3 @@
-use std::sync::Arc;
-use tauri::State;
-
 use crate::commands::codex_proxy::{
     types::*,
     config::*,
@@ -156,7 +153,7 @@ pub fn set_codex_proxy_autostart(enabled: bool) -> Result<bool, String> {
 
 /// 应用到 Codex
 #[tauri::command]
-pub fn apply_codex_proxy_to_codex(config: CodexProxyConfig) -> Result<String, String> {
+pub fn apply_codex_proxy_to_codex(_config: CodexProxyConfig) -> Result<String, String> {
     // 将配置应用到 Codex CLI 的配置文件
     let codex_dir = codex_config_dir();
     if let Some(dir) = codex_dir {

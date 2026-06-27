@@ -1,7 +1,6 @@
 use axum::{
-    body::Body,
     extract::State,
-    http::{Request, Response, StatusCode},
+    http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
@@ -10,7 +9,7 @@ use std::sync::Arc;
 
 use crate::commands::codex_proxy::{
     types::*,
-    config::{effective_slots, load_config_file, now_time},
+    config::{effective_slots, load_config_file},
 };
 
 /// 创建路由
@@ -31,7 +30,7 @@ async fn health_check() -> Json<Value> {
 }
 
 /// 列出模型
-async fn list_models(State(state): State<Arc<CodexGatewayState>>) -> Json<Value> {
+async fn list_models(State(_state): State<Arc<CodexGatewayState>>) -> Json<Value> {
     let config = load_config_file();
     let mut models = Vec::new();
 

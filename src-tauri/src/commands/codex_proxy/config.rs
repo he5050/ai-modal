@@ -236,7 +236,7 @@ pub fn normalize_config(config: CodexProxyConfig) -> CodexProxyConfig {
                 } else {
                     provider.name.clone()
                 };
-                let target_url = provider.target_url.clone();
+                let _target_url = provider.target_url.clone();
                 CodexProvider {
                     models: provider
                         .models
@@ -362,6 +362,7 @@ pub fn build_status(running: bool, config: Option<CodexProxyConfig>) -> CodexPro
 }
 
 /// 获取当前时间字符串
+#[allow(dead_code)]
 pub fn now_time() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -4,6 +4,7 @@ use tokio::sync::oneshot;
 
 pub const DEFAULT_PORT: u16 = 5678;
 pub const CLAUDE_CONFIG_ID: &str = "a0a0a0a0-b1b1-4c2c-9d3d-e4e4e4e4e4e4";
+#[allow(dead_code)]
 pub const DEFAULT_CLAUDE_SLOTS: &[&str] = &[
     "anthropic/claude-opus-current",
     "anthropic/claude-sonnet-current",

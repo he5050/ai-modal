@@ -154,12 +154,14 @@ pub struct CodexProxyLogEntry {
 }
 
 /// 运行时状态
+#[allow(dead_code)]
 pub(crate) struct ToolRuntimeState {
     pub(crate) running: bool,
     pub(crate) shutdown: Option<oneshot::Sender<()>>,
 }
 
 /// 管理器
+#[allow(dead_code)]
 pub struct CodexProxyManager {
     pub(crate) runtimes: RwLock<HashMap<String, ToolRuntimeState>>,
     pub(crate) config: RwLock<CodexProxyConfig>,
@@ -179,6 +181,8 @@ impl Default for CodexProxyManager {
 /// 网关状态
 pub(crate) struct CodexGatewayState {
     pub(crate) client: reqwest::Client,
+    #[allow(dead_code)]
     pub(crate) config: CodexProxyConfig,
+    #[allow(dead_code)]
     pub(crate) port: u16,
 }

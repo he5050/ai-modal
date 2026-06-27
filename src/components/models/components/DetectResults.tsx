@@ -176,7 +176,7 @@ export function DetectResults({
                     ) : (
                       <div className="space-y-2">
                         <TestedProtocolBadges result={r} />
-                        {(r.protocol_results ?? []).filter((pr) => pr.available).length > 0 ? (
+                        {(r.protocol_results ?? []).length > 0 ? (
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => onSetDetailDialogResult(r)}
@@ -186,7 +186,6 @@ export function DetectResults({
                             </button>
                             <CopyButton
                               text={(r.protocol_results ?? [])
-                                .filter((item) => item.available)
                                 .map((item) => `${getModelProtocolLabel(item.protocol)}: ${getProtocolResultDetails(item)}`)
                                 .join("\n\n")}
                               message="已复制协议返回结果"

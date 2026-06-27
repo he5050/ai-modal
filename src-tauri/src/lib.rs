@@ -38,13 +38,14 @@ use commands::skill_enrichment_job::{
     SkillEnrichmentJobManager,
 };
 use commands::curl_task::{
-    delete_curl_task, execute_curl_direct, execute_curl_raw, execute_curl_task, load_curl_tasks,
-    parse_curl_command, save_curl_task,
+    delete_curl_task, execute_curl_direct, execute_curl_raw, execute_curl_task,
+    load_curl_tasks, parse_curl_command, save_curl_task,
 };
 use commands::skills::{
     inspect_online_skill, inspect_skill_targets, run_skills_command, scan_local_skills,
     search_online_skills, sync_skill_targets,
 };
+use commands::system_config::{export_app_files, import_app_files};
 use tauri::{
     image::Image,
     menu::{MenuBuilder, MenuEvent, MenuItemBuilder},
@@ -202,6 +203,8 @@ pub fn run() {
             get_codex_proxy_logs,
             set_codex_proxy_autostart,
             apply_codex_proxy_to_codex,
+            export_app_files,
+            import_app_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

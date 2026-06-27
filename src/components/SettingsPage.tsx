@@ -11,8 +11,10 @@ import { loadPersistedJson, savePersistedJson } from "@/lib/persistence";
 import { loadModelMappingSettings, saveModelMappingSettings } from "@/api";
 import { HintTooltip } from "./HintTooltip";
 import { ModelConfigSection } from "./ModelConfigSection";
+import { ImportConfirmDialog } from "./settings/ImportConfirmDialog";
+import { useConfigMigration } from "./settings/useConfigMigration";
 import { toast } from "@/lib/toast";
-import { Loader2 } from "lucide-react";
+import { Download, Loader2, Upload } from "lucide-react";
 import type { Provider } from "@/types";
 
 export const DEBUG_KEY = "ai-modal-debug";
@@ -52,6 +54,17 @@ export function SettingsPage({
   const [modelMappingPort, setModelMappingPort] = useState(String(DEFAULT_MODEL_MAPPING_PORT));
   const [modelMappingPortSaved, setModelMappingPortSaved] = useState(DEFAULT_MODEL_MAPPING_PORT);
   const [modelMappingPortBusy, setModelMappingPortBusy] = useState(false);
+
+  const {
+    busy: migrationBusy,
+    pendingImport,
+    importRef,
+    handleExport,
+    handleImportClick,
+    handleImportFile,
+    handleConfirmImport,
+    handleCancelImport,
+  } = useConfigMigration();
 
   useEffect(() => {
     let active = true;
@@ -292,7 +305,77 @@ export function SettingsPage({
           providers={providers}
           onDirtyChange={onDirtyChange ?? (() => {})}
         />
+
+        <section className="mt-6">
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-widest text-gray-500">
+            配置迁移
+          </h3>
+          <div className="divide-y divide-gray-800 rounded-xl border border-gray-800 bg-gray-900">
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-200">
+                    导出全部配置
+                  </p>
+                  <HintTooltip content="将当前所有模块配置（含 API Key 等敏感信息）导出为 JSON 文件，可用于备份或迁移到其他设备。" />
+                </div>
+                <p className="mt-1 text-xs text-gray-600">包含所有模块配置与代理设置</p>
+              </div>
+              <button
+                onClick={() => void handleExport()}
+                disabled={migrationBusy !== null}
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS} min-w-[4.5rem]`}
+              >
+                {migrationBusy === "export" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                导出
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-200">
+                    导入配置
+                  </p>
+                  <HintTooltip content="导入 JSON 配置文件，将全覆盖当前所有配置（清空后写入），导入后应用自动刷新。" />
+                </div>
+                <p className="mt-1 text-xs text-gray-600">全覆盖导入，操作不可恢复</p>
+              </div>
+              <button
+                onClick={handleImportClick}
+                disabled={migrationBusy !== null}
+                className={`${BUTTON_SECONDARY_CLASS} ${BUTTON_SIZE_MD_CLASS} min-w-[4.5rem]`}
+              >
+                {migrationBusy === "import" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                导入
+              </button>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json"
+                hidden
+                onChange={handleImportFile}
+              />
+            </div>
+          </div>
+        </section>
       </div>
+
+      {pendingImport && (
+        <ImportConfirmDialog
+          fileName={pendingImport.fileName}
+          onConfirm={() => void handleConfirmImport()}
+          onCancel={handleCancelImport}
+        />
+      )}
     </div>
   );
 }

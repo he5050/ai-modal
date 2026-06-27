@@ -409,7 +409,7 @@ export function DetectPage({
       {detailDialogResult && (
         <ProtocolResultDetailDialog
           model={detailDialogResult.model}
-          results={(detailDialogResult.protocol_results ?? []).filter((pr) => pr.available)}
+          results={detailDialogResult.protocol_results ?? []}
           onClose={() => setDetailDialogResult(null)}
         />
       )}

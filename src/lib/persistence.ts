@@ -37,7 +37,7 @@ function parsePersistedValue<T>(raw: string, fallback: T): T {
   }
 }
 
-async function getDatabase() {
+export async function getDatabase(): Promise<Database | null> {
   if (!hasTauriRuntime()) return null;
   if (!databasePromise) {
     databasePromise = Database.load(DB_PATH);

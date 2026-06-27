@@ -702,3 +702,41 @@ export interface CodexProxyLogEntry {
 	converted_response_body?: string
 	error_message?: string
 }
+
+// ─── 系统配置迁移 ───
+
+export interface AutostartState {
+	modelMapping: boolean
+}
+
+export interface AppFilesExport {
+	files: Record<string, string | null>
+	curlTasks: Record<string, string>
+	autostart: AutostartState
+}
+
+export interface AppFilesImport {
+	files: Record<string, string | null>
+	curlTasks?: Record<string, string>
+	autostart?: Partial<AutostartState>
+}
+
+export interface ExportConfigPayload {
+	version: number
+	app: string
+	exportedAt: number
+	kvStore: Record<string, string>
+	localStorage: Record<string, string>
+	files: Record<string, string | null>
+	curlTasks: Record<string, string>
+	autostart: AutostartState
+}
+
+export interface ImportConfigPayload {
+	version: number
+	kvStore: Record<string, string>
+	localStorage?: Record<string, string>
+	files: Record<string, string | null>
+	curlTasks?: Record<string, string>
+	autostart?: Partial<AutostartState>
+}
