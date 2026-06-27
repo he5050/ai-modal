@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.12.0](https://github.com/he5050/ai-modal/compare/v0.11.1...v0.12.0) (2026-06-27)
+
+
+### Features
+
+* add app config export and import functions ([f61bb23](https://github.com/he5050/ai-modal/commit/f61bb2302124db1c0ace6eeff1a6dfbd62a0e806))
+
 ## [0.11.1](https://github.com/he5050/ai-modal/compare/v0.11.0...v0.11.1) (2026-06-09)
 
 # [0.11.0](https://github.com/he5050/ai-modal/compare/v0.10.0...v0.11.0) (2026-06-01)
